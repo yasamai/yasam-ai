@@ -1,239 +1,318 @@
 "use client";
 
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 
 export default function AnalizPage() {
-  const [loading, setLoading] = useState(false);
-  const [showReport, setShowReport] = useState(false);
+  const [il, setIl] = useState("");
+  const [ilce, setIlce] = useState("");
+  const [mahalle, setMahalle] = useState("");
+  const [ada, setAda] = useState("");
+  const [parsel, setParsel] = useState("");
+  const [metrekare, setMetrekare] = useState("");
 
-  const analizBaslat = () => {
-    setLoading(true);
+  const [rapor, setRapor] = useState("");
+  const [yukleniyor, setYukleniyor] = useState(false);
+  const [hata, setHata] = useState("");
 
-    setTimeout(() => {
-      setLoading(false);
-      setShowReport(true);
-    }, 3000);
-  };
+  async function analizEt(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
-  const inputStyle = {
-    width: "100%",
-    padding: "16px",
-    marginBottom: "16px",
-    borderRadius: "12px",
-    border: "1px solid #2c2c2c",
-    background: "#171717",
-    color: "white",
-    fontSize: "16px",
-    outline: "none",
-  };
+    setYukleniyor(true);
+    setHata("");
+    setRapor("");
+
+    const message = `
+Aşağıdaki taşınmaz için kapsamlı bir ön gayrimenkul yatırım analizi hazırla.
+
+İl: ${il}
+İlçe: ${ilce}
+Mahalle: ${mahalle}
+Ada: ${ada}
+Parsel: ${parsel}
+Arsa büyüklüğü: ${metrekare} m²
+
+Analizde şu başlıklar yer alsın:
+1. Konum değerlendirmesi
+2. Yatırım potansiyeli
+3. Avantajlar
+4. Riskler
+5. Kontrol edilmesi gereken resmi belgeler
+6. Tahmini yatırım puanı
+7. Sonuç ve öneri
+
+Kesin olmayan bilgileri gerçekmiş gibi sunma.
+İmar, tapu, kadastro ve piyasa bilgilerinin resmi kaynaklardan doğrulanması gerektiğini açıkça belirt.
+Yanıtı Türkçe, anlaşılır ve profesyonel şekilde hazırla.
+`;
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Analiz oluşturulamadı.");
+      }
+
+      setRapor(data.reply || "Analiz yanıtı alınamadı.");
+    } catch (error) {
+      setHata(
+        error instanceof Error
+          ? error.message
+          : "Beklenmeyen bir hata oluştu."
+      );
+    } finally {
+      setYukleniyor(false);
+    }
+  }
 
   return (
     <main
       style={{
         minHeight: "100vh",
-        background: "#0d1117",
-        color: "white",
-        padding: "60px 20px",
-        fontFamily: "Arial",
+        background: "#f4f7fb",
+        padding: "40px 20px",
+        fontFamily: "Arial, sans-serif",
       }}
     >
       <div
         style={{
-          maxWidth: "700px",
+          maxWidth: "900px",
           margin: "0 auto",
         }}
       >
-        <h1
+        <div
           style={{
-            color: "#53ff6b",
-            fontSize: "42px",
-            textAlign: "center",
-            marginBottom: "10px",
+            background: "linear-gradient(135deg, #061b3a, #0d47a1)",
+            color: "white",
+            padding: "36px",
+            borderRadius: "24px",
+            marginBottom: "24px",
           }}
         >
-          🤖 Yaşam AI Analiz Merkezi
-        </h1>
-
-        <p
-          style={{
-            textAlign: "center",
-            color: "#bbbbbb",
-            marginBottom: "40px",
-          }}
-        >
-          Arsanızı saniyeler içerisinde yapay zekâ analiz etsin.
-        </p>
-
-        {!showReport && (
-          <>
-            <input placeholder="İl" style={inputStyle} />
-
-            <input placeholder="İlçe" style={inputStyle} />
-
-            <input placeholder="Mahalle" style={inputStyle} />
-
-            <input placeholder="Ada" style={inputStyle} />
-
-            <input placeholder="Parsel" style={inputStyle} />
-
-            <input placeholder="m²" style={inputStyle} />
-
-            <button
-              onClick={analizBaslat}
-              style={{
-                width: "100%",
-                padding: "18px",
-                background: "#38ef65",
-                color: "black",
-                border: "none",
-                borderRadius: "12px",
-                fontSize: "18px",
-                cursor: "pointer",
-                fontWeight: "bold",
-              }}
-            >
-              🤖 AI Analizini Başlat
-            </button>
-          </>
-        )}
-
-        {loading && (
-          <div
+          <p
             style={{
-              textAlign: "center",
-              marginTop: "60px",
+              margin: "0 0 8px",
+              opacity: 0.8,
+              fontWeight: 700,
             }}
           >
-            <h2>🤖 Yapay Zekâ Analiz Yapıyor...</h2>
+            YAŞAM AI
+          </p>
 
-            <p
-              style={{
-                color: "#8d8d8d",
-                marginTop: "20px",
-              }}
-            >
-              Kadastro verileri okunuyor...
-            </p><div
-              style={{
-                width: "100%",
-                height: "12px",
-                background: "#1f2937",
-                borderRadius: "999px",
-                overflow: "hidden",
-                marginTop: "20px",
-              }}
-            >
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  background: "#22c55e",
-                  animation: "pulse 1.2s infinite",
-                }}
-              />
-            </div>
+          <h1
+            style={{
+              margin: "0 0 12px",
+              fontSize: "36px",
+            }}
+          >
+            Yapay Zekâ Destekli Arsa Analizi
+          </h1>
+
+          <p
+            style={{
+              margin: 0,
+              lineHeight: 1.6,
+              opacity: 0.9,
+            }}
+          >
+            Taşınmaz bilgilerini girin. Yaşam AI yatırım fırsatlarını,
+            riskleri ve kontrol edilmesi gereken noktaları analiz etsin.
+          </p>
+        </div>
+
+        <form
+          onSubmit={analizEt}
+          style={{
+            background: "white",
+            padding: "30px",
+            borderRadius: "24px",
+            boxShadow: "0 10px 35px rgba(15, 23, 42, 0.08)",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "16px",
+            }}
+          >
+            <Input
+              label="İl"
+              value={il}
+              onChange={setIl}
+              placeholder="Örnek: Adana"
+            />
+
+            <Input
+              label="İlçe"
+              value={ilce}
+              onChange={setIlce}
+              placeholder="Örnek: Ceyhan"
+            />
+
+            <Input
+              label="Mahalle"
+              value={mahalle}
+              onChange={setMahalle}
+              placeholder="Örnek: Mithatpaşa"
+            />
+
+            <Input
+              label="Ada"
+              value={ada}
+              onChange={setAda}
+              placeholder="Örnek: 123"
+            />
+
+            <Input
+              label="Parsel"
+              value={parsel}
+              onChange={setParsel}
+              placeholder="Örnek: 45"
+            />
+
+            <Input
+              label="Arsa büyüklüğü (m²)"
+              value={metrekare}
+              onChange={setMetrekare}
+              placeholder="Örnek: 500"
+              type="number"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={yukleniyor}
+            style={{
+              width: "100%",
+              marginTop: "24px",
+              padding: "16px",
+              border: "none",
+              borderRadius: "14px",
+              background: yukleniyor ? "#94a3b8" : "#0d47a1",
+              color: "white",
+              fontSize: "17px",
+              fontWeight: 700,
+              cursor: yukleniyor ? "not-allowed" : "pointer",
+            }}
+          >
+            {yukleniyor
+              ? "Yaşam AI analiz hazırlıyor..."
+              : "Yapay Zekâ Analizini Başlat"}
+          </button>
+        </form>
+
+        {hata && (
+          <div
+            style={{
+              marginTop: "24px",
+              padding: "18px",
+              background: "#fee2e2",
+              color: "#991b1b",
+              borderRadius: "14px",
+            }}
+          >
+            <strong>Hata:</strong> {hata}
           </div>
         )}
 
-        {showReport && (
-          <div
+        {rapor && (
+          <section
             style={{
-              marginTop: "40px",
-              background: "#111827",
-              border: "1px solid #1f2937",
-              borderRadius: "16px",
+              marginTop: "24px",
+              background: "white",
               padding: "30px",
+              borderRadius: "24px",
+              boxShadow: "0 10px 35px rgba(15, 23, 42, 0.08)",
             }}
           >
             <h2
               style={{
-                color: "#22c55e",
-                textAlign: "center",
-                marginBottom: "30px",
+                marginTop: 0,
+                color: "#061b3a",
               }}
             >
-              📋 Yaşam AI Analiz Raporu
+              Yaşam AI Ön Analiz Raporu
             </h2>
 
             <div
               style={{
-                display: "grid",
-                gap: "18px",
+                whiteSpace: "pre-wrap",
+                lineHeight: 1.8,
+                color: "#334155",
               }}
             >
-              <div>📍 <strong>İl:</strong> Adana</div>
-
-              <div>🏙️ <strong>İlçe:</strong> Ceyhan</div>
-
-              <div>💰 <strong>Tahmini m² Değeri:</strong> 17.450 TL</div>
-
-              <div>📈 <strong>Yatırım Skoru:</strong> 92 / 100</div>
-
-              <div>⚠️ <strong>Risk:</strong> Düşük</div>
-
-              <div>🛣️ <strong>Ulaşım:</strong> Çok İyi</div>
-
-              <div>🏗️ <strong>İmar:</strong> Konut Alanı</div><div
-                style={{
-                  marginTop: "20px",
-                  padding: "20px",
-                  background: "#0f172a",
-                  borderRadius: "12px",
-                  lineHeight: "1.8",
-                }}
-              >
-                <strong>🧠 AI Yorumu</strong>
-
-                <p style={{ marginTop: "12px", color: "#d1d5db" }}>
-                  Analiz edilen taşınmaz; konumu, ulaşım bağlantıları ve mevcut
-                  gelişim potansiyeli dikkate alındığında yatırım açısından
-                  güçlü görünmektedir. Bölgenin orta ve uzun vadede değer
-                  kazanma ihtimali yüksektir. Gerçek piyasa verileri, belediye
-                  kayıtları ve uydu analizleri eklendiğinde rapor daha da
-                  detaylandırılacaktır.
-                </p>
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowReport(false);
-                }}
-                style={{
-                  marginTop: "30px",
-                  width: "100%",
-                  padding: "16px",
-                  borderRadius: "12px",
-                  border: "none",
-                  background: "#22c55e",
-                  color: "#000",
-                  fontWeight: "bold",
-                  fontSize: "17px",
-                  cursor: "pointer",
-                }}
-              >
-                🔄 Yeni Analiz Yap
-              </button>
+              {rapor}
             </div>
-          </div>
+
+            <p
+              style={{
+                marginTop: "24px",
+                paddingTop: "18px",
+                borderTop: "1px solid #e2e8f0",
+                color: "#64748b",
+                fontSize: "13px",
+              }}
+            >
+              Bu rapor yapay zekâ destekli bir ön değerlendirmedir. Tapu,
+              imar, kadastro, belediye ve piyasa verileri resmi kaynaklardan
+              doğrulanmalıdır.
+            </p>
+          </section>
         )}
       </div>
-
-      <style jsx>{`
-        @keyframes pulse {
-          0% {
-            transform: scaleX(0.2);
-            opacity: 0.5;
-          }
-          50% {
-            transform: scaleX(1);
-            opacity: 1;
-          }
-          100% {
-            transform: scaleX(0.2);
-            opacity: 0.5;
-          }
-        }
-      `}</style>
     </main>
+  );
+}
+
+type InputProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  type?: string;
+};
+
+function Input({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: InputProps) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+        color: "#1e293b",
+        fontWeight: 700,
+      }}
+    >
+      {label}
+
+      <input
+        type={type}
+        required
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        style={{
+          padding: "14px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          fontSize: "16px",
+          outline: "none",
+        }}
+      />
+    </label>
   );
 }
