@@ -1,5 +1,5 @@
 /*
-YAŞAM AI - V43 KULLANICI OTURUMU · FAZ 2.3
+YAŞAM AI - V40 FAZ 1 FINAL
 BU DOSYA SADECE ŞURAYA KONULACAK:
 app/analiz/page.tsx
 
@@ -9,7 +9,6 @@ app/page.tsx DOSYASINA KONULMAYACAK.
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import AnalysisHeader from "./components/AnalysisHeader";
 import {
   PremiumScoreGrid,
@@ -1309,34 +1308,22 @@ export default function AnalizPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem("yasam-ai-v19-reports", JSON.stringify(savedReports));
-    } catch {
-      setArchiveMessage("Rapor arşivi tarayıcıya kaydedilemedi.");
-    }
+    window.localStorage.setItem("yasam-ai-v19-reports", JSON.stringify(savedReports));
   }, [savedReports]);
 
   useEffect(() => {
-    const storedModule = window.localStorage.getItem("yasam-ai-v42-active-module");
+    const storedModule = window.localStorage.getItem("yasam-ai-v39-active-module");
     if (storedModule && dashboardModules.some((module) => module.id === storedModule)) {
       setActiveModule(storedModule);
     }
   }, []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem("yasam-ai-v42-active-module", activeModule);
-    } catch {
-      // Tarayıcı depolaması kapalıysa ekran çalışmaya devam eder.
-    }
+    window.localStorage.setItem("yasam-ai-v40-active-module", activeModule);
   }, [activeModule]);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem("yasam-ai-v19-profile", JSON.stringify(profile));
-    } catch {
-      setArchiveMessage("Kullanıcı profili tarayıcıya kaydedilemedi.");
-    }
+    window.localStorage.setItem("yasam-ai-v19-profile", JSON.stringify(profile));
   }, [profile]);
 
   const askingPriceNumber = useMemo(
@@ -2292,23 +2279,6 @@ Değerlendirmenizi rica ederiz.`,
   );
 
   async function requestAnalysis(prompt: string) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error("Supabase bağlantı bilgileri bulunamadı.");
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { data: sessionData, error: sessionError } =
-      await supabase.auth.getSession();
-
-    if (sessionError || !sessionData.session?.access_token) {
-      throw new Error("Analiz yapmak için önce Yaşam AI hesabınıza giriş yapın.");
-    }
-
-    const accessToken = sessionData.session.access_token;
-
     const payloads = [
       { message: prompt },
       { prompt },
@@ -2320,10 +2290,7 @@ Değerlendirmenizi rica ederiz.`,
     for (const payload of payloads) {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -2694,7 +2661,7 @@ Hangi bilgiler kullanıcı beyanı, hangileri tahmin, hangileri resmî doğrulam
     >
       <aside className="yasam-sidebar">
         <div className="yasam-sidebar-title" style={{padding:"10px 10px 14px",borderBottom:"1px solid rgba(255,255,255,.12)",marginBottom:"10px"}}>
-          <div style={{fontSize:"11px",fontWeight:900,letterSpacing:".12em",color:"#facc15"}}>YAŞAM AI V42</div>
+          <div style={{fontSize:"11px",fontWeight:900,letterSpacing:".12em",color:"#facc15"}}>YAŞAM AI V40</div>
           <div style={{fontSize:"19px",fontWeight:900,marginTop:"5px"}}>Faz 1 Final</div>
           <div style={{fontSize:"12px",opacity:.65,marginTop:"5px"}}>Mimari, performans ve Faz 2 hazırlık merkezi</div>
           <div style={{marginTop:"9px",padding:"7px 9px",borderRadius:"10px",background:"rgba(255,255,255,.08)",fontSize:"11px",fontWeight:800,color:"#bae6fd"}}>Aktif: {dashboardModules.find((module) => module.id === activeModule)?.label}</div>
@@ -2713,12 +2680,12 @@ Hangi bilgiler kullanıcı beyanı, hangileri tahmin, hangileri resmî doğrulam
       </aside>
       <div className="yasam-content" style={{ width: "100%" }}>
         <div style={{marginBottom:"14px",padding:"12px 14px",borderRadius:"15px",background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.12)",display:"flex",justifyContent:"space-between",gap:"12px",alignItems:"center",flexWrap:"wrap"}}>
-          <div><strong style={{color:"#67e8f9"}}>V43 Aktif Modül:</strong> {dashboardModules.find((module) => module.id === activeModule)?.label}</div>
+          <div><strong style={{color:"#67e8f9"}}>V40 Aktif Modül:</strong> {dashboardModules.find((module) => module.id === activeModule)?.label}</div>
           <div style={{fontSize:"12px",opacity:.72}}>Sekme değişince yalnızca seçilen çalışma alanı gösterilir; ortak karar verisi korunur.</div>
         </div>
         <div style={{marginBottom:"14px",padding:"16px 18px",borderRadius:"18px",background:"linear-gradient(135deg,rgba(76,29,149,.96),rgba(37,99,235,.92))",border:"1px solid rgba(196,181,253,.55)",boxShadow:"0 18px 45px rgba(49,46,129,.25)",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"14px",flexWrap:"wrap"}}>
           <div>
-            <div style={{fontSize:"11px",fontWeight:950,letterSpacing:".12em",color:"#ddd6fe"}}>V43 AKTİF · FAZ 2 HAZIR</div>
+            <div style={{fontSize:"11px",fontWeight:950,letterSpacing:".12em",color:"#ddd6fe"}}>V40 AKTİF · FAZ 1 FINAL</div>
             <div style={{fontSize:"20px",fontWeight:950,marginTop:"5px"}}>Faz 1 tamamlandı, Faz 2 kapısı açıldı</div>
             <div style={{fontSize:"12px",color:"#e0e7ff",marginTop:"5px"}}>Tüm karar, veri, rapor, portföy ve tahmin modülleri tek final mimarisinde birleşti.</div>
           </div>
@@ -4492,7 +4459,7 @@ display: activeModule === "user" ? "block" : "none",
   boxShadow: "0 18px 45px rgba(17,54,93,.10)"
 }}>
   <div style={{padding:"24px",borderRadius:"22px",background:"linear-gradient(135deg,#071a35 0%,#0f4c81 48%,#7c3aed 100%)",color:"#fff",border:"1px solid rgba(196,181,253,.45)"}}>
-    <div style={{fontSize:"12px",fontWeight:950,letterSpacing:".12em",color:"#c4b5fd"}}>V42 · STABİLİZASYON</div>
+    <div style={{fontSize:"12px",fontWeight:950,letterSpacing:".12em",color:"#c4b5fd"}}>V40 · FAZ 1 FINAL</div>
     <h2 style={{margin:"8px 0",fontSize:"31px"}}>Yaşam AI artık Faz 2'ye geçmeye hazır.</h2>
     <p style={{margin:0,lineHeight:1.75,color:"#dbeafe",maxWidth:"860px"}}>Karar Komuta Merkezi, Kurumsal Rapor, Gerçek Veri Katmanı ve AI Tahmin Motoru aynı ürün omurgasında birleşti. Bu final ekranı, mevcut modüllerin durumunu ve Faz 2'de bağlanacak gerçek servisleri tek merkezde gösterir.</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:"10px",marginTop:"18px"}}>
@@ -4518,7 +4485,7 @@ display: activeModule === "user" ? "block" : "none",
     </div>
     <div style={{padding:"20px",borderRadius:"20px",background:"#fff7ed",border:"1px solid #fed7aa"}}>
       <h3 style={{marginTop:0,color:"#9a3412"}}>Final Güvenlik Notu</h3>
-      <p style={{color:"#7c2d12",lineHeight:1.7}}>V42 Stabilizasyon, çalışan V40 yapısını korur. Mevcut /api/chat bağlantısı, analiz kartları, PDF/yazdır, harita, portföy ve karar ekranları değiştirilmeden Faz 2 entegrasyonlarına hazır hâle getirilmiştir.</p>
+      <p style={{color:"#7c2d12",lineHeight:1.7}}>V40, çalışan V39 yapısının üzerine kurulmuştur. Mevcut /api/chat bağlantısı, analiz kartları, PDF/yazdır, harita, portföy ve karar ekranları korunur. Faz 2'de gerçek servisler parça parça bağlanacak; çalışan ön yüz yeniden yazılmayacaktır.</p>
       <div style={{marginTop:"14px",padding:"12px",borderRadius:"14px",background:"#fff",border:"1px solid #fdba74",fontWeight:900,color:"#9a3412"}}>Sonraki adım: Supabase bağlantısı ve kullanıcı sistemi.</div>
     </div>
   </div>

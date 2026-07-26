@@ -1,5 +1,5 @@
 /*
-YAŞAM AI - V43 KULLANICI OTURUMU · FAZ 2.3
+YAŞAM AI - V40 FAZ 1 FINAL
 BU DOSYA SADECE ŞURAYA KONULACAK:
 app/analiz/page.tsx
 
@@ -9,7 +9,6 @@ app/page.tsx DOSYASINA KONULMAYACAK.
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import AnalysisHeader from "./components/AnalysisHeader";
 import {
   PremiumScoreGrid,
@@ -482,7 +481,7 @@ function RealEstateMap({
     };
 
     const uniqueCategories = Array.from(
-      new Set<string>(nearbyPlaces.map((place) => place.category))
+      new Set(nearbyPlaces.map((place) => place.category))
     );
 
     const coverageScore = uniqueCategories.reduce(
@@ -1309,34 +1308,22 @@ export default function AnalizPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem("yasam-ai-v19-reports", JSON.stringify(savedReports));
-    } catch {
-      setArchiveMessage("Rapor arşivi tarayıcıya kaydedilemedi.");
-    }
+    window.localStorage.setItem("yasam-ai-v19-reports", JSON.stringify(savedReports));
   }, [savedReports]);
 
   useEffect(() => {
-    const storedModule = window.localStorage.getItem("yasam-ai-v42-active-module");
+    const storedModule = window.localStorage.getItem("yasam-ai-v39-active-module");
     if (storedModule && dashboardModules.some((module) => module.id === storedModule)) {
       setActiveModule(storedModule);
     }
   }, []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem("yasam-ai-v42-active-module", activeModule);
-    } catch {
-      // Tarayıcı depolaması kapalıysa ekran çalışmaya devam eder.
-    }
+    window.localStorage.setItem("yasam-ai-v40-active-module", activeModule);
   }, [activeModule]);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem("yasam-ai-v19-profile", JSON.stringify(profile));
-    } catch {
-      setArchiveMessage("Kullanıcı profili tarayıcıya kaydedilemedi.");
-    }
+    window.localStorage.setItem("yasam-ai-v19-profile", JSON.stringify(profile));
   }, [profile]);
 
   const askingPriceNumber = useMemo(
@@ -1390,7 +1377,7 @@ export default function AnalizPage() {
       {},
     );
 
-    const categoryText = (Object.entries(grouped) as [string, NearbyPlace[]][])
+    const categoryText = Object.entries(grouped)
       .map(([category, places]) => {
         const nearest = places.slice().sort((a, b) => a.distance - b.distance)[0];
         return `${category}: ${places.length} kayıt, en yakın ${nearest.name} (${formatDistance(nearest.distance)})`;
@@ -2090,7 +2077,7 @@ export default function AnalizPage() {
     const coordinateReady = Boolean(locationIntelligence?.latitude && locationIntelligence?.longitude);
     const accessScore = Math.round(Math.min(100, 52 + realEstateIntelligenceV31.developmentIndex * 0.34 + (coordinateReady ? 12 : 0)));
     const lifeScore = Math.round(Math.min(100, 48 + dynamicMetrics.liquidity * 0.28 + (form.neighborhood ? 10 : 0)));
-    const commercialScore = Math.round(Math.min(100, realEstateIntelligenceV31.investmentIndex * 0.58 + dynamicMetrics.valueConfidence * 0.34));
+    const commercialScore = Math.round(Math.min(100, realEstateIntelligenceV31.investmentIndex * 0.58 + dynamicMetrics.marketConfidence * 0.34));
     const riskScore = Math.round(Math.max(0, Math.min(100, 100 - dynamicMetrics.risk)));
     const growthScore = Math.round(Math.min(100, realEstateIntelligenceV31.developmentIndex * 0.72 + officialDataGatewayV32.verificationScore * 0.22));
     const locationScore = Math.round(accessScore * 0.24 + lifeScore * 0.18 + commercialScore * 0.22 + riskScore * 0.16 + growthScore * 0.20);
@@ -2121,7 +2108,7 @@ export default function AnalizPage() {
       { x: 51, y: 49, value: locationScore, label: "Parsel" },
     ];
     return { coordinateReady, accessScore, lifeScore, commercialScore, riskScore, growthScore, locationScore, nearby, risks, reasons, heatPoints };
-  }, [dynamicMetrics.liquidity, dynamicMetrics.valueConfidence, dynamicMetrics.risk, form.neighborhood, locationIntelligence, officialDataGatewayV32.officialCoverage, officialDataGatewayV32.verificationScore, realEstateIntelligenceV31.developmentIndex, realEstateIntelligenceV31.investmentIndex]);
+  }, [dynamicMetrics.liquidity, dynamicMetrics.marketConfidence, dynamicMetrics.risk, form.neighborhood, locationIntelligence, officialDataGatewayV32.officialCoverage, officialDataGatewayV32.verificationScore, realEstateIntelligenceV31.developmentIndex, realEstateIntelligenceV31.investmentIndex]);
 
   function runV33LocationCenter() {
     const now = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -2197,7 +2184,7 @@ export default function AnalizPage() {
       { id: "official", name: "Resmî Doğrulama Geçidi", status: officialDataGatewayV32.officialCoverage >= 50 ? "Bağlı" : "Kısmi", freshness: Math.max(45, officialDataGatewayV32.verificationScore), trust: officialDataGatewayV32.verificationScore, records: officialDataGatewayV32.sources.length },
       { id: "location", name: "Harita ve Konum Katmanları", status: locationIntelligenceV33.coordinateReady ? "Bağlı" : "Kısmi", freshness: locationIntelligenceV33.coordinateReady ? 88 : 62, trust: locationIntelligenceV33.locationScore, records: locationIntelligenceV33.nearby.length + locationIntelligenceV33.risks.length },
       { id: "portfolio", name: "Portföy ve Rapor Arşivi", status: portfolioIntelligenceV34.assets.length ? "Bağlı" : "Bekliyor", freshness: savedReports.length ? 86 : 64, trust: portfolioIntelligenceV34.healthScore, records: portfolioIntelligenceV34.assets.length },
-      { id: "ai", name: "AI Karar Motorları", status: result ? "Aktif" : "Hazır", freshness: result ? 96 : 74, trust: aiDecisionBrain.aiConfidence, records: 7 },
+      { id: "ai", name: "AI Karar Motorları", status: result ? "Aktif" : "Hazır", freshness: result ? 96 : 74, trust: aiDecisionBrain.confidence, records: 7 },
     ];
     const modeBonus = v35Mode === "Maksimum Güven" ? 9 : v35Mode === "Ekonomik" ? -4 : 3;
     const connected = sourceDefinitions.filter((source) => source.status === "Bağlı" || source.status === "Aktif").length;
@@ -2206,7 +2193,7 @@ export default function AnalizPage() {
     const averageTrust = Math.round(sourceDefinitions.reduce((sum, source) => sum + source.trust, 0) / sourceDefinitions.length);
     const orchestrationScore = Math.max(0, Math.min(100, Math.round(averageTrust * 0.46 + averageFreshness * 0.28 + (connected / sourceDefinitions.length) * 26 + modeBonus)));
     const conflicts = [
-      dynamicMetrics.valueConfidence < 60 ? "Piyasa güveni düşük; emsal sayısı artırılmalı." : null,
+      dynamicMetrics.marketConfidence < 60 ? "Piyasa güveni düşük; emsal sayısı artırılmalı." : null,
       officialDataGatewayV32.officialCoverage < 50 ? "Resmî veri kapsamı karar üretimi için sınırlı." : null,
       !locationIntelligenceV33.coordinateReady ? "Kesin koordinat seçilmediği için konum katmanları kısmi." : null,
       portfolioIntelligenceV34.riskScore > 40 ? "Portföy risk dağılımında yeniden dengeleme gerekli." : null,
@@ -2226,7 +2213,7 @@ export default function AnalizPage() {
     ];
     const snapshotId = `YAI-V35-${new Date().toISOString().slice(0,10).replaceAll("-","")}-${String(v35RunCount + 1).padStart(3,"0")}`;
     return { sourceDefinitions, connected, totalRecords, averageFreshness, averageTrust, orchestrationScore, conflicts, pipeline, actions, snapshotId };
-  }, [aiDecisionBrain.aiConfidence, dynamicMetrics.valueConfidence, form.city, form.district, locationIntelligenceV33.coordinateReady, locationIntelligenceV33.locationScore, locationIntelligenceV33.nearby.length, locationIntelligenceV33.risks.length, officialDataGatewayV32.officialCoverage, officialDataGatewayV32.sources.length, officialDataGatewayV32.verificationScore, portfolioIntelligenceV34.assets.length, portfolioIntelligenceV34.healthScore, portfolioIntelligenceV34.riskScore, realEstateIntelligenceV31.comparables.length, realEstateIntelligenceV31.marketConfidence, result, savedReports.length, v35Mode, v35RunCount]);
+  }, [aiDecisionBrain.confidence, dynamicMetrics.marketConfidence, form.city, form.district, locationIntelligenceV33.coordinateReady, locationIntelligenceV33.locationScore, locationIntelligenceV33.nearby.length, locationIntelligenceV33.risks.length, officialDataGatewayV32.officialCoverage, officialDataGatewayV32.sources.length, officialDataGatewayV32.verificationScore, portfolioIntelligenceV34.assets.length, portfolioIntelligenceV34.healthScore, portfolioIntelligenceV34.riskScore, realEstateIntelligenceV31.comparables.length, realEstateIntelligenceV31.marketConfidence, result, savedReports.length, v35Mode, v35RunCount]);
 
   function runV35OrchestrationCenter() {
     const now = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -2292,23 +2279,6 @@ Değerlendirmenizi rica ederiz.`,
   );
 
   async function requestAnalysis(prompt: string) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error("Supabase bağlantı bilgileri bulunamadı.");
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { data: sessionData, error: sessionError } =
-      await supabase.auth.getSession();
-
-    if (sessionError || !sessionData.session?.access_token) {
-      throw new Error("Analiz yapmak için önce Yaşam AI hesabınıza giriş yapın.");
-    }
-
-    const accessToken = sessionData.session.access_token;
-
     const payloads = [
       { message: prompt },
       { prompt },
@@ -2320,10 +2290,7 @@ Değerlendirmenizi rica ederiz.`,
     for (const payload of payloads) {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -2531,8 +2498,8 @@ Hangi bilgiler kullanıcı beyanı, hangileri tahmin, hangileri resmî doğrulam
     const core = safe(decisionCore.decisionIndex, 60);
     const modeAdjustment = v36DecisionMode === "Atak" ? 5 : v36DecisionMode === "Temkinli" ? -4 : 0;
     const confidence = Math.max(0, Math.min(100, Math.round(location * .14 + market * .18 + official * .16 + portfolio * .14 + orchestration * .18 + core * .20)));
-    const risk = Math.max(0, Math.min(100, Math.round((100 - official) * .28 + (100 - location) * .18 + (100 - orchestration) * .24 + safe(dynamicMetrics.risk, 35) * .30)));
-    const returnPotential = Math.max(0, Math.min(100, Math.round(safe(decisionCore.opportunityPower, 60) * .45 + safe(realEstateIntelligenceV31.investmentIndex, 60) * .35 + portfolio * .20 + modeAdjustment)));
+    const risk = Math.max(0, Math.min(100, Math.round((100 - official) * .28 + (100 - location) * .18 + (100 - orchestration) * .24 + safe(aiDecisionBrain.riskScore, 35) * .30)));
+    const returnPotential = Math.max(0, Math.min(100, Math.round(safe(decisionCore.opportunity, 60) * .45 + safe(realEstateIntelligenceV31.investmentIndex, 60) * .35 + portfolio * .20 + modeAdjustment)));
     const finalScore = Math.max(0, Math.min(100, Math.round(confidence * .48 + returnPotential * .34 + (100 - risk) * .18)));
     const verdict = finalScore >= 80 && risk <= 35 ? "AL" : finalScore >= 68 ? "PAZARLIK ET" : finalScore >= 54 ? "BEKLE" : "VAZGEÇ";
     const color = verdict === "AL" ? "#16a34a" : verdict === "PAZARLIK ET" ? "#f59e0b" : verdict === "BEKLE" ? "#2563eb" : "#dc2626";
@@ -2550,7 +2517,7 @@ Hangi bilgiler kullanıcı beyanı, hangileri tahmin, hangileri resmî doğrulam
     const nextActions = verdict === "AL" ? ["Son resmî doğrulamayı tamamla", "Finansman planını kilitle", "Teklif ve pazarlık protokolünü başlat"] : verdict === "PAZARLIK ET" ? ["Hedef teklif aralığını oluştur", "Kritik riskleri teklif koşullarına bağla", "Karşı teklif senaryosunu çalıştır"] : verdict === "BEKLE" ? ["Eksik verileri tamamla", "Piyasa fiyatını 7-14 gün izle", "Yeni emsal geldiğinde kararı yeniden çalıştır"] : ["İşlemi durdur", "Alternatif taşınmazları karşılaştır", "Riskli varsayımları arşivle"];
     const snapshotId = `YAI-V36-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${String(v36RunCount + 1).padStart(3,"0")}`;
     return { location, market, official, portfolio, orchestration, core, confidence, risk, returnPotential, finalScore, verdict, color, reasons, warnings, nextActions, snapshotId };
-  }, [dynamicMetrics.risk, dataOrchestrationV35.orchestrationScore, decisionCore.decisionIndex, decisionCore.opportunityPower, locationIntelligenceV33.locationScore, officialDataGatewayV32.verificationScore, portfolioIntelligenceV34.healthScore, realEstateIntelligenceV31.investmentIndex, realEstateIntelligenceV31.marketConfidence, v36DecisionMode, v36RunCount]);
+  }, [aiDecisionBrain.riskScore, dataOrchestrationV35.orchestrationScore, decisionCore.decisionIndex, decisionCore.opportunity, locationIntelligenceV33.locationScore, officialDataGatewayV32.verificationScore, portfolioIntelligenceV34.healthScore, realEstateIntelligenceV31.investmentIndex, realEstateIntelligenceV31.marketConfidence, v36DecisionMode, v36RunCount]);
 
   function runV36DecisionCommand() {
     const now = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -2567,14 +2534,14 @@ Hangi bilgiler kullanıcı beyanı, hangileri tahmin, hangileri resmî doğrulam
 
   const corporateReportV37 = useMemo(() => {
     const quality = Math.max(0, Math.min(100, Math.round(
-      dynamicMetrics.trust * .30 +
+      dynamicMetrics.dataConfidence * .30 +
       decisionCommandV36.official * .25 +
       decisionCommandV36.orchestration * .25 +
       decisionCommandV36.market * .20
     )));
     const financial = Math.max(0, Math.min(100, Math.round(
-      dynamicMetrics.investment * .40 +
-      dynamicMetrics.liquidity * .25 +
+      dynamicMetrics.investmentScore * .40 +
+      dynamicMetrics.liquidityScore * .25 +
       decisionCommandV36.returnPotential * .35
     )));
     const riskGrade = decisionCommandV36.risk <= 30 ? "A" : decisionCommandV36.risk <= 45 ? "B" : decisionCommandV36.risk <= 60 ? "C" : "D";
@@ -2591,7 +2558,7 @@ Hangi bilgiler kullanıcı beyanı, hangileri tahmin, hangileri resmî doğrulam
     const executiveSummary = `${form.city || "—"} / ${form.district || "—"} / ${form.neighborhood || "—"} konumundaki ${form.propertyType.toLowerCase()} için kurumsal karar ${decisionCommandV36.verdict}. Toplam kurumsal skor ${corporateScore}/100, veri güveni ${quality}/100 ve risk notu ${riskGrade}. ${audienceNote}`;
     const reportId = `YAI-V37-${new Date().toISOString().slice(0,10).replace(/-/g, "")}-${String(v37RunCount + 1).padStart(3,"0")}`;
     return { quality, financial, riskGrade, corporateScore, executiveSummary, audienceNote, reportId };
-  }, [decisionCommandV36.finalScore, decisionCommandV36.market, decisionCommandV36.official, decisionCommandV36.orchestration, decisionCommandV36.returnPotential, decisionCommandV36.risk, decisionCommandV36.verdict, dynamicMetrics.trust, dynamicMetrics.investment, dynamicMetrics.liquidity, form.city, form.district, form.neighborhood, form.propertyType, v37ReportMode, v37RunCount]);
+  }, [decisionCommandV36.finalScore, decisionCommandV36.market, decisionCommandV36.official, decisionCommandV36.orchestration, decisionCommandV36.returnPotential, decisionCommandV36.risk, decisionCommandV36.verdict, dynamicMetrics.dataConfidence, dynamicMetrics.investmentScore, dynamicMetrics.liquidityScore, form.city, form.district, form.neighborhood, form.propertyType, v37ReportMode, v37RunCount]);
 
   function runV37CorporateReport() {
     const now = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -2694,7 +2661,7 @@ Hangi bilgiler kullanıcı beyanı, hangileri tahmin, hangileri resmî doğrulam
     >
       <aside className="yasam-sidebar">
         <div className="yasam-sidebar-title" style={{padding:"10px 10px 14px",borderBottom:"1px solid rgba(255,255,255,.12)",marginBottom:"10px"}}>
-          <div style={{fontSize:"11px",fontWeight:900,letterSpacing:".12em",color:"#facc15"}}>YAŞAM AI V42</div>
+          <div style={{fontSize:"11px",fontWeight:900,letterSpacing:".12em",color:"#facc15"}}>YAŞAM AI V40</div>
           <div style={{fontSize:"19px",fontWeight:900,marginTop:"5px"}}>Faz 1 Final</div>
           <div style={{fontSize:"12px",opacity:.65,marginTop:"5px"}}>Mimari, performans ve Faz 2 hazırlık merkezi</div>
           <div style={{marginTop:"9px",padding:"7px 9px",borderRadius:"10px",background:"rgba(255,255,255,.08)",fontSize:"11px",fontWeight:800,color:"#bae6fd"}}>Aktif: {dashboardModules.find((module) => module.id === activeModule)?.label}</div>
@@ -2713,12 +2680,12 @@ Hangi bilgiler kullanıcı beyanı, hangileri tahmin, hangileri resmî doğrulam
       </aside>
       <div className="yasam-content" style={{ width: "100%" }}>
         <div style={{marginBottom:"14px",padding:"12px 14px",borderRadius:"15px",background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.12)",display:"flex",justifyContent:"space-between",gap:"12px",alignItems:"center",flexWrap:"wrap"}}>
-          <div><strong style={{color:"#67e8f9"}}>V43 Aktif Modül:</strong> {dashboardModules.find((module) => module.id === activeModule)?.label}</div>
+          <div><strong style={{color:"#67e8f9"}}>V40 Aktif Modül:</strong> {dashboardModules.find((module) => module.id === activeModule)?.label}</div>
           <div style={{fontSize:"12px",opacity:.72}}>Sekme değişince yalnızca seçilen çalışma alanı gösterilir; ortak karar verisi korunur.</div>
         </div>
         <div style={{marginBottom:"14px",padding:"16px 18px",borderRadius:"18px",background:"linear-gradient(135deg,rgba(76,29,149,.96),rgba(37,99,235,.92))",border:"1px solid rgba(196,181,253,.55)",boxShadow:"0 18px 45px rgba(49,46,129,.25)",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"14px",flexWrap:"wrap"}}>
           <div>
-            <div style={{fontSize:"11px",fontWeight:950,letterSpacing:".12em",color:"#ddd6fe"}}>V43 AKTİF · FAZ 2 HAZIR</div>
+            <div style={{fontSize:"11px",fontWeight:950,letterSpacing:".12em",color:"#ddd6fe"}}>V40 AKTİF · FAZ 1 FINAL</div>
             <div style={{fontSize:"20px",fontWeight:950,marginTop:"5px"}}>Faz 1 tamamlandı, Faz 2 kapısı açıldı</div>
             <div style={{fontSize:"12px",color:"#e0e7ff",marginTop:"5px"}}>Tüm karar, veri, rapor, portföy ve tahmin modülleri tek final mimarisinde birleşti.</div>
           </div>
@@ -4492,7 +4459,7 @@ display: activeModule === "user" ? "block" : "none",
   boxShadow: "0 18px 45px rgba(17,54,93,.10)"
 }}>
   <div style={{padding:"24px",borderRadius:"22px",background:"linear-gradient(135deg,#071a35 0%,#0f4c81 48%,#7c3aed 100%)",color:"#fff",border:"1px solid rgba(196,181,253,.45)"}}>
-    <div style={{fontSize:"12px",fontWeight:950,letterSpacing:".12em",color:"#c4b5fd"}}>V42 · STABİLİZASYON</div>
+    <div style={{fontSize:"12px",fontWeight:950,letterSpacing:".12em",color:"#c4b5fd"}}>V40 · FAZ 1 FINAL</div>
     <h2 style={{margin:"8px 0",fontSize:"31px"}}>Yaşam AI artık Faz 2'ye geçmeye hazır.</h2>
     <p style={{margin:0,lineHeight:1.75,color:"#dbeafe",maxWidth:"860px"}}>Karar Komuta Merkezi, Kurumsal Rapor, Gerçek Veri Katmanı ve AI Tahmin Motoru aynı ürün omurgasında birleşti. Bu final ekranı, mevcut modüllerin durumunu ve Faz 2'de bağlanacak gerçek servisleri tek merkezde gösterir.</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:"10px",marginTop:"18px"}}>
@@ -4518,7 +4485,7 @@ display: activeModule === "user" ? "block" : "none",
     </div>
     <div style={{padding:"20px",borderRadius:"20px",background:"#fff7ed",border:"1px solid #fed7aa"}}>
       <h3 style={{marginTop:0,color:"#9a3412"}}>Final Güvenlik Notu</h3>
-      <p style={{color:"#7c2d12",lineHeight:1.7}}>V42 Stabilizasyon, çalışan V40 yapısını korur. Mevcut /api/chat bağlantısı, analiz kartları, PDF/yazdır, harita, portföy ve karar ekranları değiştirilmeden Faz 2 entegrasyonlarına hazır hâle getirilmiştir.</p>
+      <p style={{color:"#7c2d12",lineHeight:1.7}}>V40, çalışan V39 yapısının üzerine kurulmuştur. Mevcut /api/chat bağlantısı, analiz kartları, PDF/yazdır, harita, portföy ve karar ekranları korunur. Faz 2'de gerçek servisler parça parça bağlanacak; çalışan ön yüz yeniden yazılmayacaktır.</p>
       <div style={{marginTop:"14px",padding:"12px",borderRadius:"14px",background:"#fff",border:"1px solid #fdba74",fontWeight:900,color:"#9a3412"}}>Sonraki adım: Supabase bağlantısı ve kullanıcı sistemi.</div>
     </div>
   </div>

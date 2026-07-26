@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -120,11 +121,22 @@ destekli bir ön değerlendirmedir. Resmî değerleme, hukuki görüş, imar bel
 mühendislik incelemesi veya yatırım danışmanlığı yerine geçmez.
 `.trim();
 
+type JsonBody = Record<string, unknown>;
+
+type ParsedReport = {
+  veriGuvenSkoru: number | null;
+  yatirimPuani: number | null;
+  firsatPuani: number | null;
+  riskPuani: number | null;
+  likiditePuani: number | null;
+  nihaiKarar: string | null;
+};
+
 function getText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function extractUserMessage(body: Record<string, unknown>): string {
+function extractUserMessage(body: JsonBody): string {
   const message = getText(body.message);
   if (message) return message;
 
@@ -154,6 +166,7 @@ function errorResponse(message: string, status: number) {
       rapor: "",
       result: "",
       content: "",
+      success: false,
     },
     {
       status,
@@ -162,6 +175,106 @@ function errorResponse(message: string, status: number) {
       },
     },
   );
+}
+
+function normalizeScore(value: string | undefined): number | null {
+  if (!value) return null;
+
+  const score = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(score)) return null;
+
+  return Math.min(100, Math.max(0, score));
+}
+
+function extractSectionScore(report: string, sectionTitle: string): number | null {
+  const escapedTitle = sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(
+    `##\\s*\\d+\\.\\s*${escapedTitle}[\\s\\S]*?Puan:\\s*(\\d{1,3})\\s*\\/\\s*100`,
+    "i",
+  );
+
+  return normalizeScore(report.match(pattern)?.[1]);
+}
+
+function parseReport(report: string): ParsedReport {
+  const decisionMatch = report.match(
+    /##\s*10\.\s*Nihai Karar[\s\S]*?Karar:\s*(AL|PAZARLIK YAP|BEKLE|UZAK DUR)\b/i,
+  );
+
+  return {
+    veriGuvenSkoru: extractSectionScore(report, "Veri Güven Skoru"),
+    yatirimPuani: extractSectionScore(report, "Yatırım Puanı"),
+    firsatPuani: extractSectionScore(report, "Fırsat Puanı"),
+    riskPuani: extractSectionScore(report, "Risk Puanı"),
+    likiditePuani: extractSectionScore(report, "Likidite Puanı"),
+    nihaiKarar: decisionMatch?.[1]?.toLocaleUpperCase("tr-TR") ?? null,
+  };
+}
+
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseSecret =
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseSecret) {
+    return null;
+  }
+
+  return createClient(supabaseUrl, supabaseSecret, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
+async function saveReport(
+  userMessage: string,
+  report: string,
+  userId: string,
+): Promise<{ saved: boolean; id: string | null }> {
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    console.warn(
+      "Supabase kaydı atlandı: NEXT_PUBLIC_SUPABASE_URL veya SUPABASE_SECRET_KEY eksik.",
+    );
+    return { saved: false, id: null };
+  }
+
+  const parsed = parseReport(report);
+
+  const { data, error } = await supabase
+    .from("analiz_raporlari")
+    .insert({
+      user_id: userId,
+      kullanici_girdisi: userMessage,
+      rapor: report,
+      veri_guven_skoru: parsed.veriGuvenSkoru,
+      yatirim_puani: parsed.yatirimPuani,
+      firsat_puani: parsed.firsatPuani,
+      risk_puani: parsed.riskPuani,
+      likidite_puani: parsed.likiditePuani,
+      nihai_karar: parsed.nihaiKarar,
+      model: MODEL,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("Supabase analiz kayıt hatası:", {
+      code: error.code,
+      message: error.message,
+    });
+    return { saved: false, id: null };
+  }
+
+  return {
+    saved: true,
+    id: typeof data?.id === "string" ? data.id : null,
+  };
 }
 
 export async function POST(req: Request) {
@@ -175,6 +288,33 @@ export async function POST(req: Request) {
       );
     }
 
+    const authorization = req.headers.get("authorization");
+    const accessToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice(7).trim()
+      : "";
+
+    if (!accessToken) {
+      return errorResponse("Analiz yapmak için giriş yapmanız gerekiyor.", 401);
+    }
+
+    const supabase = getSupabaseAdmin();
+
+    if (!supabase) {
+      return errorResponse(
+        "Supabase sunucu bağlantısı bulunamadı. .env.local dosyasını kontrol edin.",
+        500,
+      );
+    }
+
+    const { data: userData, error: userError } =
+      await supabase.auth.getUser(accessToken);
+
+    if (userError || !userData.user) {
+      return errorResponse("Oturum geçersiz veya süresi dolmuş. Tekrar giriş yapın.", 401);
+    }
+
+    const authenticatedUserId = userData.user.id;
+
     let body: unknown;
 
     try {
@@ -187,7 +327,7 @@ export async function POST(req: Request) {
       return errorResponse("Geçerli analiz bilgisi gönderilmedi.", 400);
     }
 
-    const userMessage = extractUserMessage(body as Record<string, unknown>);
+    const userMessage = extractUserMessage(body as JsonBody);
 
     if (!userMessage) {
       return errorResponse("Analiz için taşınmaz bilgileri eksik.", 400);
@@ -235,6 +375,13 @@ export async function POST(req: Request) {
       );
     }
 
+    // Veritabanı kaydı başarısız olsa bile kullanıcıya üretilen raporu göster.
+    const databaseResult = await saveReport(
+      userMessage,
+      report,
+      authenticatedUserId,
+    );
+
     return NextResponse.json(
       {
         rapor: report,
@@ -242,6 +389,8 @@ export async function POST(req: Request) {
         content: report,
         message: report,
         success: true,
+        databaseSaved: databaseResult.saved,
+        reportId: databaseResult.id,
       },
       {
         status: 200,
