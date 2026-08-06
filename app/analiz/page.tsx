@@ -4,375 +4,50 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabase";
+import { buildDecisionPromptContext, calculateDecisionMetrics } from "../../lib/decision-engine";
+import { calculateOfferStrategy } from "../../lib/report/offer-engine";
+import { buildReportTrustProfile } from "../../lib/report/trust-profile";
+import type { DecisionMetrics, RegionalMarketContext } from "../../lib/decision-engine";
 import PremiumCard from "../components/membership/PremiumCard";
 import TurkiyeDataCenter from "../components/data-center/TurkiyeDataCenter";
 import type { MarketDataRecord, VerificationStatus } from "../../lib/data-center/types";
-type ViewMode = "dashboard" | "reports" | "compare" | "data" | "verification" | "ecosystem" | "new";
-type HistoryMode = "active" | "favorites" | "archive";
-type ScoreKey = "trust" | "investment" | "opportunity" | "risk" | "liquidity";
-type ScoreMap = Record<ScoreKey, number | null>;
-
-type RegionalDataRecord = {
-  id: string;
-  city: string;
-  district: string;
-  neighborhood: string;
-  propertyType: string;
-  averageM2: number;
-  rentM2: number;
-  annualChange: number;
-  liquidityScore: number;
-  infrastructureScore: number;
-  transportScore: number;
-  dataConfidence: number;
-  sourceNote: string;
-  updatedAt: string;
-  source: string;
-  sampleSize: number;
-  periodDate: string;
-  verificationStatus?: VerificationStatus;
-  databaseId?: string;
-};
-
-
-type MarketDataPayload = {
-  city?: string;
-  district?: string;
-  neighborhood?: string | null;
-  liquidityScore?: number;
-  infrastructureScore?: number;
-  transportScore?: number;
-  sourceNote?: string;
-  sourceUrl?: string;
-  methodology?: string;
-  sampleSize?: number;
-  verificationStatus?: string;
-};
-
-type TurkiyeLocationOption = {
-  id: number;
-  name: string;
-  provinceId?: number;
-  districtId?: number;
-  postalCode?: string | null;
-  postalCodeStatus?: "official" | "derived" | "estimated" | null;
-};
-
-type TurkiyeApiListResponse = {
-  data?: TurkiyeLocationOption[];
-  meta?: {
-    count?: number;
-    total?: number;
-    datasetVersion?: string;
-    lastUpdated?: string;
-  };
-  error?: { message?: string };
-};
-
-
-const LOCATION_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
-
-type LocationCacheEnvelope = {
-  savedAt: number;
-  data: TurkiyeLocationOption[];
-  meta?: TurkiyeApiListResponse["meta"];
-};
-
-function readLocationCache(key: string): LocationCacheEnvelope | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as LocationCacheEnvelope;
-    if (!Array.isArray(parsed.data) || !parsed.savedAt) return null;
-    if (Date.now() - parsed.savedAt > LOCATION_CACHE_TTL_MS) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function writeLocationCache(key: string, data: TurkiyeLocationOption[], meta?: TurkiyeApiListResponse["meta"]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data, meta } satisfies LocationCacheEnvelope));
-  } catch {
-    // Tarayıcı depolaması kapalıysa sistem canlı servisle çalışmaya devam eder.
-  }
-}
-
-type MarketDataRow = {
-  id?: string;
-  location_key?: string | null;
-  property_type?: string | null;
-  period_date?: string | null;
-  sale_price_m2?: number | string | null;
-  rent_price_m2?: number | string | null;
-  listing_count?: number | string | null;
-  days_on_market?: number | string | null;
-  annual_change_percent?: number | string | null;
-  confidence_score?: number | string | null;
-  source_name?: string | null;
-  payload?: MarketDataPayload | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-type FormState = {
-  city: string;
-  district: string;
-  neighborhood: string;
-  propertyType: string;
-  area: string;
-  askingPrice: string;
-  monthlyRent: string;
-  buildingAge: string;
-  floor: string;
-  totalFloors: string;
-  titleStatus: string;
-  zoningStatus: string;
-  notes: string;
-};
-
-type CloudRecord = {
-  id: string;
-  created_at: string;
-  updated_at?: string | null;
-  city: string | null;
-  district: string | null;
-  neighborhood: string | null;
-  property_type: string | null;
-  area: string | null;
-  asking_price: string | null;
-  notes: string | null;
-  report: string | null;
-  decision: string | null;
-  is_favorite: boolean;
-  is_archived: boolean;
-};
-
-const TURKIYE_DATA_SEED: RegionalDataRecord[] = [
-  {
-    id: "turkiye-veri-baslangic",
-    city: "Türkiye",
-    district: "Tüm İlçeler",
-    neighborhood: "Veri bekleniyor",
-    propertyType: "Konut",
-    averageM2: 0,
-    rentM2: 0,
-    annualChange: 0,
-    liquidityScore: 0,
-    infrastructureScore: 0,
-    transportScore: 0,
-    dataConfidence: 0,
-    sourceNote:
-      "Bu kayıt yalnızca sistem başlangıç kaydıdır. Doğrulanmış piyasa verisi yüklenmeden fiyat hesabında kullanılmaz.",
-    updatedAt: new Date().toISOString().slice(0, 10),
-    source: "system",
-    sampleSize: 0,
-    periodDate: new Date().toISOString().slice(0, 10),
-  },
-];
-
-const initialForm: FormState = {
-  city: "Adana",
-  district: "Ceyhan",
-  neighborhood: "",
-  propertyType: "Konut",
-  area: "",
-  askingPrice: "",
-  monthlyRent: "",
-  buildingAge: "",
-  floor: "",
-  totalFloors: "",
-  titleStatus: "Kat mülkiyeti",
-  zoningStatus: "",
-  notes: "",
-};
-
-const emptyScores: ScoreMap = {
-  trust: null,
-  investment: null,
-  opportunity: null,
-  risk: null,
-  liquidity: null,
-};
-
-
-function normalizeLocationPart(value: string) {
-  return value
-    .trim()
-    .toLocaleLowerCase("tr-TR")
-    .replace(/ı/g, "i")
-    .replace(/ğ/g, "g")
-    .replace(/ü/g, "u")
-    .replace(/ş/g, "s")
-    .replace(/ö/g, "o")
-    .replace(/ç/g, "c")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function buildLocationKey(city: string, district: string, neighborhood: string) {
-  return ["tr", city, district, neighborhood === "İlçe Geneli" ? "" : neighborhood]
-    .map(normalizeLocationPart)
-    .filter(Boolean)
-    .join("/");
-}
-
-function titleCaseLocation(value: string) {
-  return value
-    .split(/[-_ ]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toLocaleUpperCase("tr-TR") + part.slice(1))
-    .join(" ");
-}
-
-function locationFromMarketRow(row: MarketDataRow) {
-  const payload = row.payload ?? {};
-  if (payload.city || payload.district || payload.neighborhood) {
-    return {
-      city: payload.city ?? "",
-      district: payload.district ?? "",
-      neighborhood: payload.neighborhood || "İlçe Geneli",
-    };
-  }
-
-  const parts = String(row.location_key ?? "")
-    .split(/[\/|>]+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const clean = parts[0]?.toLocaleLowerCase("tr-TR") === "tr" ? parts.slice(1) : parts;
-  return {
-    city: titleCaseLocation(clean[0] ?? ""),
-    district: titleCaseLocation(clean[1] ?? ""),
-    neighborhood: clean[2] ? titleCaseLocation(clean.slice(2).join(" ")) : "İlçe Geneli",
-  };
-}
-
-function extractText(data: unknown): string {
-  if (typeof data === "string") return data;
-  if (data && typeof data === "object") {
-    const obj = data as Record<string, unknown>;
-    for (const key of ["rapor", "result", "content", "message", "analysis", "response", "text"]) {
-      const value = obj[key];
-      if (typeof value === "string" && value.trim()) return value.trim();
-    }
-  }
-  return "";
-}
-
-function extractScore(report: string, patterns: RegExp[]) {
-  for (const pattern of patterns) {
-    const match = report.match(pattern);
-    if (match?.[1]) {
-      const score = Number(match[1]);
-      if (Number.isFinite(score)) return Math.min(100, Math.max(0, score));
-    }
-  }
-  return null;
-}
-
-function scoresFromReport(report: string): ScoreMap {
-  if (!report) return emptyScores;
-  return {
-    trust: extractScore(report, [/(?:Veri Güven Skoru|Güven Skoru)\s*[:\-]?\s*(\d{1,3})/i]),
-    investment: extractScore(report, [/(?:Yatırım Puanı|Yatırım Skoru)\s*[:\-]?\s*(\d{1,3})/i]),
-    opportunity: extractScore(report, [/(?:Fırsat Puanı|Fırsat Skoru)\s*[:\-]?\s*(\d{1,3})/i]),
-    risk: extractScore(report, [/(?:Risk Puanı|Risk Skoru)\s*[:\-]?\s*(\d{1,3})/i]),
-    liquidity: extractScore(report, [/(?:Likidite Puanı|Likidite Skoru)\s*[:\-]?\s*(\d{1,3})/i]),
-  };
-}
-
-function decisionFromReport(report: string) {
-  const match = report.match(
-    /(?:Nihai Karar|Yaşam AI Kararı|Karar)\s*[:\-]?\s*(AL|PAZARLIK YAP|BEKLE|UZAK DUR)/i,
-  );
-  return match?.[1]?.toLocaleUpperCase("tr-TR") ?? "DEĞERLENDİR";
-}
-
-function formatMoney(value: string) {
-  const digits = value.replace(/\D/g, "");
-  return digits ? new Intl.NumberFormat("tr-TR").format(Number(digits)) : "";
-}
-
-function parseMoney(value: string | null | undefined) {
-  const digits = String(value ?? "").replace(/\D/g, "");
-  return digits ? Number(digits) : 0;
-}
-
-function formatCurrency(value: string | null | undefined) {
-  const number = parseMoney(value);
-  return number
-    ? new Intl.NumberFormat("tr-TR", {
-        style: "currency",
-        currency: "TRY",
-        maximumFractionDigits: 0,
-      }).format(number)
-    : "—";
-}
-
-function parseNumeric(value: string | null | undefined) {
-  const normalized = String(value ?? "")
-    .replace(/\./g, "")
-    .replace(",", ".")
-    .replace(/[^0-9.]/g, "");
-  const number = Number(normalized);
-  return Number.isFinite(number) ? number : 0;
-}
-
-function clampScore(value: number) {
-  return Math.min(100, Math.max(0, Math.round(value)));
-}
-
-function safeDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Tarih bilinmiyor";
-  return new Intl.DateTimeFormat("tr-TR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function monthKey(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function decisionTone(decision: string) {
-  const upper = decision.toLocaleUpperCase("tr-TR");
-  if (upper === "AL") return { background: "#e9fff5", borderColor: "#8be1bd", color: "#047857" };
-  if (upper.includes("PAZARLIK")) return { background: "#fff8e8", borderColor: "#f5ca72", color: "#9a5b00" };
-  if (upper.includes("UZAK")) return { background: "#fff0f2", borderColor: "#f3a6b1", color: "#b42338" };
-  if (upper.includes("BEKLE")) return { background: "#f3f0ff", borderColor: "#c4b5fd", color: "#6d28d9" };
-  return { background: "#eef5ff", borderColor: "#a9c7f5", color: "#285c9f" };
-}
-
-function scoreTone(score: number | null, inverse = false) {
-  if (score === null) return { color: "#73869b", background: "#edf2f7" };
-  const effective = inverse ? 100 - score : score;
-  if (effective >= 75) return { color: "#047857", background: "#e9fff5" };
-  if (effective >= 50) return { color: "#9a5b00", background: "#fff8e8" };
-  return { color: "#b42338", background: "#fff0f2" };
-}
-
-function average(values: Array<number | null>) {
-  const clean = values.filter((value): value is number => value !== null);
-  if (!clean.length) return null;
-  return Math.round(clean.reduce((sum, value) => sum + value, 0) / clean.length);
-}
-
-function locationText(item: CloudRecord) {
-  return [item.city, item.district, item.neighborhood].filter(Boolean).join(" / ");
-}
-
-function googleMapsUrl(item: CloudRecord) {
-  const query = encodeURIComponent(
-    [item.neighborhood, item.district, item.city].filter(Boolean).join(" "),
-  );
-  return `https://www.google.com/maps/search/?api=1&query=${query}`;
-}
+import { TURKIYE_DATA_SEED, emptyScores, initialForm } from "./model/constants";
+import type {
+  CloudRecord,
+  FormState,
+  HistoryMode,
+  MarketDataRow,
+  RegionalDataRecord,
+  ScoreMap,
+  TurkiyeApiListResponse,
+  TurkiyeLocationOption,
+  ViewMode,
+} from "./model/types";
+import { readLocationCache, writeLocationCache } from "./model/utils/cache";
+import {
+  buildLocationKey,
+  googleMapsUrl,
+  locationFromMarketRow,
+  locationText,
+  normalizeLocationPart,
+  titleCaseLocation,
+} from "./model/utils/location";
+import {
+  average,
+  decisionFromReport,
+  decisionTone,
+  extractText,
+  scoreTone,
+  scoresFromReport,
+} from "./model/utils/report";
+import {
+  formatCurrency,
+  formatMoney,
+  monthKey,
+  parseMoney,
+  parseNumeric,
+  safeDate,
+} from "./model/utils/format";
 
 export default function AnalysisPage() {
   const router = useRouter();
@@ -387,6 +62,8 @@ export default function AnalysisPage() {
   const [comparisonIds, setComparisonIds] = useState<[string, string]>(["", ""]);
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [analysisStage, setAnalysisStage] = useState("Hazırlanıyor...");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -399,6 +76,72 @@ export default function AnalysisPage() {
   const [regionalError, setRegionalError] = useState("");
   const [regionalNotice, setRegionalNotice] = useState("");
   const [mapType, setMapType] = useState<"roadmap" | "satellite">("roadmap");
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const savedRaw = window.localStorage.getItem("yasam-ai:selected-location");
+      const saved = savedRaw ? JSON.parse(savedRaw) as { province?: string; district?: string; neighborhood?: string } : null;
+      const city = params.get("city") || saved?.province || "";
+      const district = params.get("district") || saved?.district || "";
+      const neighborhood = params.get("neighborhood") || saved?.neighborhood || "";
+      if (!city && !district && !neighborhood) return;
+      window.queueMicrotask(() => {
+        setForm((current) => ({
+          ...current,
+          city: city || current.city,
+          district: district || current.district,
+          neighborhood: neighborhood || current.neighborhood,
+        }));
+        setView("new");
+        setNotice(`${[city, district, neighborhood].filter(Boolean).join(" / ")} konumu ana sayfadan aktarıldı.`);
+      });
+      window.localStorage.removeItem("yasam-ai:selected-location");
+    } catch {
+      // Geçersiz yerel veri analiz ekranını durdurmaz.
+    }
+  }, []);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!loading) {
+      const resetTimer = window.setTimeout(() => {
+        setAnalysisProgress(0);
+        setAnalysisStage("Hazırlanıyor...");
+      }, 0);
+      return () => window.clearTimeout(resetTimer);
+    }
+
+    const startedAt = Date.now();
+    setAnalysisProgress(8);
+    setAnalysisStage("Bilgiler kontrol ediliyor...");
+
+    const timer = window.setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      if (elapsed < 5) {
+        setAnalysisProgress(18);
+        setAnalysisStage("Taşınmaz verileri hazırlanıyor...");
+      } else if (elapsed < 12) {
+        setAnalysisProgress(38);
+        setAnalysisStage("Piyasa ve karar skorları hesaplanıyor...");
+      } else if (elapsed < 22) {
+        setAnalysisProgress(58);
+        setAnalysisStage("Yapay zekâ değerlendirmesi oluşturuluyor...");
+      } else if (elapsed < 35) {
+        setAnalysisProgress(76);
+        setAnalysisStage("Rapor bölümleri yazılıyor...");
+      } else if (elapsed < 50) {
+        setAnalysisProgress(88);
+        setAnalysisStage("Son kontroller yapılıyor, bitmek üzere...");
+      } else {
+        setAnalysisProgress(94);
+        setAnalysisStage("Rapor kaydediliyor, lütfen birkaç saniye daha bekleyin...");
+      }
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loading]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     let mounted = true;
@@ -841,13 +584,7 @@ Tapu durumu: ${form.titleStatus || "Belirtilmedi"}
 İmar durumu: ${form.zoningStatus || "Belirtilmedi"}
 Ek bilgiler: ${form.notes || "Yok"}
 
-TÜRKİYE VERİ MOTORU
-Eşleşen bölge: ${regionalMatch ? `${regionalMatch.city}/${regionalMatch.district}/${regionalMatch.neighborhood}` : "Doğrulanmış eşleşme bulunamadı"}
-Bölge ortalama m² satış: ${Math.round(localMetrics.marketM2)} TL
-Taşınmaz talep m²: ${Math.round(localMetrics.askingM2)} TL
-Model değer aralığı: ${Math.round(localMetrics.lowValue)} - ${Math.round(localMetrics.highValue)} TL
-Yerel ön skorlar: Güven ${localMetrics.trust}, Yatırım ${localMetrics.investment}, Fırsat ${localMetrics.opportunity}, Risk ${localMetrics.risk}, Likidite ${localMetrics.liquidity}
-Yerel ön karar: ${localMetrics.decision}
+${buildDecisionPromptContext(localMetrics)}
 
 RAPOR ZORUNLU BAŞLIKLARI
 1. Yönetici Özeti
@@ -866,14 +603,16 @@ RAPOR ZORUNLU BAŞLIKLARI
 14. Pazarlık Stratejisi
 15. Önerilen İlk Teklif, Hedef Anlaşma ve Maksimum Fiyat
 16. 5 Maddelik Eylem Planı
-17. Nihai Karar: yalnızca AL, PAZARLIK YAP, BEKLE veya UZAK DUR
+17. Nihai Karar: yalnızca AL, PAZARLIK YAP, BEKLE veya RİSKLİ
 
 KURALLAR
 - Gerçek zamanlı resmî veriye erişimin varmış gibi davranma.
 - Verilmeyen bilgiyi uydurma.
 - Bölge verisi yoksa bunu açıkça belirt.
 - Türkçe, profesyonel ve anlaşılır yaz.
-- Kesin ekspertiz, hukuk veya yatırım tavsiyesi verdiğini söyleme.`,
+- Kesin ekspertiz, hukuk veya yatırım tavsiyesi verdiğini söyleme.
+- Sayısal çıktıları önceki hesaplama motorundan gelen verilerle tutarlı kur.
+- Eksik veri varsa veri güven skorunu düşür ve uyarıları açıkla.`,
         }),
       });
 
@@ -1153,32 +892,21 @@ KURALLAR
       .sort((a, b) => b.matchScore - a.matchScore)[0]?.item ?? null;
   }, [form.city, form.district, form.neighborhood, form.propertyType, regionalData]);
 
-  const localMetrics = useMemo(() => {
-    const askingPrice = parseNumeric(form.askingPrice);
-    const area = parseNumeric(form.area);
-    const monthlyRent = parseNumeric(form.monthlyRent);
-    const askingM2 = askingPrice && area ? askingPrice / area : 0;
-    const marketM2 = regionalMatch?.averageM2 ?? 0;
-    const estimatedValue = marketM2 && area ? marketM2 * area : askingPrice;
-    const difference = estimatedValue && askingPrice ? ((askingPrice - estimatedValue) / estimatedValue) * 100 : 0;
-    const grossYield = askingPrice && monthlyRent ? ((monthlyRent * 12) / askingPrice) * 100 : 0;
-    const completeness = [form.city, form.district, form.neighborhood, form.propertyType, form.area, form.askingPrice, form.titleStatus, form.notes].filter((value) => value.trim()).length;
-    const trust = clampScore(38 + completeness * 5 + (regionalMatch?.dataConfidence ?? 0) * 0.32);
-    const opportunity = clampScore(55 - difference * 2.2 + (grossYield > 5 ? 7 : 0));
-    const risk = clampScore(54 - trust * 0.28 + (form.titleStatus.toLocaleLowerCase("tr-TR").includes("hisseli") ? 20 : 0) + (form.zoningStatus.trim() ? -6 : 7) + (parseNumeric(form.buildingAge) > 20 ? 8 : 0));
-    const liquidity = clampScore(48 + (form.propertyType === "Konut" ? 13 : 4) + (regionalMatch?.liquidityScore ?? 0) * 0.25 - Math.max(0, difference) * 0.7);
-    const investment = clampScore(opportunity * 0.30 + (100 - risk) * 0.24 + liquidity * 0.18 + trust * 0.16 + (regionalMatch ? clampScore(50 + regionalMatch.annualChange) : 50) * 0.12);
-    const lowValue = estimatedValue * 0.92;
-    const highValue = estimatedValue * 1.08;
-    const firstOffer = estimatedValue ? Math.min(askingPrice || estimatedValue, estimatedValue * 0.93) : askingPrice * 0.90;
-    const targetPrice = estimatedValue ? Math.min(askingPrice || estimatedValue, estimatedValue * 0.97) : askingPrice * 0.94;
-    const maxPrice = estimatedValue ? Math.min(askingPrice || estimatedValue, estimatedValue * 1.01) : askingPrice * 0.98;
-    let decision = "BEKLE";
-    if (risk >= 72 || trust < 42) decision = "UZAK DUR";
-    else if (investment >= 76 && opportunity >= 68 && risk <= 48) decision = "AL";
-    else if (investment >= 58 && risk <= 65) decision = "PAZARLIK YAP";
+  const localMetrics = useMemo<DecisionMetrics>(() => {
+    const marketContext: RegionalMarketContext | null = regionalMatch
+      ? {
+          averageM2: regionalMatch.averageM2,
+          rentM2: regionalMatch.rentM2,
+          annualChange: regionalMatch.annualChange,
+          liquidityScore: regionalMatch.liquidityScore,
+          infrastructureScore: regionalMatch.infrastructureScore,
+          transportScore: regionalMatch.transportScore,
+          dataConfidence: regionalMatch.dataConfidence,
+          propertyType: regionalMatch.propertyType,
+        }
+      : null;
 
-    return { askingM2, marketM2, estimatedValue, lowValue, highValue, grossYield, trust, investment, opportunity, risk, liquidity, firstOffer, targetPrice, maxPrice, decision };
+    return calculateDecisionMetrics(form, marketContext);
   }, [form, regionalMatch]);
 
   const currentScores = useMemo(() => scoresFromReport(report), [report]);
@@ -1192,6 +920,303 @@ KURALLAR
     () => activeRecords.find((item) => item.id === comparisonIds[1]) ?? null,
     [activeRecords, comparisonIds],
   );
+
+  function escapePremiumPdfHtml(value: string) {
+    const repairedValue = value
+      .replace(/�l�e/gi, "İlçe")
+      .replace(/�rneklemi/gi, "örneklemi")
+      .replace(/piyasas�/gi, "piyasası")
+      .replace(/do�rulama/gi, "doğrulama")
+      .replace(/do�rulan/gi, "doğrulan")
+      .replace(/g�ven/gi, "güven")
+      .replace(/T�rkiye/gi, "Türkiye");
+    return repairedValue
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function premiumReportToHtml(value: string) {
+    const normalizedValue = (value || "Rapor metni bulunamadı.").replace(/17\s*ay/gi, "17 yıl");
+    const lines = escapePremiumPdfHtml(normalizedValue).split(/\r?\n/);
+    const output: string[] = [];
+    let list: "ul" | "ol" | null = null;
+    const closeList = () => {
+      if (list) output.push(`</${list}>`);
+      list = null;
+    };
+
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) { closeList(); continue; }
+      const heading = line.match(/^(#{1,3})\s+(.+)$/);
+      if (heading) {
+        closeList();
+        output.push(`<h2>${heading[2]}</h2>`);
+        continue;
+      }
+      const ordered = line.match(/^\d+[.)]\s+(.+)$/);
+      if (ordered) {
+        if (list !== "ol") { closeList(); list = "ol"; output.push("<ol>"); }
+        output.push(`<li>${ordered[1]}</li>`);
+        continue;
+      }
+      const unordered = line.match(/^[-•]\s+(.+)$/);
+      if (unordered) {
+        if (list !== "ul") { closeList(); list = "ul"; output.push("<ul>"); }
+        output.push(`<li>${unordered[1]}</li>`);
+        continue;
+      }
+      closeList();
+      output.push(`<p>${line.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")}</p>`);
+    }
+    closeList();
+    return output.join("");
+  }
+
+  const PREMIUM_REPORT_VERSION = "Yaşam AI Enterprise Report Engine v5.4";
+
+  function stableReportCode(seed: string) {
+    let hash = 2166136261;
+    for (let index = 0; index < seed.length; index += 1) {
+      hash ^= seed.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return Math.abs(hash >>> 0).toString(36).toUpperCase().padStart(7, "0").slice(0, 7);
+  }
+
+  async function openCurrentPremiumPdf() {
+    if (!report) return;
+    const popup = window.open("", "_blank", "width=1180,height=900");
+    if (!popup) {
+      window.print();
+      return;
+    }
+
+    const safeNumber = (value: string | number | null | undefined) => {
+      const numeric = Number(String(value ?? "").replace(/[^0-9,.-]/g, "").replace(/\./g, "").replace(",", "."));
+      return Number.isFinite(numeric) ? numeric : 0;
+    };
+    const location = [form.city, form.district, form.neighborhood].filter(Boolean).map(titleCaseLocation).join(" / ");
+    const reportSeed = [form.city, form.district, form.neighborhood, form.propertyType, form.area, form.askingPrice, report].join("|");
+    const reportNo = `YAI-${new Date().getFullYear()}-${stableReportCode(reportSeed)}`;
+    const reportDateIso = new Date().toISOString();
+    const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "");
+    const verificationBaseUrl = configuredAppUrl || (window.location.hostname === "localhost" ? "https://yasam-ai.vercel.app" : window.location.origin);
+    const verificationUrl = `${verificationBaseUrl}/dogrula/${encodeURIComponent(reportNo)}`;
+    const askingPrice = safeNumber(form.askingPrice);
+    const monthlyRent = safeNumber(form.monthlyRent);
+    const area = safeNumber(form.area);
+    const annualRent = monthlyRent * 12;
+    const askingGrossYield = askingPrice > 0 && annualRent > 0 ? (annualRent / askingPrice) * 100 : 0;
+    const askingAmortization = annualRent > 0 && askingPrice > 0 ? askingPrice / annualRent : 0;
+
+    const hasRegionalReference = Boolean(regionalMatch && regionalMatch.averageM2 > 0 && regionalMatch.sampleSize > 0);
+    const hasOfficialVerification = regionalMatch?.verificationStatus === "verified";
+    const hasVerifiedComparableSales = false;
+    const referenceValue = hasRegionalReference && area > 0 ? regionalMatch!.averageM2 * area : 0;
+    const referenceRangeLow = referenceValue > 0 ? referenceValue * 0.95 : 0;
+    const referenceRangeHigh = referenceValue > 0 ? referenceValue * 1.05 : 0;
+    const referenceGrossYield = referenceValue > 0 && annualRent > 0 ? (annualRent / referenceValue) * 100 : 0;
+    const referenceAmortization = referenceValue > 0 && annualRent > 0 ? referenceValue / annualRent : 0;
+
+    const currentDecisionText = String(currentDecision || "BEKLE").toUpperCase();
+    const hasCriticalVerificationGap = !hasOfficialVerification || !hasVerifiedComparableSales;
+    const effectiveDecision = hasCriticalVerificationGap
+      ? (currentDecisionText.includes("RİSK") ? "UZAK DUR" : "DOĞRULAMA BEKLİYOR")
+      : currentDecisionText === "AL" || currentDecisionText === "KOŞULLU AL"
+        ? "KOŞULLU AL"
+        : currentDecisionText;
+    const effectiveRiskScore = Math.max(50, currentScores.risk ?? 50);
+    const effectiveOpportunityScore = hasVerifiedComparableSales
+      ? (currentScores.opportunity ?? 0)
+      : Math.min(currentScores.opportunity ?? 0, 64);
+
+    const scoreLabel = (value: number | null) => {
+      if (value == null) return "Veri yok";
+      if (value >= 80) return "Çok güçlü";
+      if (value >= 65) return "Güçlü";
+      if (value >= 50) return "Orta";
+      if (value >= 35) return "Zayıf";
+      return "Kritik";
+    };
+    const riskLabel = (value: number | null) => {
+      if (value == null) return "Veri yok";
+      if (value <= 20) return "Çok düşük risk";
+      if (value <= 35) return "Düşük risk";
+      if (value <= 55) return "Orta risk";
+      if (value <= 75) return "Yüksek risk";
+      return "Kritik risk";
+    };
+
+    const confidenceCount = [form.city, form.district, form.neighborhood, form.propertyType, form.area, form.askingPrice, form.monthlyRent, form.titleStatus, form.zoningStatus, form.buildingAge].filter(Boolean).length;
+    const confidenceTotal = 10;
+    const rawTrustScore = currentScores.trust ?? 0;
+    const trustScore = hasOfficialVerification && hasVerifiedComparableSales
+      ? rawTrustScore
+      : Math.min(rawTrustScore, 58);
+    const sourceConfidence = regionalMatch?.dataConfidence ?? trustScore;
+    const regionalSource = regionalMatch?.sourceNote || regionalMatch?.source || "Doğrulanmış bölgesel veri bulunamadı";
+    const sourceDate = regionalMatch?.updatedAt ? safeDate(regionalMatch.updatedAt) : "—";
+
+    const hasGrowthData = Boolean(regionalMatch && regionalMatch.sampleSize > 0 && Number.isFinite(regionalMatch.annualChange) && regionalMatch.annualChange !== 0);
+    const baseAnnualRate = hasGrowthData ? Math.max(-0.2, Math.min(0.4, regionalMatch!.annualChange / 100)) : null;
+    const scenarioRows = baseAnnualRate == null || referenceValue <= 0
+      ? []
+      : [
+          ["Temkinli", Math.max(-0.25, baseAnnualRate - 0.08)],
+          ["Baz", baseAnnualRate],
+          ["Olumlu", Math.min(0.45, baseAnnualRate + 0.08)],
+        ].map(([name, rate]) => {
+          const numericRate = Number(rate);
+          return [name, referenceValue * Math.pow(1 + numericRate, 1), referenceValue * Math.pow(1 + numericRate, 3), referenceValue * Math.pow(1 + numericRate, 5), numericRate];
+        });
+
+    const decisionSummary = effectiveDecision === "DOĞRULAMA BEKLİYOR"
+      ? "Talep fiyatı ile ilan tabanlı matematiksel referans arasında olağan dışı fark bulunmaktadır. Alan niteliği, tapu, imar, teknik durum ve en az üç benzer gerçekleşmiş satış doğrulanmadan alım kararı verilmemelidir."
+      : effectiveDecision === "KOŞULLU AL"
+        ? "Bölgesel referans ve doğrulanmış emsaller fiyat avantajını desteklemektedir. Yine de tapu, imar ve teknik kontroller tamamlanmadan işlem sonuçlandırılmamalıdır."
+      : effectiveDecision.includes("PAZARLIK")
+        ? "Taşınmaz yalnızca güvenli teklif aralığında ve doğrulamalar tamamlandıktan sonra değerlendirilebilir."
+        : effectiveDecision === "BEKLE"
+          ? "Karar için veri yeterli değildir. Piyasa, hukuki ve teknik doğrulamalar tamamlanana kadar beklenmelidir."
+          : "Mevcut bilgiler risk-getiri dengesini desteklememektedir; doğrulama yapılmadan işlem önerilmez.";
+
+    const neighborhoodExactMatch = Boolean(
+      regionalMatch &&
+      form.neighborhood.trim() &&
+      regionalMatch.neighborhood.trim().toLocaleLowerCase("tr-TR") === form.neighborhood.trim().toLocaleLowerCase("tr-TR")
+    );
+    const dataScopeLabel = neighborhoodExactMatch
+      ? "Mahalle bazlı kayıt"
+      : regionalMatch
+        ? regionalMatch.neighborhood === "İlçe Geneli"
+          ? "İlçe geneli referans"
+          : "Yakın bölge referansı"
+        : "Bölgesel veri yok";
+    const offerStrategy = calculateOfferStrategy({
+      askingPrice,
+      referenceValue,
+      trustScore,
+      riskScore: effectiveRiskScore,
+      liquidityScore: currentScores.liquidity,
+      hasOfficialVerification,
+      hasVerifiedComparableSales,
+      neighborhoodExactMatch,
+      rentalYield: askingGrossYield,
+    });
+    const safeOffer = offerStrategy.openingOffer;
+    const maxOffer = offerStrategy.upperLimit;
+    const fiveYearBase = scenarioRows.length ? Number(scenarioRows[1][3]) : 0;
+    const reportDate = new Intl.DateTimeFormat("tr-TR", { dateStyle: "long", timeStyle: "short" }).format(new Date(reportDateIso));
+    const negotiationPotential = offerStrategy.negotiationScore;
+    const valueScore = referenceValue > 0 && askingPrice > 0 ? Math.max(0, Math.min(100, Math.round((referenceValue / askingPrice) * 50))) : 0;
+    const rentScore = askingGrossYield > 0 ? Math.max(0, Math.min(100, Math.round(askingGrossYield * 12))) : 0;
+    const trustClass = trustScore >= 80 ? "A" : trustScore >= 65 ? "B" : trustScore >= 50 ? "C" : trustScore >= 35 ? "D" : "E";
+    const decisionTone = effectiveDecision.includes("UZAK") ? "danger" : effectiveDecision.includes("BEKLE") || effectiveDecision.includes("DOĞRULAMA") ? "warning" : effectiveDecision.includes("PAZARLIK") ? "accent" : "success";
+    let trustProfile = buildReportTrustProfile({
+      verificationSaved: false,
+      hasOfficialVerification,
+      hasVerifiedComparableSales,
+      trustScore,
+      dataScope: dataScopeLabel,
+    });
+    const radarValues = [currentScores.investment ?? 0, 100 - effectiveRiskScore, currentScores.liquidity ?? 0, rentScore, trustScore, valueScore];
+    const radarPoints = radarValues.map((value, index) => {
+      const angle = (-90 + index * 60) * Math.PI / 180;
+      const radius = 72 * (Math.max(0, Math.min(100, Number(value))) / 100);
+      return `${110 + Math.cos(angle) * radius},${110 + Math.sin(angle) * radius}`;
+    }).join(" ");
+
+    let verificationSaved = false;
+    let verificationSaveMessage = "";
+    if (!user) {
+      verificationSaveMessage = "Doğrulama kaydı için oturum açılması gerekiyor.";
+    } else {
+      const { error: verificationSaveError } = await supabase
+        .from("report_verifications")
+        .upsert(
+          {
+            report_id: reportNo,
+            user_id: user.id,
+            report_date: reportDateIso,
+            report_version: PREMIUM_REPORT_VERSION,
+            verification_status: "active",
+            location: location || null,
+            property_type: form.propertyType || null,
+            decision: effectiveDecision,
+            updated_at: reportDateIso,
+          },
+          { onConflict: "report_id" },
+        );
+
+      if (verificationSaveError) verificationSaveMessage = verificationSaveError.message;
+      else verificationSaved = true;
+    }
+
+    trustProfile = buildReportTrustProfile({
+      verificationSaved,
+      hasOfficialVerification,
+      hasVerifiedComparableSales,
+      trustScore,
+      dataScope: dataScopeLabel,
+    });
+
+    const qrImageUrl = verificationSaved
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data=${encodeURIComponent(verificationUrl)}`
+      : "";
+
+    const aiAnalysisHtml = `
+      <h2>1. Veri Güven Skoru</h2>
+      <p><strong>Puan:</strong> ${trustScore}/100 · ${scoreLabel(trustScore)}</p>
+      <p>Form alanları ${confidenceCount}/${confidenceTotal} oranında doldurulmuştur. Bu oran veri girişinin tamamlanmasını gösterir; resmî doğrulama anlamına gelmez. Tapu, imar, teknik durum ve emsal satışlar yetkili kaynaklardan teyit edilmelidir.</p>
+      <h2>2. Yatırım Görünümü</h2>
+      <p><strong>Puan:</strong> ${currentScores.investment ?? "—"}/100 · ${scoreLabel(currentScores.investment)}</p>
+      <p>Talep fiyatına göre kira getirisi ve amortisman görünümü hesaplanabilmektedir. Ancak yatırım kararı, yalnızca ilan tabanlı bölgesel m² referansına dayandırılamaz.</p>
+      <h2>3. Fırsat Görünümü</h2>
+      <p><strong>Puan:</strong> ${effectiveOpportunityScore}/100 · ${scoreLabel(effectiveOpportunityScore)}</p>
+      <p>${hasRegionalReference ? "Talep fiyatı ile bölgesel ilan m² verisinden üretilen matematiksel referans arasında fark bulunmaktadır." : "Yeterli bölgesel fiyat referansı bulunmamaktadır."} Gerçekleşmiş satış ve en az üç karşılaştırılabilir emsal doğrulanmadığı için kesin indirim oranı veya kesin fırsat hükmü verilmemiştir.</p>
+      <h2>4. Risk Görünümü</h2>
+      <p><strong>Puan:</strong> ${effectiveRiskScore}/100 · ${riskLabel(effectiveRiskScore)}</p>
+      <p>Tapu ve imar bilgileri kullanıcı beyanına dayalıdır. Teknik ekspertiz, takyidat kontrolü ve resmî belge teyidi tamamlanmadığından risk seviyesi ${riskLabel(effectiveRiskScore).toLocaleLowerCase("tr-TR")} olarak değerlendirilmiştir.</p>
+      <h2>5. Likidite Görünümü</h2>
+      <p><strong>Puan:</strong> ${currentScores.liquidity ?? "—"}/100 · ${scoreLabel(currentScores.liquidity)}</p>
+      <p>Likidite puanı ön değerlendirmedir. Bölgedeki gerçek satış süresi, işlem adedi ve güncel talep verisi doğrulanmadan kesin satış süresi öngörülmez.</p>
+      <h2>6. Değerleme Çerçevesi</h2>
+      <p>${referenceValue > 0 ? `Bölgesel ilan m² verisine göre matematiksel referans aralığı ${formatCurrency(String(Math.round(referenceRangeLow)))} – ${formatCurrency(String(Math.round(referenceRangeHigh)))} olarak hesaplanmıştır.` : "Matematiksel bölgesel referans hesaplanamamıştır."} Bu değer resmî ekspertiz veya gerçekleşmiş satış değeri değildir.</p>
+      <p><strong>Başlangıç teklif önerisi:</strong> ${safeOffer ? formatCurrency(String(Math.round(safeOffer))) : "—"}<br><strong>Mevcut verilere göre üst teklif sınırı:</strong> ${maxOffer ? formatCurrency(String(Math.round(maxOffer))) : "—"}</p><p><strong>Teklif yöntemi:</strong> ${escapePremiumPdfHtml(offerStrategy.explanation)}</p>
+      <!--AI_PAGE_BREAK-->
+      <h2>7. Güçlü Yönler</h2>
+      <ul><li>Form bilgilerinin büyük ölçüde tamamlanmış olması</li><li>Talep fiyatına göre ölçülebilir kira nakit akışı</li><li>Karar öncesi doğrulama adımlarının açık biçimde tanımlanması</li></ul>
+      <h2>8. Kritik Riskler</h2>
+      <ul><li>En az üç gerçek ve karşılaştırılabilir emsal bulunmaması</li><li>Tapu, imar ve takyidatın resmî kaynaktan teyit edilmemesi</li><li>Teknik yapı ve bakım durumunun uzman tarafından incelenmemesi</li><li>Bölgesel satış süresi ve işlem adedi verisinin sınırlı olması</li></ul>
+      <h2>9. Nihai Karar</h2>
+      <p><strong>Karar: ${effectiveDecision}</strong></p><p>${decisionSummary}</p>
+      <h2>10. Eylem Planı</h2>
+      <ol><li>Tapu, takyidat ve imar belgelerini resmî kaynaktan doğrula.</li><li>En az üç güncel ve karşılaştırılabilir emsal topla.</li><li>Teknik ekspertiz ve yapı incelemesi yaptır.</li><li>Kira sözleşmesi ve gelir sürekliliğini kontrol et.</li><li>Doğrulama sonuçlarına göre Başlangıç teklif önerisini ve üst teklif sınırını doğrulama sonuçlarına göre yeniden hesapla.</li></ol>`;
+
+    const [aiAnalysisMainHtml, aiAnalysisFinalHtml] = aiAnalysisHtml.split("<!--AI_PAGE_BREAK-->");
+
+    popup.document.write(`<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${reportNo} · Yaşam AI</title>
+<style>
+@page{size:A4;margin:0}*{box-sizing:border-box}html,body{margin:0;font-family:Inter,"Segoe UI",Arial,sans-serif;color:#17324d;background:#eef3f8;-webkit-print-color-adjust:exact;print-color-adjust:exact}.sheet{width:210mm;height:297mm;margin:14px auto;background:#fff;box-shadow:0 14px 45px rgba(12,45,77,.18);overflow:hidden}.cover{height:297mm;padding:24mm 20mm;background:linear-gradient(145deg,#071d35,#0b477d 62%,#0876c9);color:#fff;position:relative;overflow:hidden}.cover:after{content:"";position:absolute;width:92mm;height:92mm;border:1px solid rgba(255,255,255,.20);border-radius:50%;right:-11mm;top:18mm}.brand{font-family:Georgia,"Times New Roman",serif;font-size:38px;font-weight:800}.gold{color:#f0c66f}.kicker{font-size:11px;font-weight:800;letter-spacing:2px;opacity:.82}.trust-seal{position:absolute;right:9mm;top:26mm;width:72mm;height:72mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:2;padding:5mm}.shield{display:grid;place-items:center;width:55px;height:62px;background:linear-gradient(145deg,#f7dc91,#d2a94f);color:#082b4c;font-weight:1000;font-size:31px;filter:drop-shadow(0 7px 14px rgba(0,0,0,.22));clip-path:polygon(50% 0,92% 16%,85% 70%,50% 100%,15% 70%,8% 16%)}.trust-seal small{display:block;margin-top:4.5mm;font-family:Georgia,"Times New Roman",serif;font-size:12.5px;line-height:1.35;color:#f5d98f;font-weight:800;max-width:62mm;text-shadow:0 2px 8px rgba(0,0,0,.28)}.cover h1{font-family:Georgia,"Times New Roman",serif;font-size:50px;line-height:1.08;margin:76mm 0 5mm;max-width:118mm}.cover-grid{position:absolute;left:20mm;right:20mm;bottom:22mm;display:grid;grid-template-columns:1fr 1fr;gap:10px}.cover-grid div{padding:14px;border:1px solid rgba(255,255,255,.25);border-radius:12px;background:rgba(255,255,255,.09)}.content{height:297mm;padding:14mm 16mm}.title{font-family:Georgia,"Times New Roman",serif;font-size:25px;color:#092f55;margin:0 0 7mm;padding:0 0 4mm 12px;border-left:6px solid #d2a94f;border-bottom:2px solid #d8b45e}.summary{display:grid;grid-template-columns:1.5fr .8fr;gap:12px;margin-bottom:8mm}.card{border:1px solid #dbe6ef;border-radius:14px;padding:15px;background:#f9fbfd;break-inside:avoid}.decision{background:linear-gradient(135deg,#092d50,#0876c9);color:#fff}.decision strong{display:block;font-family:Georgia,"Times New Roman",serif;font-size:34px;margin:8px 0}.decision p{font-size:13.5px;line-height:1.5}.meta-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:8mm}.label{font-size:9.5px;font-weight:900;letter-spacing:.8px;color:#71869a}.value{font-size:15px;font-weight:800;margin-top:5px}.scores{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:8mm}.score{text-align:center;border:1px solid #dbe6ef;border-top:4px solid #d2a94f;border-radius:12px;padding:11px;background:#fff}.score b{display:block;font-family:Georgia,"Times New Roman",serif;font-size:27px;color:#0876c9;margin:5px 0}.score em{display:block;font-size:9px;color:#5f7487;font-style:normal;font-weight:800}.badge{display:inline-flex;padding:5px 9px;border-radius:999px;background:#e7f5ee;color:#177153;font-size:10px;font-weight:900}.table{width:100%;border-collapse:collapse;font-size:11.5px}.table th,.table td{padding:8px;border-bottom:1px solid #dbe6ef;text-align:left;vertical-align:top}.table th{background:#eef5fb;color:#0a3f70;font-size:9.5px;letter-spacing:.4px}.money{font-weight:900;color:#0a3f70}.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px}.three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.metric strong{display:block;font-family:Georgia,"Times New Roman",serif;font-size:23px;color:#0876c9;margin-top:6px}.risk-critical{border-left:5px solid #c93545}.risk-medium{border-left:5px solid #d49b2f}.checklist{display:grid;grid-template-columns:1fr 1fr;gap:7px}.check{display:flex;gap:8px;align-items:flex-start;padding:8px;font-size:11px;border:1px solid #dbe6ef;border-radius:10px}.box{width:15px;height:15px;border:2px solid #0876c9;border-radius:3px;flex:0 0 auto}.report{font-family:Georgia,"Times New Roman",serif;font-size:12.4px;line-height:1.55;color:#263f56}.report h2{font-family:"Segoe UI",Arial,sans-serif;font-size:17px;color:#0a3f70;background:linear-gradient(90deg,#eef5fb,#fff);border-left:5px solid #d2a94f;border-bottom:1px solid #cbdbe8;padding:7px 10px;margin:12px 0 7px}.report p{margin:0 0 7px}.report ul,.report ol{margin:0 0 8px;padding-left:22px}.report li{margin-bottom:4px}.source-pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#edf4fa;color:#355b7c;font-size:9px;font-weight:800;margin:2px}.review-notes{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:8mm}.note-box{min-height:27mm;border:1px dashed #a9bfd1;border-radius:12px;padding:10px;background:#fbfdff}.note-box.wide{grid-column:1/-1}.approval{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:10mm}.approval div{border-top:1px solid #9eb3c5;padding-top:5px;font-size:10px;color:#60788d}.notice{font-size:9.5px;line-height:1.5;color:#71869a;border-top:1px solid #dbe6ef;margin-top:8mm;padding-top:5mm}.toolbar{position:fixed;right:18px;top:18px;z-index:5;display:flex;gap:8px}.toolbar button{border:0;border-radius:10px;padding:12px 16px;font-weight:800;cursor:pointer}.primary{background:#0876c9;color:#fff}.secondary{background:#fff;color:#153a65}.verification-grid{display:grid;grid-template-columns:1fr 280px;gap:24px;align-items:center}.qr-box{text-align:center;padding:14px;border:1px solid #dbe7f3;border-radius:16px;background:#fff}.qr-box img{width:220px;height:220px;display:block;margin:0 auto 10px}.verify-link{word-break:break-all;color:#0756a5;font-weight:800}.verify-ok{color:#16794a}.verify-warn{color:#8a5a00}.visual-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:12px;margin-bottom:7mm}.radar-card{display:grid;grid-template-columns:230px 1fr;gap:12px;align-items:center}.radar-svg{width:220px;height:220px}.radar-axis{stroke:#c9d8e5;stroke-width:1;fill:none}.radar-shape{fill:rgba(8,118,201,.22);stroke:#0876c9;stroke-width:3}.radar-label{font-size:10px;font-weight:800;fill:#355b7c}.price-stack{display:grid;gap:10px}.price-row{display:grid;grid-template-columns:125px 1fr 110px;gap:8px;align-items:center}.price-track{height:12px;border-radius:999px;background:#e7eef5;overflow:hidden}.price-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#0876c9,#d2a94f)}.decision-chain{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:center}.chain-item{padding:10px 5px;border:1px solid #dbe6ef;border-radius:12px;text-align:center;background:#fff;font-size:9px;font-weight:900}.chain-arrow{text-align:center;color:#d2a94f;font-size:18px}.trust-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.trust-card{padding:12px;border-radius:12px;border:1px solid #dbe6ef;background:#f9fbfd}.trust-grade{display:inline-grid;place-items:center;width:46px;height:46px;border-radius:50%;background:#092f55;color:#f0c66f;font-size:24px;font-weight:1000}.final-sheet{height:297mm;padding:20mm;background:linear-gradient(145deg,#061a30,#0a467c 70%,#0876c9);color:white;position:relative}.final-panel{margin-top:28mm;padding:18mm;border:1px solid rgba(255,255,255,.25);border-radius:26px;background:rgba(255,255,255,.08);text-align:center}.final-decision{font-family:Georgia,"Times New Roman",serif;font-size:44px;margin:7mm 0;color:#f5d98f}.final-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12mm 0}.final-metric{padding:12px;border-radius:14px;background:rgba(255,255,255,.10)}.final-metric b{display:block;font-size:26px;margin-top:5px}.tone-danger{border-left:7px solid #c93545}.tone-warning{border-left:7px solid #d49b2f}.tone-accent{border-left:7px solid #d2a94f}.tone-success{border-left:7px solid #2b9b6f}.watermark{position:absolute;inset:auto 0 20mm;text-align:center;font-size:52px;font-weight:1000;letter-spacing:7px;color:rgba(255,255,255,.035);transform:rotate(-7deg);pointer-events:none}@media(max-width:760px){.visual-grid,.radar-card{grid-template-columns:1fr}.decision-chain{grid-template-columns:1fr}.verification-grid{grid-template-columns:1fr}}@media print{html,body{background:#fff}.sheet{margin:0;box-shadow:none;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto;page-break-after:auto}.toolbar{display:none}} 
+</style></head><body><div class="toolbar"><button class="secondary" onclick="window.close()">Kapat</button><button class="primary" onclick="window.print()">PDF Olarak Kaydet</button></div>
+<section class="sheet cover"><div class="kicker">TÜRKİYE'NİN GAYRİMENKUL KARAR PLATFORMU</div><div class="brand">Yaşam <span class="gold">AI</span></div><div class="trust-seal"><div class="shield">✓</div><small>Doğrulama odaklı yapay zekâ destekli gayrimenkul karar motoru</small></div><h1>Premium<br>Gayrimenkul Karar<br>Motoru</h1><div class="cover-grid"><div><span class="kicker">RAPOR NUMARASI</span><br><strong>${reportNo}</strong></div><div><span class="kicker">KONUM</span><br><strong>${escapePremiumPdfHtml(location || "—")}</strong></div><div><span class="kicker">TAŞINMAZ</span><br><strong>${escapePremiumPdfHtml(form.propertyType || "—")}</strong></div><div><span class="kicker">TARİH</span><br><strong>${safeDate(new Date().toISOString())}</strong></div></div></section>
+<section class="sheet"><div class="content"><h2 class="title">Yönetici Özeti</h2><div class="summary"><div class="card decision"><span class="kicker">YAŞAM AI NİHAİ KARARI</span><strong>${escapePremiumPdfHtml(effectiveDecision)}</strong><p>${escapePremiumPdfHtml(decisionSummary)}</p></div><div class="card"><div class="label">VERİ GÜVENİ</div><div style="margin:8px 0"><span class="badge">${trustScore}/100 · ${scoreLabel(trustScore)}</span></div><div class="label">FORM TAMAMLANMA DURUMU</div><div class="value">${confidenceCount}/${confidenceTotal}</div><div class="label" style="margin-top:12px">DOĞRULAMA DURUMU</div><div class="value">Resmî teyit bekliyor</div><div class="label" style="margin-top:12px">RAPOR NO</div><div class="value">${reportNo}</div></div></div><div class="meta-grid"><div class="card"><div class="label">KONUM</div><div class="value">${escapePremiumPdfHtml(location || "—")}</div></div><div class="card"><div class="label">TÜR</div><div class="value">${escapePremiumPdfHtml(form.propertyType || "—")}</div></div><div class="card"><div class="label">ALAN</div><div class="value">${escapePremiumPdfHtml(form.area || "—")} m²</div></div><div class="card"><div class="label">TALEP FİYATI</div><div class="value">${formatCurrency(form.askingPrice)}</div></div></div><h2 class="title">Karar Skorları</h2><div class="scores">${[["Veri Güveni",trustScore,scoreLabel(trustScore)],["Yatırım",currentScores.investment,scoreLabel(currentScores.investment)],["Fırsat",effectiveOpportunityScore,scoreLabel(effectiveOpportunityScore)],["Risk Seviyesi",effectiveRiskScore,riskLabel(effectiveRiskScore)],["Likidite",currentScores.liquidity,scoreLabel(currentScores.liquidity)]].map(([label,value,text])=>`<div class="score"><span class="label">${label}</span><b>${value ?? "—"}</b><small>/100</small><em>${text}</em></div>`).join("")}</div><h2 class="title">Değerleme ve Teklif Özeti</h2><table class="table"><tbody><tr><th>Matematiksel bölgesel referans</th><td class="money">${referenceValue ? `${formatCurrency(String(Math.round(referenceRangeLow)))} – ${formatCurrency(String(Math.round(referenceRangeHigh)))}` : "Veri yok"}</td><th>Referans niteliği</th><td>İlan m² verisi · resmî satış değil</td></tr><tr><th>Başlangıç teklif önerisi</th><td class="money">${safeOffer ? formatCurrency(String(Math.round(safeOffer))) : "—"}</td><th>Üst teklif sınırı</th><td class="money">${maxOffer ? formatCurrency(String(Math.round(maxOffer))) : "—"}</td></tr><tr><th>Pazarlık yaklaşımı</th><td>Doğrulama sonuçlarına göre</td><th>5 yıllık baz senaryo</th><td>${fiveYearBase ? formatCurrency(String(Math.round(fiveYearBase))) : "Yeterli büyüme verisi yok"}</td></tr></tbody></table></div></section>
+<section class="sheet"><div class="content"><h2 class="title">Karar Görselleştirme Merkezi</h2><div class="visual-grid"><div class="card radar-card"><svg class="radar-svg" viewBox="0 0 220 220" aria-label="Karar güven radarı"><polygon class="radar-axis" points="110,30 179,70 179,150 110,190 41,150 41,70"/><polygon class="radar-axis" points="110,55 157,82 157,138 110,165 63,138 63,82"/><line class="radar-axis" x1="110" y1="110" x2="110" y2="30"/><line class="radar-axis" x1="110" y1="110" x2="179" y2="70"/><line class="radar-axis" x1="110" y1="110" x2="179" y2="150"/><line class="radar-axis" x1="110" y1="110" x2="110" y2="190"/><line class="radar-axis" x1="110" y1="110" x2="41" y2="150"/><line class="radar-axis" x1="110" y1="110" x2="41" y2="70"/><polygon class="radar-shape" points="${radarPoints}"/><text class="radar-label" x="110" y="18" text-anchor="middle">Yatırım</text><text class="radar-label" x="193" y="66">Risk Güvenliği</text><text class="radar-label" x="190" y="164">Likidite</text><text class="radar-label" x="110" y="210" text-anchor="middle">Kira</text><text class="radar-label" x="5" y="164">Veri Güveni</text><text class="radar-label" x="7" y="66">Değer</text></svg><div><div class="label">KARAR GÜVEN RADARI</div><div class="value">Altı boyutlu görünüm</div><p>Radar; yatırım, risk güvenliği, likidite, kira, veri güveni ve değerleme bileşenlerini aynı eksende gösterir.</p><div class="trust-grade">${trustClass}</div><strong style="margin-left:8px">${trustScore}/100 güven sınıfı</strong></div></div><div class="card"><div class="label">FİYAT KARŞILAŞTIRMASI</div><div class="price-stack"><div class="price-row"><span>Talep fiyatı</span><div class="price-track"><div class="price-fill" style="width:100%"></div></div><strong>${formatCurrency(String(Math.round(askingPrice)))}</strong></div><div class="price-row"><span>Başlangıç teklif önerisi</span><div class="price-track"><div class="price-fill" style="width:${askingPrice ? Math.min(100,(safeOffer/askingPrice)*100) : 0}%"></div></div><strong>${safeOffer ? formatCurrency(String(Math.round(safeOffer))) : "—"}</strong></div><div class="price-row"><span>Referans orta</span><div class="price-track"><div class="price-fill" style="width:${Math.min(100, askingPrice && referenceValue ? (referenceValue/Math.max(referenceValue,askingPrice))*100 : 0)}%"></div></div><strong>${referenceValue ? formatCurrency(String(Math.round(referenceValue))) : "—"}</strong></div></div><div class="notice"><strong>Metodoloji notu:</strong> Referans değer, ilan tabanlı m² verisinden üretilen matematiksel ön göstergedir; gerçekleşmiş satış veya resmî ekspertiz değildir.<br><strong>Veri kapsamı:</strong> ${escapePremiumPdfHtml(dataScopeLabel)}. ${neighborhoodExactMatch ? "Seçilen mahalleye doğrudan kayıt bulundu." : "Mahalleye özgü veri bulunmadığı için daha geniş bölge referansı kullanılmıştır; bu değer kesin mahalle fiyatı sayılmaz."}</div></div></div><h2 class="title">Karar Zinciri</h2><div class="decision-chain"><div class="chain-item">Veri Güveni<br>${trustScore}</div><div class="chain-arrow">→</div><div class="chain-item">Risk<br>${effectiveRiskScore}</div><div class="chain-arrow">→</div><div class="chain-item">Likidite<br>${currentScores.liquidity ?? "—"}</div><div class="chain-arrow">→</div><div class="chain-item">${escapePremiumPdfHtml(effectiveDecision)}</div></div><div class="card tone-${decisionTone}" style="margin-top:9mm"><div class="label">AI TASARIM MOTORU V1</div><div class="value">Önem sırasına göre dinamik vurgu</div><p>Bu sayfadaki karar rengi ve vurgu seviyesi, risk, veri güveni ve nihai karar bileşimine göre otomatik belirlenmiştir.</p></div></div></section>
+<section class="sheet"><div class="content"><h2 class="title">Kira ve Amortisman Performansı</h2><div class="three-col"><div class="card metric"><div class="label">AYLIK KİRA</div><strong>${monthlyRent ? formatCurrency(String(monthlyRent)) : "—"}</strong></div><div class="card metric"><div class="label">YILLIK KİRA</div><strong>${annualRent ? formatCurrency(String(annualRent)) : "—"}</strong></div><div class="card metric"><div class="label">TALEP FİYATINA GÖRE GETİRİ</div><strong>${askingGrossYield ? `%${askingGrossYield.toFixed(2).replace(".", ",")}` : "—"}</strong></div><div class="card metric"><div class="label">TALEP FİYATINA GÖRE AMORTİSMAN</div><strong>${askingAmortization ? `${askingAmortization.toFixed(1).replace(".", ",")} yıl` : "—"}</strong></div><div class="card metric"><div class="label">REFERANSA GÖRE GETİRİ</div><strong>${referenceGrossYield ? `%${referenceGrossYield.toFixed(2).replace(".", ",")}` : "—"}</strong></div><div class="card metric"><div class="label">REFERANSA GÖRE AMORTİSMAN</div><strong>${referenceAmortization ? `${referenceAmortization.toFixed(1).replace(".", ",")} yıl` : "—"}</strong></div></div><h2 class="title" style="margin-top:10mm">1–3–5 Yıllık Senaryo Analizi</h2>${scenarioRows.length ? `<table class="table"><thead><tr><th>Senaryo</th><th>1 yıl</th><th>3 yıl</th><th>5 yıl</th><th>Yıllık varsayım</th></tr></thead><tbody>${scenarioRows.map(([name,y1,y3,y5,rate])=>`<tr><td><strong>${name}</strong></td><td>${formatCurrency(String(Math.round(Number(y1))))}</td><td>${formatCurrency(String(Math.round(Number(y3))))}</td><td>${formatCurrency(String(Math.round(Number(y5))))}</td><td>%${(Number(rate)*100).toFixed(1).replace(".",",")}</td></tr>`).join("")}</tbody></table>` : `<div class="card"><strong>Senaryo üretilemedi.</strong><p>Bölgesel yıllık değişim verisi yeterli veya doğrulanmış olmadığı için 1–3–5 yıllık nominal değer tahmini gösterilmemiştir.</p></div>`}<p style="font-size:9px;color:#71869a;margin-top:8px">Senaryolar garanti değildir; yalnızca veri yeterliyse hesaplanan karar desteğidir.</p><h2 class="title" style="margin-top:9mm">Veri Kaynakları</h2><table class="table"><thead><tr><th>Veri alanı</th><th>Kaynak</th><th>Durum</th><th>Güven</th></tr></thead><tbody><tr><td>Taşınmaz bilgileri</td><td>Kullanıcı beyanı</td><td>Girildi</td><td>${trustScore}/100</td></tr><tr><td>Bölgesel piyasa</td><td>${escapePremiumPdfHtml(regionalSource)}</td><td>${hasRegionalReference ? "Referans bulundu" : "Bekleniyor"}</td><td>${sourceConfidence}/100</td></tr><tr><td>Güncelleme</td><td>${escapePremiumPdfHtml(sourceDate)}</td><td>${regionalMatch ? "Kayıtlı" : "—"}</td><td>—</td></tr><tr><td>Resmî teyit</td><td>Yetkili kurum / uzman</td><td>Bekleniyor</td><td>—</td></tr></tbody></table></div></section>
+<section class="sheet"><div class="content"><h2 class="title">Emsal ve Risk Doğrulaması</h2><table class="table"><thead><tr><th>Konum</th><th>Alan</th><th>Matematiksel referans</th><th>m² fiyatı</th><th>Kaynak</th><th>Durum</th></tr></thead><tbody>${hasRegionalReference ? `<tr><td>${escapePremiumPdfHtml([regionalMatch!.city,regionalMatch!.district,regionalMatch!.neighborhood].filter(Boolean).join(" / "))}</td><td>${area ? `${form.area} m²` : "Referans m²"}</td><td>${referenceValue ? formatCurrency(String(Math.round(referenceValue))) : "—"}</td><td>${formatCurrency(String(regionalMatch!.averageM2))}</td><td>${escapePremiumPdfHtml(regionalMatch!.source || "Bölgesel ilan verisi")}</td><td>Ön referans · resmî satış değil</td></tr>` : `<tr><td colspan="6"><strong>Karşılaştırılabilir emsal bulunamadı.</strong><br>Gerçek veri gelmeden bu alan doldurulmaz.</td></tr>`}</tbody></table><p style="font-size:9px;color:#71869a">Bu tablo gerçekleşmiş satış veya resmî ekspertiz değildir. Nihai karar için en az üç güncel, benzer ve doğrulanabilir emsal gereklidir.</p><h2 class="title" style="margin-top:9mm">Risk Önceliklendirme</h2><div class="two-col"><div class="card risk-critical"><div class="label">KRİTİK RİSK</div><div class="value">Tapu, imar ve hukuki durum</div><p>Kullanıcı beyanı mevcut; resmî teyit gerekli.</p></div><div class="card risk-medium"><div class="label">ORTA RİSK</div><div class="value">Emsal ve piyasa doğrulaması</div><p>En az üç gerçek emsal henüz doğrulanmadı.</p></div><div class="card risk-medium"><div class="label">ORTA RİSK</div><div class="value">Teknik yapı ve bakım durumu</div><p>Uzman incelemesi yapılmadı.</p></div><div class="card risk-medium"><div class="label">ORTA RİSK</div><div class="value">Likidite görünümü</div><p>${currentScores.liquidity ?? "—"}/100 · gerçek satış süresi verisi sınırlı.</p></div></div><h2 class="title" style="margin-top:9mm">Karar İçin Zorunlu Doğrulamalar</h2><div class="checklist">${["Tapu kaydı ve takyidat kontrolü","İmar durumunun resmî kurumdan doğrulanması","Teknik ekspertiz ve yapı incelemesi","En az üç güncel emsal doğrulaması","Kira sözleşmesi ve gelir sürekliliği","Vergi, aidat ve yükümlülük kontrolü","Teklif limitinin doğrulama sonrası güncellenmesi","Hukuki danışman görüşü"].map(item=>`<div class="check"><span class="box"></span><span>${item}</span></div>`).join("")}</div></div></section>
+<section class="sheet"><div class="content"><h2 class="title">Uzman Notları ve Onay Alanı</h2><div class="review-notes"><div class="note-box"><div class="label">EKSPERTİZ / TEKNİK NOT</div></div><div class="note-box"><div class="label">HUKUKİ / TAPU NOTU</div></div><div class="note-box wide"><div class="label">EMSAL DOĞRULAMA NOTU</div></div><div class="note-box wide" style="min-height:38mm"><div class="label">NİHAİ DEĞERLENDİRME VE KARAR NOTU</div></div></div><div class="approval"><div>İnceleyen / Uzman</div><div>Tarih / İmza</div></div><div class="notice"><strong>Kullanım notu:</strong> Bu sayfa, raporun uzman incelemesi sonrasında tamamlanması için ayrılmıştır. Boş bırakılan alanlar doğrulama yapılmadığını açıkça gösterir.</div></div></section>
+<section class="sheet"><div class="content"><h2 class="title">Açıklanabilir AI Analizi</h2><div class="card report">${aiAnalysisMainHtml}</div></div></section>
+<section class="sheet"><div class="content"><h2 class="title">Açıklanabilir AI Analizi · Sonuç ve Riskler</h2><div class="card report">${aiAnalysisFinalHtml}</div></div></section>
+<section class="sheet final-sheet"><div class="watermark">YAŞAM AI RAPOR KAYDI</div><div class="kicker">YAŞAM AI · PREMIUM KARAR ÖZETİ</div><div class="brand">Yaşam <span class="gold">AI</span></div><div class="final-panel"><div class="kicker">NİHAİ KARAR</div><div class="final-decision">${escapePremiumPdfHtml(effectiveDecision)}</div><p>${escapePremiumPdfHtml(decisionSummary)}</p><div class="final-metrics"><div class="final-metric"><span>Güven</span><b>${trustScore}</b></div><div class="final-metric"><span>Yatırım</span><b>${currentScores.investment ?? "—"}</b></div><div class="final-metric"><span>Risk</span><b>${effectiveRiskScore}</b></div><div class="final-metric"><span>Likidite</span><b>${currentScores.liquidity ?? "—"}</b></div></div><div class="kicker">RAPOR KİMLİĞİ</div><strong>${reportNo}</strong><p style="margin-top:8mm">Bu sonuç bir ön değerlendirmedir. Resmî belgeler ve uzman doğrulamaları tamamlanmadan nihai işlem yapılmamalıdır.</p></div></section>
+<section class="sheet"><div class="content"><h2 class="title">Dijital Doğrulama ve Sürüm İzi</h2><div class="verification-grid"><div class="card"><div class="label">RAPOR KİMLİĞİ</div><div class="value">${reportNo}</div><p>Bu kimlik aynı analiz verileriyle yeniden oluşturulduğunda sabit kalır.</p><div class="label">RAPOR SÜRÜMÜ</div><div class="value">${PREMIUM_REPORT_VERSION}</div><div class="label" style="margin-top:14px">RAPOR GÜVEN SEVİYESİ</div><div class="value">${escapePremiumPdfHtml(trustProfile.level)} · ${trustProfile.score}/100</div><p>${escapePremiumPdfHtml(trustProfile.explanation)}</p><div class="label" style="margin-top:14px">DOĞRULAMA DURUMU</div><div class="value ${verificationSaved ? "verify-ok" : "verify-warn"}">${verificationSaved ? "Dijital rapor kaydı oluşturuldu" : "Dijital rapor kaydı oluşturulamadı"}</div><p>${verificationSaved ? "QR kodu rapor kimliğini ve sürüm izini doğrular; taşınmaz verilerinin resmî olarak doğrulandığı anlamına gelmez." : escapePremiumPdfHtml(verificationSaveMessage || "Doğrulama servisine ulaşılamadı.")}</p><div class="label">DOĞRULAMA ADRESİ</div><a class="verify-link" href="${verificationUrl}" target="_blank" rel="noreferrer">${verificationUrl}</a></div>${verificationSaved ? `<div class="qr-box"><img src="${qrImageUrl}" alt="${reportNo} doğrulama QR kodu"><strong>Raporu doğrula</strong><p>${reportNo}</p></div>` : ""}</div><div class="notice"><strong>Önemli açıklama:</strong> Bu rapor yapay zekâ destekli bir ön değerlendirmedir; resmî ekspertiz, hukuki görüş, mühendislik incelemesi, kredi tahsis kararı veya yatırım danışmanlığı yerine geçmez. İşlem öncesinde tapu, imar, teknik durum, kira, emsal ve hukuki veriler yetkili kaynaklardan doğrulanmalıdır.<br><br><strong>Yaşam AI</strong> · Türkiye’nin Gayrimenkul Karar Platformu · ${reportNo} · ${PREMIUM_REPORT_VERSION} · ${reportDate}</div></div></section>
+</body></html>`);
+    popup.document.close();
+  }
+
 
   if (authLoading) {
     return <main style={loadingPage}>Yaşam AI Veri Güven ve Doğrulama Merkezi güvenli şekilde yükleniyor...</main>;
@@ -1613,7 +1638,7 @@ KURALLAR
                 </div>
 
                 <div className="no-print" style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 18 }}>
-                  <button type="button" onClick={() => window.print()} style={blueButton}>Premium PDF / Yazdır</button>
+                  <button type="button" onClick={openCurrentPremiumPdf} style={blueButton}>Premium PDF / Yazdır</button>
                   <button type="button" onClick={() => void copyReport()} style={softButton}>Kopyala</button>
                   <button type="button" onClick={() => void shareReport()} style={softButton}>Paylaş</button>
                   <button type="button" onClick={startNewAnalysis} style={softButton}>Yeni Analiz</button>
@@ -1756,23 +1781,33 @@ KURALLAR
                 <div style={formGrid}>
                   <MiniMeta label="Talep m²" value={localMetrics.askingM2 ? formatCurrency(String(Math.round(localMetrics.askingM2))) : "—"} />
                   <MiniMeta label="Bölge m²" value={localMetrics.marketM2 ? formatCurrency(String(Math.round(localMetrics.marketM2))) : "Veri yok"} />
-                  <MiniMeta label="Tahmini değer" value={localMetrics.estimatedValue ? formatCurrency(String(Math.round(localMetrics.estimatedValue))) : "—"} />
-                  <MiniMeta label="Brüt kira getirisi" value={localMetrics.grossYield ? `%${localMetrics.grossYield.toFixed(2).replace(".", ",")}` : "—"} />
+                  <MiniMeta label="Tahmini piyasa değeri" value={localMetrics.estimatedMarketValue ? formatCurrency(String(Math.round(localMetrics.estimatedMarketValue))) : "—"} />
+                  <MiniMeta label="Fiyat farkı" value={`${localMetrics.priceDifferencePct.toFixed(1).replace(".", ",")} %`} />
+                  <MiniMeta label="Brüt kira getirisi" value={localMetrics.grossYieldPct ? `%${localMetrics.grossYieldPct.toFixed(2).replace(".", ",")}` : "—"} />
+                  <MiniMeta label="Amortisman" value={localMetrics.amortizationMonths ? `${localMetrics.amortizationMonths} ay` : "—"} />
                 </div>
                 <div style={scoreGrid}>
-                  <ScoreCard title="Veri Güven" score={localMetrics.trust} />
-                  <ScoreCard title="Yatırım" score={localMetrics.investment} />
-                  <ScoreCard title="Fırsat" score={localMetrics.opportunity} />
-                  <ScoreCard title="Risk" score={localMetrics.risk} inverse />
-                  <ScoreCard title="Likidite" score={localMetrics.liquidity} />
+                  <ScoreCard title="Veri Güven" score={localMetrics.confidenceLevel} />
+                  <ScoreCard title="Yatırım" score={localMetrics.investmentScore} />
+                  <ScoreCard title="Fırsat" score={localMetrics.opportunityScore} />
+                  <ScoreCard title="Risk" score={localMetrics.riskScore} inverse />
+                  <ScoreCard title="Likidite" score={localMetrics.liquidityScore} />
                 </div>
                 <div style={formGrid}>
+                  <MiniMeta label="Karar skoru" value={`${localMetrics.decisionScore}/100`} />
+                  <MiniMeta label="Pazarlık gücü" value={`${localMetrics.bargainingPower}/100`} />
+                  <MiniMeta label="1 yıllık fiyat tahmini" value={formatCurrency(String(Math.round(localMetrics.year1Estimate)))} />
+                  <MiniMeta label="3 yıllık fiyat tahmini" value={formatCurrency(String(Math.round(localMetrics.year3Estimate)))} />
+                  <MiniMeta label="5 yıllık fiyat tahmini" value={formatCurrency(String(Math.round(localMetrics.year5Estimate)))} />
                   <MiniMeta label="Önerilen ilk teklif" value={formatCurrency(String(Math.round(localMetrics.firstOffer)))} />
                   <MiniMeta label="Hedef anlaşma" value={formatCurrency(String(Math.round(localMetrics.targetPrice)))} />
                   <MiniMeta label="Maksimum fiyat" value={formatCurrency(String(Math.round(localMetrics.maxPrice)))} />
                 </div>
                 <p style={{ margin: "8px 0 0", color: "#607890", fontSize: 12 }}>
                   {regionalMatch ? `Eşleşen veri: ${regionalMatch.city} / ${regionalMatch.district} / ${regionalMatch.neighborhood} · Güven %${regionalMatch.dataConfidence}` : "Bu konum için doğrulanmış market_data eşleşmesi bulunamadı; AI raporu veri eksikliğini açıkça belirtecek."}
+                </p>
+                <p style={{ margin: "8px 0 0", color: "#607890", fontSize: 12 }}>
+                  {localMetrics.warnings.length ? `Veri uyarıları: ${localMetrics.warnings.join(" · ")}` : "Eksik veri uyarısı yok; ön hesap güvenli görünümde."}
                 </p>
               </div>
 
@@ -1781,8 +1816,23 @@ KURALLAR
                 <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} style={{ ...inputStyle, minHeight: 115, resize: "vertical" }} placeholder="Cephe, bina durumu, ulaşım, satış nedeni, pazarlık bilgisi ve özel riskler..." />
               </label>
 
+              {loading ? (
+                <div style={{ marginTop: 14, padding: 14, borderRadius: 14, border: "1px solid #bcdcf5", background: "linear-gradient(135deg,#f4faff,#eaf5ff)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 9 }}>
+                    <strong style={{ color: "#0a4f83", fontSize: 13 }}>{analysisStage}</strong>
+                    <span style={{ color: "#0876c9", fontWeight: 900, fontSize: 12 }}>%{analysisProgress}</span>
+                  </div>
+                  <div style={{ height: 9, borderRadius: 999, background: "#dbeaf6", overflow: "hidden" }}>
+                    <div style={{ width: `${analysisProgress}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg,#0a5f9f,#22a4ff)", transition: "width .7s ease" }} />
+                  </div>
+                  <div style={{ marginTop: 8, color: "#607890", fontSize: 11, lineHeight: 1.45 }}>
+                    Analiz genellikle 20–45 saniye sürer. Bu sırada sayfayı kapatmayın.
+                  </div>
+                </div>
+              ) : null}
+
               <button disabled={loading} style={submitButton}>
-                {loading ? "Gerçek AI raporu hazırlanıyor..." : "Gerçek AI Analizini Başlat"}
+                {loading ? "AI analizi devam ediyor..." : "Gerçek AI Analizini Başlat"}
               </button>
             </form>
           </section>

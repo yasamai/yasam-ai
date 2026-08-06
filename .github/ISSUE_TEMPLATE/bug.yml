@@ -1,0 +1,21 @@
+name: Hata bildirimi
+about: Tekrarlanabilir bir sistem hatası
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: Tekrarlama adımları
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Beklenen davranış
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Gerçek davranış
+    validations:
+      required: true

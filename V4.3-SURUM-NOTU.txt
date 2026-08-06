@@ -1,0 +1,9 @@
+YAŞAM AI V4.3 - RAPOR GÜVEN MOTORU
+
+- Resmî teyit ve üç doğrulanmış emsal yoksa karar artık DOĞRULAMA BEKLİYOR.
+- Veri güveni, resmî doğrulama bulunmadığında en fazla 58/100 gösterilir.
+- Risk başlığı Risk Seviyesi olarak netleştirildi.
+- Emsal metodolojisi rapora eklendi.
+- Kanıtlanması güç “ilk ve tek” ifadesi kaldırıldı.
+- Rapor sürümü Yaşam AI Rapor Motoru v4.3 olarak güncellendi.
+- NEXT_PUBLIC_APP_URL ile canlı QR adresi desteği korundu.

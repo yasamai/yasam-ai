@@ -1,25 +1,25 @@
-# Yaşam AI
+# Yaşam AI V5.3 Enterprise Foundation
 
-Türkiye'nin güvenilir gayrimenkul karar platformunun Next.js uygulaması.
+Türkiye geneli yapay zekâ destekli gayrimenkul karar platformu.
 
 ## Kurulum
-1. `.env.example` dosyasını `.env.local` olarak kopyalayın ve anahtarları doldurun.
-2. `npm install`
-3. Supabase SQL Editor içinde `supabase/migrations/001_core_schema.sql` dosyasını çalıştırın.
-4. `npm run dev`
+```bash
+npm ci
+copy .env.example .env.local
+npm run dev
+```
 
-## Kontroller
-- `npm run lint`
-- `npx tsc --noEmit`
-- `npm run build`
+## Kalite kontrolü
+```bash
+npm run verify
+```
 
-## Güvenlik
-`.env.local`, `.next`, `node_modules` ve servis rolü anahtarı paylaşılmamalı veya Git'e eklenmemelidir.
+## GitHub çalışma düzeni
+- `main`: her zaman çalışan üretim sürümü
+- `feature/...`: geliştirme dalları
+- Test + PR kontrolü tamamlanmadan `main` birleşimi yapılmaz
 
-## Ana yollar
-- `/` Kurumsal ana sayfa
-- `/giris` Giriş ve kayıt
-- `/analiz` Yaşam AI karar merkezi
-- `/api/chat` OpenAI destekli analiz servisi
+## Güvenli ürün ilkesi
+Yaşam AI çıktıları ön değerlendirmedir; resmî ekspertiz, hukuk, mühendislik, kredi veya yatırım tavsiyesi değildir. Tapu, imar, teknik durum, kira ve emsal verileri yetkili kaynaklardan doğrulanmalıdır.
 
-Mimari ve yol haritası: `docs/architecture/ROADMAP.md`
+Ayrıntılı plan ve mimari için `docs/` klasörüne bakın.
