@@ -1,0 +1,13 @@
+YAŞAM AI V4.2 – TÜRKİYE VERİ MOTORU
+
+EKLENENLER
+- 81 il otomatik açılır listesi
+- Seçilen ile göre canlı ilçe listesi
+- Seçilen ilçeye göre canlı mahalle listesi
+- 30 günlük tarayıcı önbelleği ve çevrimdışı geri dönüş
+- Seçilen konumu /analiz formuna otomatik aktarma
+- Yatırım, kira, gelişim, likidite, risk ve veri güveni ön görünümü
+- Mobil uyumlu V4 tasarımı
+
+NOT
+Konum kartındaki skorlar arayüz ön izlemesidir; gerçek piyasa skoru değildir. Nihai skorlar analiz ekranındaki doğrulanmış veri ve taşınmaz bilgileriyle hesaplanır.

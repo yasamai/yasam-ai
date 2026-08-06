@@ -1,0 +1,21 @@
+name: Yeni modül
+about: Yaşam AI için yeni bir modül veya ürün geliştirmesi
+body:
+  - type: textarea
+    id: value
+    attributes:
+      label: Kullanıcıya kazandırdığı değer
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Kapsam ve kabul kriterleri
+    validations:
+      required: true
+  - type: textarea
+    id: ai
+    attributes:
+      label: AI, veri güveni ve doğrulama yaklaşımı
+    validations:
+      required: true

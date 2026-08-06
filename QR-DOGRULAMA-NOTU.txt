@@ -1,0 +1,20 @@
+YAŞAM AI PREMIUM v2.5 · DİJİTAL DOĞRULAMA
+
+Bu sürümde:
+- Premium PDF v2.5 korunmuştur.
+- “Gerçek Son Final” ifadesi kaldırılmıştır.
+- Her rapor için YAI-YYYY-XXXXXXX biçiminde rapor kimliği üretilir.
+- Rapor Supabase report_verifications tablosuna kaydedilir.
+- Kayıt başarılıysa PDF içinde gerçek doğrulama adresine bağlı QR kod görünür.
+- /dogrula/[reportId] sayfası rapor tarihini, sürümünü, durumunu, konumu, taşınmaz türünü ve kararı gösterir.
+- Kayıt bulunamazsa güvenli hata ekranı gösterilir.
+
+ÇALIŞTIRMA
+1) yasam-ai-web klasöründe terminal açın.
+2) npm run dev
+3) http://localhost:3000/analiz
+
+NOT
+- Supabase’de 002_report_verification.sql daha önce başarıyla çalıştırıldıysa tekrar çalıştırmayın.
+- QR kodun görünmesi için kullanıcının oturumunun açık olması ve Supabase kayıt işleminin başarılı olması gerekir.
+- Canlı ortamda NEXT_PUBLIC_APP_URL değerini gerçek alan adınıza ayarlayın. Yerel testte localhost kullanılır.

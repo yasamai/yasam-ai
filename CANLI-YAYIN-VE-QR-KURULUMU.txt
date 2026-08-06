@@ -1,0 +1,20 @@
+YAŞAM AI · CANLI YAYIN VE QR KURULUMU
+
+1) Canlı ortamda aşağıdaki ortam değişkenini gerçek alan adınızla tanımlayın:
+   NEXT_PUBLIC_APP_URL=https://ALAN-ADINIZ
+
+2) Supabase ortam değişkenlerini tanımlayın:
+   NEXT_PUBLIC_SUPABASE_URL=...
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+   SUPABASE_SERVICE_ROLE_KEY=...
+
+3) Supabase SQL Editor içinde şu migration daha önce çalıştırılmadıysa çalıştırın:
+   supabase/migrations/002_report_verification.sql
+
+4) Dağıtım sonrası test zinciri:
+   - /analiz sayfasından yeni rapor oluşturun.
+   - Premium PDF içindeki QR kodu telefonla okutun.
+   - Adres https://ALAN-ADINIZ/dogrula/YAI-... şeklinde açılmalı.
+   - Sayfada rapor kimliği, tarih, sürüm, durum, konum, taşınmaz türü ve karar görünmeli.
+
+Not: Yerel testte NEXT_PUBLIC_APP_URL boş bırakılırsa tarayıcının mevcut adresi kullanılır. Telefonla yerel test için bu değeri bilgisayarın ağ adresine ve çalışan porta ayarlayın; örneğin http://192.168.0.102:3001.
