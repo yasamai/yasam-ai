@@ -984,6 +984,33 @@ Yanıt biçimi: 1) Net cevap, 2) En önemli 3 gerekçe, 3) Bir sonraki en doğru
       .slice(0, 3);
   }, [activeRecords]);
 
+  const professionalPortfolio = useMemo(() => {
+    const enriched = activeRecords.map((item) => {
+      const scores = scoresFromReport(item.report ?? "");
+      const decision = (item.decision ?? decisionFromReport(item.report ?? "") ?? "BEKLE").toLocaleUpperCase("tr-TR");
+      const trust = scores.trust ?? 0;
+      const investment = scores.investment ?? 0;
+      const opportunity = scores.opportunity ?? 0;
+      const risk = scores.risk ?? 50;
+      const liquidity = scores.liquidity ?? 0;
+      const opportunityScore = opportunity * 0.42 + investment * 0.28 + trust * 0.18 + liquidity * 0.12 - risk * 0.22;
+      const riskScore = risk * 0.55 + Math.max(0, 65 - trust) * 0.45;
+      const needsVerification = trust < 65 || risk >= 65;
+      return { item, scores, decision, trust, investment, opportunity, risk, liquidity, opportunityScore, riskScore, needsVerification };
+    });
+
+    const opportunityLeaders = [...enriched].sort((a, b) => b.opportunityScore - a.opportunityScore).slice(0, 3);
+    const riskLeaders = [...enriched].sort((a, b) => b.riskScore - a.riskScore).slice(0, 3);
+    const verificationQueue = enriched.filter((entry) => entry.needsVerification).sort((a, b) => a.trust - b.trust || b.risk - a.risk).slice(0, 4);
+    const avgHealth = enriched.length
+      ? Math.round(enriched.reduce((total, entry) => total + Math.max(0, Math.min(100, entry.investment * 0.34 + entry.opportunity * 0.24 + entry.trust * 0.24 + entry.liquidity * 0.10 + (100 - entry.risk) * 0.08)), 0) / enriched.length)
+      : 0;
+    const decisionReady = enriched.filter((entry) => (entry.decision === "AL" || entry.decision.includes("PAZARLIK")) && entry.trust >= 65 && entry.risk < 65).length;
+    const criticalCount = enriched.filter((entry) => entry.risk >= 75 || entry.trust < 40).length;
+
+    return { opportunityLeaders, riskLeaders, verificationQueue, avgHealth, decisionReady, criticalCount };
+  }, [activeRecords]);
+
   const commandRecord = priorityRecords[0]?.item ?? activeRecords[0] ?? null;
   const commandScores = commandRecord ? scoresFromReport(commandRecord.report ?? "") : emptyScores;
   const commandDecision = commandRecord
@@ -1768,6 +1795,99 @@ Yanıt biçimi: 1) Net cevap, 2) En önemli 3 gerekçe, 3) Bir sonraki en doğru
                     suffix={avgScores.investment === null ? "" : "/100"}
                     text="Tüm aktif rapor ortalaması"
                   />
+                </section>
+
+                <section style={{ ...panelStyle, padding: 0, overflow: "hidden", border: "1px solid rgba(77,143,210,.28)", boxShadow: "0 20px 50px rgba(11,54,94,.16)" }}>
+                  <div style={{ padding: 22, background: "linear-gradient(135deg,#061a31 0%,#0a4f91 58%,#5722a7 100%)", color: "#fff" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.35fr .65fr", gap: 18, alignItems: "stretch" }}>
+                      <div>
+                        <div style={{ ...eyebrow, color: "#9fd0ff" }}>YÖNETİCİ KOMUTA ÖZETİ</div>
+                        <h2 style={{ margin: "7px 0 8px", fontSize: 30, lineHeight: 1.08, letterSpacing: -0.7 }}>Portföyün Bugünkü Karar Haritası</h2>
+                        <p style={{ margin: 0, maxWidth: 760, fontSize: 13, lineHeight: 1.65, color: "rgba(255,255,255,.84)" }}>
+                          {professionalPortfolio.criticalCount > 0
+                            ? `${professionalPortfolio.criticalCount} kritik dosya önce risk ve doğrulama kontrolü istiyor.`
+                            : professionalPortfolio.verificationQueue.length > 0
+                              ? `${professionalPortfolio.verificationQueue.length} dosyada karar güvenini artıracak doğrulama adımı bulunuyor.`
+                              : professionalPortfolio.decisionReady > 0
+                                ? `${professionalPortfolio.decisionReady} dosya karar vermeye yakın. En güçlü fırsatları karşılaştırabilirsiniz.`
+                                : "Portföy dengeli. Yeni analiz ve karşılaştırma ile karar havuzunu güçlendirebilirsiniz."}
+                        </p>
+
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 16 }}>
+                          <button type="button" onClick={() => professionalPortfolio.riskLeaders[0] && openRecord(professionalPortfolio.riskLeaders[0].item)} disabled={!professionalPortfolio.riskLeaders.length} style={{ ...softButton, background: "#fff", borderColor: "#fff", color: "#15324f", fontWeight: 950 }}>⚠ En Kritik Riski Aç</button>
+                          <button type="button" onClick={() => setView("compare")} disabled={activeRecords.length < 2} style={{ ...softButton, background: "rgba(255,255,255,.12)", color: "#fff", borderColor: "rgba(255,255,255,.30)", fontWeight: 950 }}>✦ En İyi Fırsatları Karşılaştır</button>
+                          <button type="button" onClick={() => { setView("reports"); setNotice("Doğrulama bekleyen dosyalar için rapor merkezi açıldı."); }} disabled={!professionalPortfolio.verificationQueue.length} style={{ ...softButton, background: "#f6d57f", borderColor: "#f6d57f", color: "#4b3507", fontWeight: 950 }}>✓ Doğrulama Kuyruğu</button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+                        {[
+                          ["Portföy Sağlığı", professionalPortfolio.avgHealth, "/100", "◉"],
+                          ["Karara Hazır", professionalPortfolio.decisionReady, " dosya", "✓"],
+                          ["Kritik Alarm", professionalPortfolio.criticalCount, " dosya", "!"],
+                          ["Doğrulama", professionalPortfolio.verificationQueue.length, " bekliyor", "◆"],
+                        ].map(([label, value, suffix, icon]) => (
+                          <div key={String(label)} style={{ padding: 13, borderRadius: 16, background: "rgba(255,255,255,.10)", border: "1px solid rgba(255,255,255,.15)" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                              <small style={{ fontSize: 9, fontWeight: 950, letterSpacing: .8, color: "rgba(255,255,255,.70)" }}>{label}</small>
+                              <span style={{ width: 25, height: 25, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(255,255,255,.11)", fontWeight: 950 }}>{icon}</span>
+                            </div>
+                            <strong style={{ display: "block", marginTop: 8, fontSize: 22, lineHeight: 1 }}>{value}<small style={{ fontSize: 9, opacity: .72 }}>{suffix}</small></strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12 }}>
+                  <article style={{ ...panelStyle, borderTop: "4px solid #18a56d" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div><div style={eyebrow}>FIRSAT LİDERLERİ</div><h3 style={{ margin: "5px 0 0", fontSize: 18 }}>En Güçlü 3 Aday</h3></div>
+                      <span style={{ width: 38, height: 38, borderRadius: 13, display: "grid", placeItems: "center", background: "#e7f7ef", color: "#14895c", fontSize: 19, fontWeight: 950 }}>↗</span>
+                    </div>
+                    <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                      {professionalPortfolio.opportunityLeaders.map((entry, index) => (
+                        <button key={entry.item.id} type="button" onClick={() => openRecord(entry.item)} style={{ ...softButton, padding: 11, textAlign: "left", width: "100%", background: index === 0 ? "#eefaf4" : "#f8fbfd" }}>
+                          <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>#{index + 1} {[entry.item.city, entry.item.district].filter(Boolean).join(" / ") || "Dosya"}</strong><b style={{ color: "#14895c" }}>{entry.opportunity}/100</b></span>
+                          <small style={{ display: "block", marginTop: 4, color: "#708399" }}>Yatırım {entry.investment} · Güven {entry.trust} · Risk {entry.risk}</small>
+                        </button>
+                      ))}
+                      {!professionalPortfolio.opportunityLeaders.length ? <div style={emptyState}>Aktif fırsat dosyası yok.</div> : null}
+                    </div>
+                  </article>
+
+                  <article style={{ ...panelStyle, borderTop: "4px solid #e25555" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div><div style={eyebrow}>RİSK RADARI</div><h3 style={{ margin: "5px 0 0", fontSize: 18 }}>Önce Kontrol Edilecekler</h3></div>
+                      <span style={{ width: 38, height: 38, borderRadius: 13, display: "grid", placeItems: "center", background: "#fff0f0", color: "#c83f3f", fontSize: 19, fontWeight: 950 }}>!</span>
+                    </div>
+                    <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                      {professionalPortfolio.riskLeaders.map((entry, index) => (
+                        <button key={entry.item.id} type="button" onClick={() => openRecord(entry.item)} style={{ ...softButton, padding: 11, textAlign: "left", width: "100%", background: index === 0 ? "#fff4f4" : "#f8fbfd" }}>
+                          <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>#{index + 1} {[entry.item.city, entry.item.district].filter(Boolean).join(" / ") || "Dosya"}</strong><b style={{ color: "#c83f3f" }}>{entry.risk}/100</b></span>
+                          <small style={{ display: "block", marginTop: 4, color: "#708399" }}>Veri güveni {entry.trust} · Karar {entry.decision || "—"}</small>
+                        </button>
+                      ))}
+                      {!professionalPortfolio.riskLeaders.length ? <div style={emptyState}>Aktif risk dosyası yok.</div> : null}
+                    </div>
+                  </article>
+
+                  <article style={{ ...panelStyle, borderTop: "4px solid #d3a22d" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div><div style={eyebrow}>DOĞRULAMA KUYRUĞU</div><h3 style={{ margin: "5px 0 0", fontSize: 18 }}>Eksik Kanıt Takibi</h3></div>
+                      <span style={{ width: 38, height: 38, borderRadius: 13, display: "grid", placeItems: "center", background: "#fff8e5", color: "#9d7413", fontSize: 18, fontWeight: 950 }}>✓</span>
+                    </div>
+                    <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                      {professionalPortfolio.verificationQueue.map((entry) => (
+                        <button key={entry.item.id} type="button" onClick={() => openRecord(entry.item)} style={{ ...softButton, padding: 11, textAlign: "left", width: "100%", background: "#fffdf6" }}>
+                          <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{[entry.item.city, entry.item.district].filter(Boolean).join(" / ") || "Dosya"}</strong><b style={{ color: "#9d7413" }}>Güven {entry.trust}</b></span>
+                          <small style={{ display: "block", marginTop: 4, color: "#708399" }}>{entry.trust < 50 ? "Kritik veri eksikliği" : entry.risk >= 65 ? "Risk doğrulaması gerekli" : "Karar öncesi teyit önerilir"}</small>
+                        </button>
+                      ))}
+                      {!professionalPortfolio.verificationQueue.length ? <div style={{ ...emptyState, color: "#16794a" }}>✓ Açık doğrulama alarmı yok.</div> : null}
+                    </div>
+                  </article>
                 </section>
 
                 <section style={insightPanel}>
