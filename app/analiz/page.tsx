@@ -1469,6 +1469,9 @@ Yanıt biçimi: 1) Net cevap, 2) En önemli 3 gerekçe, 3) Bir sonraki en doğru
         .enterprise-action:hover { transform: translateY(-2px); filter: brightness(1.03); }
         .enterprise-kpi { transition: transform .22s ease, box-shadow .22s ease; }
         .enterprise-kpi:hover { transform: translateY(-3px); box-shadow: 0 15px 30px rgba(17,56,91,.10) !important; }
+        .quick-action-card:hover { transform: translateY(-7px) !important; filter: brightness(1.045); box-shadow: 0 24px 52px rgba(0,13,38,.34), inset 0 1px 0 rgba(255,255,255,.20) !important; }
+        .quick-action-card:active { transform: translateY(-2px) scale(.992) !important; }
+        @media (max-width: 760px) { .quick-action-card { min-height: 190px !important; } }
         @keyframes heroReveal { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes premiumSweep { 0%,58%{left:-260px;opacity:0} 66%{opacity:1} 86%{left:115%;opacity:.9} 100%{left:115%;opacity:0} }
         @keyframes goldSweep { 0%,52%{left:-240px;opacity:0} 62%{opacity:1} 86%{left:118%;opacity:.95} 100%{left:118%;opacity:0} }
@@ -1496,55 +1499,58 @@ Yanıt biçimi: 1) Net cevap, 2) En önemli 3 gerekçe, 3) Bir sonraki en doğru
       <div style={{ maxWidth: 1260, margin: "0 auto" }}>
         <PremiumCard />
         <header style={heroStyle}>
-          <div style={{ flex: "1 1 680px" }}>
-            <div style={versionBadge}>YAŞAM AI · BÜTÜNLEŞİK GAYRİMENKUL KARAR EKOSİSTEMİ</div>
+          <div style={{ flex: "1 1 720px", minWidth: 0 }}>
+            <div style={versionBadge}>YAŞAM AI · AKILLI GAYRİMENKUL KARAR SİSTEMİ</div>
             <h1 style={heroTitle}>Gayrimenkul Karar Komuta Merkezi</h1>
             <p style={heroText}>
-              Tek platformda: açıklanabilir AI karar motoru, Türkiye veri zekâsı, yönetim paneli, üyelik altyapısı, kurumsal raporlama, CRM ve proje geliştirme merkezi.
+              Veriyi, yapay zekâyı ve doğrulamayı tek akışta birleştirin. Analiz edin, karşılaştırın, riskleri görün ve doğru aksiyona daha hızlı geçin.
             </p>
+
+            <div style={heroMetricGrid}>
+              <div style={heroMetricCard}>
+                <span style={heroMetricIcon}>▦</span>
+                <div><small style={heroMetricLabel}>AKTİF RAPOR</small><strong style={heroMetricValue}>{activeRecords.length}</strong></div>
+              </div>
+              <div style={heroMetricCard}>
+                <span style={heroMetricIcon}>↗</span>
+                <div><small style={heroMetricLabel}>ORT. YATIRIM</small><strong style={heroMetricValue}>{avgScores.investment || 0}<em style={heroMetricSuffix}>/100</em></strong></div>
+              </div>
+              <div style={heroMetricCard}>
+                <span style={heroMetricIcon}>◆</span>
+                <div><small style={heroMetricLabel}>BU AY</small><strong style={heroMetricValue}>{thisMonthCount}</strong></div>
+              </div>
+              <div style={heroMetricCard}>
+                <span style={heroMetricIcon}>!</span>
+                <div><small style={heroMetricLabel}>RİSK TAKİBİ</small><strong style={heroMetricValue}>{portfolioInsights.highRiskFiles}</strong></div>
+              </div>
+            </div>
           </div>
 
-          <div
-  style={{
-    ...accountCard,
-    padding: "12px 14px",
-    minWidth: 190,
-    maxWidth: 220,
-    gap: 4,
-  }}
->
-  <small style={{ opacity: 0.7, fontWeight: 900 }}>AKTİF HESAP</small>
-  <strong style={{ overflowWrap: "anywhere", fontSize: 12 }}>{user?.email}</strong>
-  <span style={{ ...onlineBadge, fontSize: 11 }}>● Bulut sistemi aktif</span>
-  <button
-    type="button"
-    onClick={signOut}
-    style={{ ...smallWhiteButton, padding: "7px 10px", marginTop: 4 }}
-  >
-    Çıkış Yap
-  </button>
-</div>
+          <div style={accountCard}>
+            <div style={accountTopRow}>
+              <div style={accountAvatar}>{(user?.email || "Y").slice(0, 1).toUpperCase()}</div>
+              <div style={{ minWidth: 0 }}>
+                <small style={{ opacity: 0.66, fontWeight: 900, letterSpacing: 0.8 }}>AKTİF HESAP</small>
+                <strong style={{ display: "block", overflowWrap: "anywhere", fontSize: 12, marginTop: 3 }}>{user?.email}</strong>
+              </div>
+            </div>
+            <span style={{ ...onlineBadge, fontSize: 11 }}>● Bulut sistemi aktif</span>
+            <button type="button" onClick={signOut} style={accountActionButton}>Çıkış Yap</button>
+          </div>
         </header>
 
-<div style={systemMenuLabel}>HIZLI BAŞLANGIÇ</div>
+        <div style={sectionHeadingRow}>
+          <div>
+            <div style={systemMenuLabel}>HIZLI BAŞLANGIÇ</div>
+            <div style={sectionSubtext}>En sık kullandığınız üç işlem, tek dokunuşla.</div>
+          </div>
+          <span style={smartReadyBadge}>● AI sistemi hazır</span>
+        </div>
 
-        <nav
-          style={{
-            ...navBar,
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-          }}
-        >
-          <NavButton active={view === "new"} onClick={startNewAnalysis}>
-            + Yeni Analiz
-          </NavButton>
-
-          <NavButton active={view === "reports"} onClick={() => setView("reports")}>
-            Raporlarım
-          </NavButton>
-
-          <NavButton active={view === "compare"} onClick={() => setView("compare")}>
-            AI Karşılaştırma
-          </NavButton>
+        <nav style={{ ...navBar, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+          <NavButton active={view === "new"} onClick={startNewAnalysis}>+ Yeni Analiz</NavButton>
+          <NavButton active={view === "reports"} onClick={() => setView("reports")}>Raporlarım</NavButton>
+          <NavButton active={view === "compare"} onClick={() => setView("compare")}>AI Karşılaştırma</NavButton>
         </nav>
 
         <div style={{ marginTop: 14 }}>
@@ -1616,6 +1622,19 @@ Yanıt biçimi: 1) Net cevap, 2) En önemli 3 gerekçe, 3) Bir sonraki en doğru
             ))}
           </nav>
         </div>
+
+        {view === "dashboard" ? (
+          <div style={aiPriorityBar}>
+            <div style={aiPriorityLeft}>
+              <span style={aiPriorityIcon}>✦</span>
+              <div>
+                <small style={aiPriorityLabel}>AI ÖNCELİK ÖNERİSİ</small>
+                <strong style={aiPriorityText}>{portfolioInsights.priority}</strong>
+              </div>
+            </div>
+            <button type="button" style={aiPriorityButton} onClick={() => setDashboardMode("professional")}>Profesyonel Portföyü Aç →</button>
+          </div>
+        ) : null}
 
         {notice ? <div style={successNotice}>{notice}</div> : null}
         {error ? <div style={errorNotice}>{error}</div> : null}
@@ -4613,6 +4632,20 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
   );
 }
 
+function QuickActionGlyph({ label }: { label: string }) {
+  const common = { width: 54, height: 54, viewBox: "0 0 54 54", fill: "none", xmlns: "http://www.w3.org/2000/svg" };
+  if (label === "+ Yeni Analiz") {
+    return <svg {...common}><rect x="9" y="7" width="27" height="35" rx="6" fill="rgba(255,255,255,.12)" stroke="currentColor" strokeWidth="2"/><path d="M16 17h13M16 23h10M16 29h7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="38" cy="38" r="10" fill="rgba(255,255,255,.14)" stroke="currentColor" strokeWidth="2"/><path d="M38 33v10M33 38h10" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>;
+  }
+  if (label === "Raporlarım") {
+    return <svg {...common}><rect x="10" y="14" width="31" height="29" rx="6" fill="rgba(255,255,255,.11)" stroke="currentColor" strokeWidth="2"/><path d="M16 23h19M16 29h15M16 35h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><path d="M15 10h24a5 5 0 0 1 5 5v20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity=".6"/></svg>;
+  }
+  if (label === "AI Karşılaştırma") {
+    return <svg {...common}><rect x="6" y="10" width="18" height="34" rx="6" fill="rgba(255,255,255,.10)" stroke="currentColor" strokeWidth="2"/><rect x="30" y="10" width="18" height="34" rx="6" fill="rgba(255,255,255,.10)" stroke="currentColor" strokeWidth="2"/><path d="M13 20h5M13 27h5M36 20h5M36 27h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="27" cy="37" r="8" fill="rgba(255,255,255,.16)" stroke="currentColor" strokeWidth="2"/><text x="27" y="40" textAnchor="middle" fontSize="8" fontWeight="900" fill="currentColor">AI</text></svg>;
+  }
+  return <svg {...common}><circle cx="27" cy="27" r="18" fill="rgba(255,255,255,.10)" stroke="currentColor" strokeWidth="2"/><path d="M19 27h16M27 19v16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>;
+}
+
 function NavButton({
   active,
   onClick,
@@ -4623,41 +4656,45 @@ function NavButton({
   children: React.ReactNode;
 }) {
   const label = typeof children === "string" ? children : "Modül";
-  const meta: Record<string, { icon: string; subtitle: string; gradient: string; accent: string }> = {
-    Dashboard: { icon: "▦", subtitle: "Genel Bakış", gradient: "linear-gradient(145deg,#0d5bd7,#082c68)", accent: "#39a8ff" },
-    Raporlar: { icon: "▤", subtitle: "Rapor Merkezi", gradient: "linear-gradient(145deg,#7b35c8,#35146f)", accent: "#c67cff" },
-    "AI Karşılaştırma": { icon: "✦", subtitle: "Akıllı Karşılaştırma", gradient: "linear-gradient(145deg,#6330bd,#2a135f)", accent: "#bd72ff" },
-    "Türkiye Veri Motoru": { icon: "◉", subtitle: "81 İl Veri Motoru", gradient: "linear-gradient(145deg,#008bbd,#064c80)", accent: "#25d5ff" },
-    "Veri Doğrulama": { icon: "✓", subtitle: "Kaynak Doğrulama", gradient: "linear-gradient(145deg,#079657,#07562f)", accent: "#39e98a" },
-    "Gayrimenkul Karar Merkezi": { icon: "◎", subtitle: "AI Karar Motoru", gradient: "linear-gradient(145deg,#c78000,#704000)", accent: "#ffd34c" },
-    "+ Yeni Analiz": { icon: "+", subtitle: "Hızlı Analiz Başlat", gradient: "linear-gradient(145deg,#334f8f,#15284f)", accent: "#9db8ff" },
+  const meta: Record<string, { subtitle: string; description: string; gradient: string; accent: string; cta: string }> = {
+    "+ Yeni Analiz": { subtitle: "Yeni karar dosyası", description: "Gayrimenkul bilgilerini girin; AI, risk ve fırsat analizini başlatsın.", gradient: "linear-gradient(145deg,#0d63d7 0%,#0a3d91 58%,#082861 100%)", accent: "#6fc2ff", cta: "Analize Başla" },
+    Raporlarım: { subtitle: "Karar arşiviniz", description: "Oluşturduğunuz raporları açın, doğrulayın, favorileyin ve yönetin.", gradient: "linear-gradient(145deg,#0b5fba 0%,#0a467f 58%,#082d59 100%)", accent: "#7fe0ff", cta: "Raporları Gör" },
+    "AI Karşılaştırma": { subtitle: "Akıllı karşılaştırma", description: "İki gayrimenkulü aynı kriterlerde kıyaslayın; güçlü ve zayıf yönleri görün.", gradient: "linear-gradient(145deg,#7d2cdf 0%,#5416a2 58%,#30106c 100%)", accent: "#d49aff", cta: "Karşılaştır" },
+    Dashboard: { subtitle: "Genel Bakış", description: "Komuta merkezine dönün.", gradient: "linear-gradient(145deg,#0d5bd7,#082c68)", accent: "#39a8ff", cta: "Aç" },
+    Raporlar: { subtitle: "Rapor Merkezi", description: "Raporlarınızı yönetin.", gradient: "linear-gradient(145deg,#7b35c8,#35146f)", accent: "#c67cff", cta: "Aç" },
+    "Türkiye Veri Motoru": { subtitle: "81 İl Veri Motoru", description: "Türkiye veri merkezini açın.", gradient: "linear-gradient(145deg,#008bbd,#064c80)", accent: "#25d5ff", cta: "Aç" },
+    "Veri Doğrulama": { subtitle: "Kaynak Doğrulama", description: "Kaynak ve kanıt durumunu inceleyin.", gradient: "linear-gradient(145deg,#079657,#07562f)", accent: "#39e98a", cta: "Aç" },
+    "Gayrimenkul Karar Merkezi": { subtitle: "AI Karar Motoru", description: "Karar motorunu çalıştırın.", gradient: "linear-gradient(145deg,#c78000,#704000)", accent: "#ffd34c", cta: "Aç" },
   };
-  const item = meta[label] ?? { icon: "•", subtitle: "Yaşam AI", gradient: "linear-gradient(145deg,#153a65,#0b2947)", accent: "#71c7ff" };
+  const item = meta[label] ?? { subtitle: "Yaşam AI", description: "Yaşam AI modülünü açın.", gradient: "linear-gradient(145deg,#153a65,#0b2947)", accent: "#71c7ff", cta: "Aç" };
   return (
     <button
       type="button"
+      className="quick-action-card"
       onClick={onClick}
       style={{
         position: "relative",
-        minWidth: 148,
-        minHeight: 150,
-        padding: "16px 15px 14px",
-        borderRadius: 19,
-        border: active ? `2px solid ${item.accent}` : "1px solid rgba(255,255,255,.22)",
+        minWidth: 190,
+        minHeight: 214,
+        padding: "18px 18px 16px",
+        borderRadius: 22,
+        border: active ? `2px solid ${item.accent}` : "1px solid rgba(255,255,255,.20)",
         background: item.gradient,
         color: "#fff",
         cursor: "pointer",
         textAlign: "left",
         overflow: "hidden",
-        boxShadow: active ? `0 16px 36px ${item.accent}45, inset 0 1px 0 rgba(255,255,255,.24)` : "0 12px 26px rgba(0,13,38,.25), inset 0 1px 0 rgba(255,255,255,.16)",
+        boxShadow: active ? `0 20px 46px ${item.accent}38, inset 0 1px 0 rgba(255,255,255,.24)` : "0 15px 34px rgba(0,13,38,.28), inset 0 1px 0 rgba(255,255,255,.14)",
         transform: active ? "translateY(-4px)" : "none",
-        transition: "all .22s ease",
+        transition: "transform .22s ease, box-shadow .22s ease, border-color .22s ease, filter .22s ease",
       }}
     >
-      <span style={{ display: "grid", placeItems: "center", width: 47, height: 47, borderRadius: 15, marginBottom: 15, background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.18)", fontSize: 27, fontWeight: 950 }}>{item.icon}</span>
-      <strong style={{ display: "block", fontSize: 15, lineHeight: 1.18 }}>{label}</strong>
-      <small style={{ display: "block", marginTop: 7, color: "rgba(255,255,255,.74)", fontSize: 10, fontWeight: 750 }}>{item.subtitle}</small>
-      <span style={{ position: "absolute", left: 15, right: 15, bottom: 9, height: 4, borderRadius: 999, background: active ? item.accent : "rgba(255,255,255,.18)", boxShadow: active ? `0 0 13px ${item.accent}` : "none" }} />
+      <span style={{ position: "absolute", width: 150, height: 150, borderRadius: "50%", right: -56, top: -62, background: `radial-gradient(circle,${item.accent}35,transparent 68%)`, pointerEvents: "none" }} />
+      <span style={{ display: "grid", placeItems: "center", width: 64, height: 64, borderRadius: 18, marginBottom: 14, background: "rgba(255,255,255,.11)", border: "1px solid rgba(255,255,255,.18)", color: item.accent, boxShadow: `inset 0 0 24px ${item.accent}14` }}><QuickActionGlyph label={label} /></span>
+      <small style={{ display: "block", color: item.accent, fontSize: 10, fontWeight: 950, letterSpacing: 1.05, marginBottom: 5 }}>{item.subtitle.toLocaleUpperCase("tr-TR")}</small>
+      <strong style={{ display: "block", fontSize: 21, lineHeight: 1.12, letterSpacing: -.35 }}>{label.replace(/^\+\s*/, "")}</strong>
+      <span style={{ display: "block", marginTop: 8, color: "rgba(255,255,255,.72)", fontSize: 11, lineHeight: 1.5, maxWidth: 290 }}>{item.description}</span>
+      <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 15, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.14)", color: "rgba(255,255,255,.92)", fontSize: 11, fontWeight: 900 }}><span>{item.cta}</span><span style={{ fontSize: 16 }}>→</span></span>
     </button>
   );
 }
@@ -6209,46 +6246,90 @@ const heroStyle = {
   gap: 18,
   flexWrap: "wrap" as const,
   color: "#fff",
-  padding: "8px 2px 20px",
+  marginTop: 10,
+  marginBottom: 20,
+  padding: "24px 24px",
+  borderRadius: 28,
+  background: "linear-gradient(145deg,rgba(3,25,61,.82),rgba(7,68,125,.52))",
+  border: "1px solid rgba(255,255,255,.18)",
+  boxShadow: "0 24px 56px rgba(0,15,42,.24), inset 0 1px 0 rgba(255,255,255,.08)",
+  backdropFilter: "blur(16px)",
 };
 
 const versionBadge = {
-  display: "inline-block",
-  padding: "8px 11px",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 7,
+  padding: "7px 11px",
   borderRadius: 999,
-  background: "rgba(255,255,255,.13)",
-  border: "1px solid rgba(255,255,255,.22)",
-  fontWeight: 900,
-  fontSize: 12,
-  letterSpacing: 0.8,
+  background: "rgba(69,183,255,.10)",
+  border: "1px solid rgba(109,205,255,.32)",
+  color: "#bfeaff",
+  fontWeight: 950,
+  fontSize: 10,
+  letterSpacing: 1.05,
 };
 
 const heroTitle = {
-  fontSize: "clamp(31px,5vw,57px)",
-  lineHeight: 1.03,
-  margin: "14px 0 9px",
-  letterSpacing: -1.3,
+  fontSize: "clamp(34px,4.8vw,58px)",
+  lineHeight: 1.02,
+  margin: "14px 0 10px",
+  letterSpacing: -1.7,
+  textShadow: "0 8px 28px rgba(0,0,0,.18)",
 };
 
 const heroText = {
-  maxWidth: 790,
-  opacity: 0.87,
+  maxWidth: 760,
+  color: "rgba(232,245,255,.80)",
   margin: 0,
-  lineHeight: 1.6,
-  fontSize: 16,
+  lineHeight: 1.58,
+  fontSize: 15,
 };
 
+const heroMetricGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4,minmax(118px,1fr))",
+  gap: 9,
+  marginTop: 18,
+};
+
+const heroMetricCard = {
+  display: "flex",
+  alignItems: "center",
+  gap: 9,
+  minWidth: 0,
+  padding: "10px 11px",
+  borderRadius: 15,
+  background: "rgba(2,23,53,.34)",
+  border: "1px solid rgba(255,255,255,.11)",
+};
+
+const heroMetricIcon = { display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 10, background: "rgba(94,196,255,.12)", color: "#7dd5ff", fontSize: 14, fontWeight: 950 };
+const heroMetricLabel = { display: "block", color: "rgba(220,239,255,.56)", fontSize: 8, fontWeight: 950, letterSpacing: .7 };
+const heroMetricValue = { display: "block", color: "#fff", fontSize: 17, lineHeight: 1.1, marginTop: 2 };
+const heroMetricSuffix = { fontStyle: "normal", fontSize: 9, color: "rgba(255,255,255,.5)", marginLeft: 2 };
+
 const accountCard = {
-  flex: "0 1 285px",
-  padding: 18,
-  borderRadius: 20,
-  background: "rgba(2,20,48,.38)",
-  border: "1px solid rgba(255,255,255,.2)",
-  backdropFilter: "blur(10px)",
+  flex: "0 1 260px",
+  minWidth: 220,
+  padding: 16,
+  borderRadius: 22,
+  background: "linear-gradient(160deg,rgba(4,39,82,.86),rgba(3,27,61,.72))",
+  border: "1px solid rgba(126,213,255,.24)",
+  boxShadow: "0 18px 42px rgba(0,12,35,.24), inset 0 1px 0 rgba(255,255,255,.08)",
+  backdropFilter: "blur(14px)",
   display: "flex",
   flexDirection: "column" as const,
   justifyContent: "center",
+  gap: 5,
 };
+const accountTopRow = { display: "flex", alignItems: "center", gap: 10 };
+const accountAvatar = { display: "grid", placeItems: "center", width: 39, height: 39, borderRadius: 13, background: "linear-gradient(145deg,#356fe7,#7043d8)", border: "1px solid rgba(255,255,255,.24)", color: "#fff", fontWeight: 950, boxShadow: "0 8px 20px rgba(28,67,168,.30)" };
+const accountActionButton = { border: "1px solid rgba(131,215,255,.28)", borderRadius: 12, padding: "9px 11px", background: "rgba(41,132,210,.14)", color: "#e9f8ff", cursor: "pointer", fontWeight: 900, marginTop: 4 };
+
+const sectionHeadingRow = { display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, margin: "4px 2px 9px" };
+const sectionSubtext = { color: "rgba(228,242,255,.56)", fontSize: 10, marginTop: 3 };
+const smartReadyBadge = { padding: "6px 9px", borderRadius: 999, background: "rgba(19,185,115,.11)", border: "1px solid rgba(71,224,159,.22)", color: "#9df2c7", fontSize: 9, fontWeight: 900 };
 
 const onlineBadge = {
   color: "#c8ffe8",
@@ -6268,16 +6349,35 @@ const systemMenuLabel = {
 const navBar = {
   display: "grid",
   gridTemplateColumns: "repeat(7,minmax(148px,1fr))",
-  gap: 11,
+  gap: 12,
   overflowX: "auto" as const,
   alignItems: "stretch",
-  padding: 11,
-  borderRadius: 22,
-  background: "rgba(2,18,45,.40)",
-  border: "1px solid rgba(255,255,255,.18)",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,.08)",
+  padding: 12,
+  borderRadius: 24,
+  background: "rgba(2,18,45,.34)",
+  border: "1px solid rgba(255,255,255,.14)",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,.07), 0 18px 44px rgba(0,15,40,.15)",
   marginBottom: 16,
 };
+
+const aiPriorityBar = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 14,
+  flexWrap: "wrap" as const,
+  margin: "14px 0 16px",
+  padding: "14px 16px",
+  borderRadius: 18,
+  background: "linear-gradient(135deg,rgba(8,78,170,.50),rgba(7,35,79,.52))",
+  border: "1px solid rgba(104,191,255,.20)",
+  boxShadow: "0 15px 36px rgba(0,15,43,.16)",
+};
+const aiPriorityLeft = { display: "flex", alignItems: "center", gap: 11, minWidth: 0, flex: "1 1 560px" };
+const aiPriorityIcon = { display: "grid", placeItems: "center", flex: "0 0 40px", width: 40, height: 40, borderRadius: 13, background: "linear-gradient(145deg,#1a70d9,#6438c7)", color: "#fff", fontSize: 18, boxShadow: "0 9px 24px rgba(42,85,198,.28)" };
+const aiPriorityLabel = { display: "block", color: "#8fd9ff", fontSize: 9, fontWeight: 950, letterSpacing: 1.05 };
+const aiPriorityText = { display: "block", color: "#fff", fontSize: 12, lineHeight: 1.45, marginTop: 2 };
+const aiPriorityButton = { border: "1px solid rgba(255,255,255,.18)", borderRadius: 12, padding: "9px 12px", background: "rgba(255,255,255,.09)", color: "#fff", cursor: "pointer", fontSize: 10, fontWeight: 900 };
 
 
 const statsGrid = {
@@ -7464,21 +7564,17 @@ const smallButton = {
   transition: "background .2s ease, color .2s ease, border-color .2s ease",
 };
 
-
 const primaryButton = {
-  appearance: "none" as const,
-  border: "1px solid #0d5bd7",
+  border: "1px solid rgba(96,165,250,.62)",
   borderRadius: 12,
-  padding: "10px 16px",
-  background: "linear-gradient(135deg, #0d5bd7, #164ea5)",
+  padding: "11px 16px",
+  background: "linear-gradient(135deg, #0f6fdd 0%, #2447d8 100%)",
   color: "#ffffff",
-  cursor: "pointer",
-  fontWeight: 900,
   fontSize: 12,
-  lineHeight: 1.2,
+  fontWeight: 900,
+  cursor: "pointer",
+  boxShadow: "0 8px 18px rgba(15, 91, 204, 0.22)",
   whiteSpace: "nowrap" as const,
-  boxShadow: "0 8px 18px rgba(13, 91, 215, 0.20)",
-  transition: "transform .18s ease, box-shadow .18s ease, opacity .18s ease",
 };
 
 const insightCardStyle = {
