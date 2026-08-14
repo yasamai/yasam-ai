@@ -1291,102 +1291,118 @@ KURALLAR
             </p>
           </div>
 
-          <div style={accountCard}>
-            <small style={{ opacity: 0.74, fontWeight: 900 }}>AKTİF HESAP</small>
-            <strong style={{ overflowWrap: "anywhere", marginTop: 5 }}>{user?.email}</strong>
-            <span style={onlineBadge}>● Bulut sistemi aktif</span>
-            <button type="button" onClick={signOut} style={smallWhiteButton}>
-              Çıkış Yap
-            </button>
-          </div>
+          <div
+  style={{
+    ...accountCard,
+    padding: "12px 14px",
+    minWidth: 190,
+    maxWidth: 220,
+    gap: 4,
+  }}
+>
+  <small style={{ opacity: 0.7, fontWeight: 900 }}>AKTİF HESAP</small>
+  <strong style={{ overflowWrap: "anywhere", fontSize: 12 }}>{user?.email}</strong>
+  <span style={{ ...onlineBadge, fontSize: 11 }}>● Bulut sistemi aktif</span>
+  <button
+    type="button"
+    onClick={signOut}
+    style={{ ...smallWhiteButton, padding: "7px 10px", marginTop: 4 }}
+  >
+    Çıkış Yap
+  </button>
+</div>
         </header>
 
-        <div style={systemMenuLabel}>ÜST ANA SİSTEM MENÜSÜ</div>
-        <nav style={navBar}>
-          <NavButton active={view === "dashboard"} onClick={() => setView("dashboard")}>
-            Dashboard
-          </NavButton>
-          <NavButton active={view === "reports"} onClick={() => setView("reports")}>
-            Raporlar
-          </NavButton>
-          <NavButton active={view === "compare"} onClick={() => setView("compare")}>
-            AI Karşılaştırma
-          </NavButton>
-          <NavButton active={view === "data"} onClick={() => setView("data")}>
-            Türkiye Veri Motoru
-          </NavButton>
-          <NavButton active={view === "verification"} onClick={() => setView("verification")}>
-            Veri Doğrulama
-          </NavButton>
-          <NavButton active={view === "ecosystem"} onClick={() => setView("ecosystem")}>
-            Gayrimenkul Karar Merkezi
-          </NavButton>
+<div style={systemMenuLabel}>HIZLI BAŞLANGIÇ</div>
+
+        <nav
+          style={{
+            ...navBar,
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          }}
+        >
           <NavButton active={view === "new"} onClick={startNewAnalysis}>
             + Yeni Analiz
           </NavButton>
+
+          <NavButton active={view === "reports"} onClick={() => setView("reports")}>
+            Raporlarım
+          </NavButton>
+
+          <NavButton active={view === "compare"} onClick={() => setView("compare")}>
+            AI Karşılaştırma
+          </NavButton>
         </nav>
 
-        <nav
-          aria-label="Yaşam AI modül menüsü"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(9,minmax(0,1fr))",
-            gap: 7,
-            alignItems: "stretch",
-            margin: "14px 0 18px",
-            padding: "10px",
-            borderRadius: 22,
-            border: "2px solid rgba(91,159,216,.72)",
-            background: "linear-gradient(145deg,rgba(255,255,255,.98),rgba(238,247,255,.97))",
-            boxShadow: "0 16px 36px rgba(13,67,111,.14), inset 0 0 0 1px rgba(255,255,255,.80)",
-            width: "100%",
-            boxSizing: "border-box",
-          }}
-        >
-          {[
-            ["Ana Merkez", "⌂", "Kontrol Paneli", "command", "", "#0d5bd7"],
-            ["AI Analiz", "✦", "Akıllı Analiz", "ai", "", "#7a35cf"],
-            ["Türkiye", "◉", "81 İl Veri Motoru", "market", "", "#039bc1"],
-            ["Banka", "▥", "Finans Merkezi", "enterprise", "bank", "#16a05d"],
-            ["Projeler", "▰", "Proje Yönetimi", "enterprise", "developer", "#e89413"],
-            ["Portföy", "◔", "Yatırım Portföyü", "enterprise", "investor", "#c42679"],
-            ["Raporlar", "▥", "Rapor Merkezi", "pdf", "", "#008c98"],
-            ["Üyelik", "♛", "Üyelik İşlemleri", "membership", "", "#c99100"],
-            ["Yönetim", "⚙", "Sistem Yönetimi", "admin", "", "#40536f"],
-          ].map(([label, icon, subtitle, sectionTarget, role, color]) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => openPlatformModule(sectionTarget, role || undefined)}
-              style={{
-                minWidth: 0,
-                width: "100%",
-                minHeight: 82,
-                display: "grid",
-                gridTemplateColumns: "34px minmax(0,1fr)",
-                alignItems: "center",
-                gap: 7,
-                padding: "10px 8px",
-                borderRadius: 15,
-                border: `2px solid ${color}72`,
-                background: "linear-gradient(145deg,#ffffff,#f3f8fc)",
-                color: "#234866",
-                boxShadow: `0 7px 16px rgba(31,66,96,.09), inset 0 -4px 0 ${color}`,
-                cursor: "pointer",
-                textAlign: "left",
-                transition: "transform .18s ease, box-shadow .18s ease",
-                overflow: "hidden",
-                boxSizing: "border-box",
-              }}
-            >
-              <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: `${color}18`, border: `1px solid ${color}38`, color, fontSize: 19, fontWeight: 950 }}>{icon}</span>
-              <span style={{ minWidth: 0, overflow: "hidden" }}>
-                <strong style={{ display: "block", fontSize: 12, lineHeight: 1.15, fontWeight: 950, whiteSpace: "normal", overflowWrap: "anywhere" }}>{label}</strong>
-                <small style={{ display: "block", marginTop: 4, opacity: .72, fontSize: 8, lineHeight: 1.15, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</small>
-              </span>
-            </button>
-          ))}
-        </nav>
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{
+              ...systemMenuLabel,
+              marginBottom: 8,
+              opacity: 0.72,
+            }}
+          >
+            DİĞER MODÜLLER
+          </div>
+
+          <nav
+            aria-label="Yaşam AI modül menüsü"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+              gap: 7,
+              alignItems: "stretch",
+              padding: "10px",
+              borderRadius: 16,
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.14)",
+            }}
+          >
+            {[
+              ["Ana Merkez", "⌂", "Kontrol Paneli", "command", "", "#0d5bd7"],
+              ["AI Analiz", "✦", "Akıllı Analiz", "ai", "", "#7a35cf"],
+              ["Türkiye", "◉", "81 İl Veri Motoru", "market", "", "#039bc1"],
+              ["Banka", "▥", "Finans Merkezi", "enterprise", "bank", "#16a05d"],
+              ["Projeler", "▰", "Proje Yönetimi", "enterprise", "developer", "#e89413"],
+              ["Portföy", "◔", "Yatırım Portföyü", "enterprise", "investor", "#c42679"],
+              ["Raporlar", "▥", "Rapor Merkezi", "pdf", "", "#008c98"],
+              ["Üyelik", "♛", "Üyelik İşlemleri", "membership", "", "#c99100"],
+              ["Yönetim", "⚙", "Sistem Yönetimi", "admin", "", "#40536f"],
+            ].map(([label, icon, subtitle, sectionTarget, role, color]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => openPlatformModule(sectionTarget, role || undefined)}
+                style={{
+                  minWidth: 0,
+                  width: "100%",
+                  minHeight: 82,
+                  display: "grid",
+                  gridTemplateColumns: "34px minmax(0,1fr)",
+                  alignItems: "center",
+                  gap: 7,
+                  padding: "10px 8px",
+                  borderRadius: 15,
+                  border: `2px solid ${color}72`,
+                  background: "linear-gradient(145deg,#ffffff,#f3f8fc)",
+                  color: "#234866",
+                  boxShadow: `0 7px 16px rgba(31,66,96,.09), inset 0 -4px 0 ${color}`,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transition: "transform .18s ease, box-shadow .18s ease",
+                  overflow: "hidden",
+                  boxSizing: "border-box",
+                }}
+              >
+                <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: `${color}18`, border: `1px solid ${color}38`, color, fontSize: 19, fontWeight: 950 }}>{icon}</span>
+                <span style={{ minWidth: 0, overflow: "hidden" }}>
+                  <strong style={{ display: "block", fontSize: 12, lineHeight: 1.15, fontWeight: 950, whiteSpace: "normal", overflowWrap: "anywhere" }}>{label}</strong>
+                  <small style={{ display: "block", marginTop: 4, opacity: .72, fontSize: 8, lineHeight: 1.15, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</small>
+                </span>
+              </button>
+            ))}
+          </nav>
+        </div>
 
         {notice ? <div style={successNotice}>{notice}</div> : null}
         {error ? <div style={errorNotice}>{error}</div> : null}
