@@ -54,6 +54,17 @@ export default function AnalysisPage() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [view, setView] = useState<ViewMode>("dashboard");
+  const [dashboardMode, setDashboardMode] = useState<"personal" | "professional">("personal");
+  const [aiCommand, setAiCommand] = useState("");
+  const [aiCommandResult, setAiCommandResult] = useState("");
+  const [aiCommandLoading, setAiCommandLoading] = useState(false);
+  const [memorySaved, setMemorySaved] = useState(false);
+  const [userMemory, setUserMemory] = useState({
+    investmentGoal: "Dengeli getiri",
+    riskTolerance: "Orta",
+    maxBuildingAge: "",
+    minRentalYield: "",
+  });
   const [historyMode, setHistoryMode] = useState<HistoryMode>("active");
   const [form, setForm] = useState<FormState>(initialForm);
   const [records, setRecords] = useState<CloudRecord[]>([]);
@@ -142,6 +153,18 @@ export default function AnalysisPage() {
     return () => window.clearInterval(timer);
   }, [loading]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    try {
+      const savedMemory = window.localStorage.getItem("yasam-ai:user-memory");
+      if (savedMemory) {
+        const parsed = JSON.parse(savedMemory) as Partial<typeof userMemory>;
+        window.queueMicrotask(() => setUserMemory((current) => ({ ...current, ...parsed })));
+      }
+    } catch {
+      // Kişisel tercih hafızası isteğe bağlıdır; geçersiz yerel veri ekranı durdurmaz.
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -800,6 +823,77 @@ KURALLAR
     router.replace("/giris");
   }
 
+  function saveUserMemory() {
+    try {
+      window.localStorage.setItem("yasam-ai:user-memory", JSON.stringify(userMemory));
+      setMemorySaved(true);
+      window.setTimeout(() => setMemorySaved(false), 2200);
+    } catch {
+      setError("Akıllı hafıza tercihleri bu tarayıcıda kaydedilemedi.");
+    }
+  }
+
+  function extractMoneyFromReportText(value: string, label: string) {
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = value.match(new RegExp(`${escapedLabel}\\s*:?\\s*₺?([0-9.]+)`, "i"));
+    if (!match?.[1]) return 0;
+    const numeric = Number(match[1].replace(/\./g, ""));
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  async function runAiCommand(record: CloudRecord | null, preset?: string) {
+    const question = (preset ?? aiCommand).trim();
+    if (!question) {
+      setError("AI Karar Komutanı için bir soru yazın.");
+      return;
+    }
+    if (!record) {
+      setError("AI değerlendirmesi için önce aktif bir rapor oluşturun.");
+      return;
+    }
+
+    setAiCommandLoading(true);
+    setAiCommandResult("");
+    setError("");
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `Sen Yaşam AI Karar Komutanı'sın. Aşağıdaki mevcut gayrimenkul raporunu değiştirmeden, yalnızca kullanıcının sorusuna kısa, sayısal ve açıklanabilir karar desteği ver. Verilmeyen bilgiyi uydurma. Resmî doğrulama yapılmış gibi davranma.
+
+KULLANICI HAFIZASI
+Yatırım amacı: ${userMemory.investmentGoal}
+Risk toleransı: ${userMemory.riskTolerance}
+Maksimum bina yaşı tercihi: ${userMemory.maxBuildingAge || "Belirtilmedi"}
+Minimum kira getirisi tercihi: ${userMemory.minRentalYield || "Belirtilmedi"}
+
+DOSYA
+Konum: ${[record.city, record.district, record.neighborhood].filter(Boolean).join(" / ")}
+Tür: ${record.property_type || "Belirtilmedi"}
+Alan: ${record.area || "Belirtilmedi"}
+Talep fiyatı: ${record.asking_price || "Belirtilmedi"}
+Karar: ${record.decision || decisionFromReport(record.report || "")}
+
+MEVCUT RAPOR
+${record.report || "Rapor metni yok"}
+
+SORU
+${question}
+
+Yanıt biçimi: 1) Net cevap, 2) En önemli 3 gerekçe, 3) Bir sonraki en doğru aksiyon.`,
+        }),
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) throw new Error(extractText(data) || "AI komutu çalıştırılamadı.");
+      setAiCommandResult(extractText(data) || "AI yanıtı boş geldi.");
+    } catch (commandError) {
+      setError(commandError instanceof Error ? commandError.message : "AI komutu çalıştırılamadı.");
+    } finally {
+      setAiCommandLoading(false);
+    }
+  }
+
   const activeRecords = useMemo(() => records.filter((item) => !item.is_archived), [records]);
 
   const selectedMapRecord = useMemo(
@@ -872,6 +966,98 @@ KURALLAR
       priority,
     };
   }, [activeRecords, decisionStats]);
+
+  const priorityRecords = useMemo(() => {
+    return activeRecords
+      .map((item) => {
+        const scores = scoresFromReport(item.report ?? "");
+        const decision = (item.decision ?? "").toLocaleUpperCase("tr-TR");
+        const decisionBoost = decision === "AL" ? 30 : decision.includes("PAZARLIK") ? 20 : decision.includes("BEKLE") ? 5 : 0;
+        const opportunity = scores.opportunity ?? 0;
+        const investment = scores.investment ?? 0;
+        const trust = scores.trust ?? 0;
+        const risk = scores.risk ?? 50;
+        const priorityScore = decisionBoost + opportunity * 0.35 + investment * 0.25 + trust * 0.2 - risk * 0.2;
+        return { item, scores, decision, priorityScore };
+      })
+      .sort((a, b) => b.priorityScore - a.priorityScore)
+      .slice(0, 3);
+  }, [activeRecords]);
+
+  const commandRecord = priorityRecords[0]?.item ?? activeRecords[0] ?? null;
+  const commandScores = commandRecord ? scoresFromReport(commandRecord.report ?? "") : emptyScores;
+  const commandDecision = commandRecord
+    ? (commandRecord.decision || decisionFromReport(commandRecord.report ?? "") || "BEKLE").toLocaleUpperCase("tr-TR")
+    : "—";
+
+  const actionBuckets = useMemo(() => {
+    const buckets = { immediate: [] as CloudRecord[], watch: [] as CloudRecord[], clear: [] as CloudRecord[] };
+    activeRecords.forEach((item) => {
+      const scores = scoresFromReport(item.report ?? "");
+      const decision = (item.decision ?? decisionFromReport(item.report ?? "")).toLocaleUpperCase("tr-TR");
+      if ((scores.risk ?? 0) >= 65 || (scores.trust ?? 100) < 50) buckets.immediate.push(item);
+      else if (decision.includes("BEKLE") || (scores.risk ?? 0) >= 50 || (scores.trust ?? 100) < 65) buckets.watch.push(item);
+      else buckets.clear.push(item);
+    });
+    return buckets;
+  }, [activeRecords]);
+
+  const commandReasons = useMemo(() => {
+    if (!commandRecord) return ["Aktif rapor bulunmuyor."];
+    const reasons: string[] = [];
+    if ((commandScores.risk ?? 0) >= 65) reasons.push(`Risk puanı ${commandScores.risk}/100; doğrulama önceliği yüksek.`);
+    if ((commandScores.trust ?? 100) < 50) reasons.push(`Veri güveni ${commandScores.trust}/100; eksik kanıtlar tamamlanmalı.`);
+    if ((commandScores.opportunity ?? 0) >= 65) reasons.push(`Fırsat puanı ${commandScores.opportunity}/100; fiyat avantajı incelemeye değer.`);
+    if ((commandScores.investment ?? 0) >= 65) reasons.push(`Yatırım puanı ${commandScores.investment}/100; dosya güçlü adaylar arasında.`);
+    if (commandDecision.includes("PAZARLIK")) reasons.push("Mevcut karar pazarlık; teklif sınırı ve kanıtlar birlikte kontrol edilmeli.");
+    if (commandDecision.includes("BEKLE")) reasons.push("Mevcut karar bekle; karar vermeden önce veri kalitesi artırılmalı.");
+    return reasons.length ? reasons.slice(0, 4) : ["Rapor dengeli; yeni veri veya karşılaştırma karar kalitesini artırabilir."];
+  }, [commandDecision, commandRecord, commandScores]);
+
+  const negotiationSnapshot = useMemo(() => {
+    if (!commandRecord) return { opening: 0, ceiling: 0 };
+    const text = commandRecord.report ?? "";
+    return {
+      opening: extractMoneyFromReportText(text, "Başlangıç teklif önerisi"),
+      ceiling: extractMoneyFromReportText(text, "üst teklif sınırı"),
+    };
+  }, [commandRecord]);
+
+  const workflowSteps = useMemo(() => {
+    const trust = commandScores.trust ?? 0;
+    const decision = commandDecision;
+    return [
+      { label: "Analiz", status: commandRecord ? "Tamam" : "Bekliyor" },
+      { label: "Emsal", status: trust >= 65 ? "Güçlü" : "Kontrol" },
+      { label: "Doğrulama", status: trust >= 80 ? "Güçlü" : "Bekliyor" },
+      { label: "Teklif", status: decision.includes("AL") || decision.includes("PAZARLIK") ? "Hazır" : "Bekliyor" },
+      { label: "Karar", status: decision === "—" ? "Bekliyor" : decision },
+    ];
+  }, [commandDecision, commandRecord, commandScores.trust]);
+
+  const recentSevenDayRecords = useMemo(() => {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return activeRecords.filter((item) => {
+      const timestamp = new Date(item.updated_at || item.created_at || 0).getTime();
+      return Number.isFinite(timestamp) && timestamp >= cutoff;
+    });
+  }, [activeRecords]);
+
+  const commandRegionalData = useMemo(() => {
+    if (!commandRecord) return null;
+    const city = (commandRecord.city ?? "").toLocaleLowerCase("tr-TR");
+    const district = (commandRecord.district ?? "").toLocaleLowerCase("tr-TR");
+    const neighborhood = (commandRecord.neighborhood ?? "").toLocaleLowerCase("tr-TR");
+    return regionalData
+      .map((item) => {
+        let score = 0;
+        if (item.city.toLocaleLowerCase("tr-TR") === city) score += 40;
+        if (item.district.toLocaleLowerCase("tr-TR") === district) score += 35;
+        if (item.neighborhood.toLocaleLowerCase("tr-TR") === neighborhood) score += 25;
+        return { item, score };
+      })
+      .sort((a, b) => b.score - a.score)[0]?.item ?? null;
+  }, [commandRecord, regionalData]);
 
   const visibleRecords = useMemo(() => {
     const source =
@@ -1436,121 +1622,419 @@ KURALLAR
 
         {view === "dashboard" ? (
           <>
-            <section style={statsGrid}>
-              <Stat title="Toplam Aktif Rapor" value={activeRecords.length} text="Bulutta saklanan karar dosyası" />
-              <Stat title="Bu Ay" value={thisMonthCount} text="Bu ay oluşturulan analiz" />
-              <Stat title="Favoriler" value={favoriteRecords.length} text="Öncelikli yatırım dosyası" />
-              <Stat
-                title="Ortalama Yatırım"
-                value={avgScores.investment ?? "—"}
-                suffix={avgScores.investment === null ? "" : "/100"}
-                text="Tüm aktif rapor ortalaması"
-              />
-            </section>
-
-            <section style={insightPanel}>
-              <div style={sectionHeader}>
+            <section
+              style={{
+                ...panelStyle,
+                padding: 14,
+                background: "linear-gradient(145deg,rgba(255,255,255,.98),rgba(241,247,253,.98))",
+              }}
+            >
+              <div style={{ ...sectionHeader, marginBottom: 10 }}>
                 <div>
-                  <div style={eyebrow}>AKILLI PORTFÖY ÖZETİ</div>
-                  <h2 style={sectionTitle}>Şimdi Neye Odaklanmalı?</h2>
+                  <div style={eyebrow}>ÇALIŞMA MODU</div>
+                  <h2 style={{ ...sectionTitle, marginBottom: 0 }}>
+                    {dashboardMode === "personal" ? "Benim Raporlarım" : "Profesyonel Portföy"}
+                  </h2>
                 </div>
-                <button type="button" onClick={() => setView("compare")} style={softButton}>
-                  Karşılaştır
-                </button>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+                    gap: 6,
+                    padding: 5,
+                    borderRadius: 14,
+                    background: "#eaf2f9",
+                    minWidth: 320,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setDashboardMode("personal")}
+                    style={{
+                      ...smallButton,
+                      padding: "10px 12px",
+                      border: dashboardMode === "personal" ? "1px solid #0b5fa8" : "1px solid transparent",
+                      background: dashboardMode === "personal" ? "#ffffff" : "transparent",
+                      color: "#17324d",
+                      boxShadow: dashboardMode === "personal" ? "0 5px 14px rgba(24,73,113,.10)" : "none",
+                    }}
+                  >
+                    Benim Raporlarım
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDashboardMode("professional")}
+                    style={{
+                      ...smallButton,
+                      padding: "10px 12px",
+                      border: dashboardMode === "professional" ? "1px solid #7a35cf" : "1px solid transparent",
+                      background: dashboardMode === "professional" ? "#ffffff" : "transparent",
+                      color: "#17324d",
+                      boxShadow: dashboardMode === "professional" ? "0 5px 14px rgba(92,43,155,.12)" : "none",
+                    }}
+                  >
+                    Profesyonel Portföy
+                  </button>
+                </div>
               </div>
-
-              <div style={insightCallout}>{portfolioInsights.priority}</div>
-
-              <div style={insightGrid}>
-                <InsightCard
-                  label="Aksiyon Alınabilir"
-                  value={portfolioInsights.actionableFiles}
-                  text="AL veya pazarlık kararı bulunan dosya"
-                  icon="↗"
-                />
-                <InsightCard
-                  label="Güçlü Fırsat"
-                  value={portfolioInsights.strongOpportunities}
-                  text="Fırsat puanı 65 ve üzeri rapor"
-                  icon="✦"
-                />
-                <InsightCard
-                  label="Yüksek Risk"
-                  value={portfolioInsights.highRiskFiles}
-                  text="Risk puanı 65 ve üzeri dosya"
-                  icon="!"
-                />
-                <InsightCard
-                  label="Düşük Veri Güveni"
-                  value={portfolioInsights.lowTrustFiles}
-                  text="Veri güveni 50 altında kalan rapor"
-                  icon="✓"
-                />
+              <div style={{ fontSize: 13, lineHeight: 1.55, color: "#60758a" }}>
+                {dashboardMode === "personal"
+                  ? "Kendi gayrimenkul kararlarınız için sade görünüm: raporlar, son analizler, karşılaştırma ve doğrulama tek yerde."
+                  : "Yoğun portföy yönetimi için gelişmiş görünüm: öncelik, risk, fırsat, skor dağılımı ve konum zekâsı birlikte."}
               </div>
             </section>
 
-            <section style={twoColumnGrid}>
-              <article style={panelStyle}>
-                <div style={sectionHeader}>
-                  <div>
-                    <div style={eyebrow}>PORTFÖY SAĞLIK PANELİ</div>
-                    <h2 style={sectionTitle}>Ortalama Skorlar</h2>
-                  </div>
-                </div>
-                <DashboardScore label="Veri Güven" value={avgScores.trust} />
-                <DashboardScore label="Yatırım" value={avgScores.investment} />
-                <DashboardScore label="Fırsat" value={avgScores.opportunity} />
-                <DashboardScore label="Risk" value={avgScores.risk} inverse />
-                <DashboardScore label="Likidite" value={avgScores.liquidity} />
-              </article>
-
-              <article style={panelStyle}>
-                <div style={sectionHeader}>
-                  <div>
-                    <div style={eyebrow}>KARAR DAĞILIMI</div>
-                    <h2 style={sectionTitle}>AI Karar Özeti</h2>
-                  </div>
-                </div>
-                <DecisionBar label="AL" value={decisionStats.AL} total={activeRecords.length} />
-                <DecisionBar label="PAZARLIK YAP" value={decisionStats.PAZARLIK} total={activeRecords.length} />
-                <DecisionBar label="BEKLE" value={decisionStats.BEKLE} total={activeRecords.length} />
-                <DecisionBar label="UZAK DUR" value={decisionStats.UZAK} total={activeRecords.length} />
-                <DecisionBar label="DİĞER" value={decisionStats.DIGER} total={activeRecords.length} />
-              </article>
-            </section>
-
-            <LocationIntelligencePanel
-              records={activeRecords}
-              selected={selectedMapRecord}
-              selectedId={selectedMapRecord?.id ?? ""}
-              onSelect={setMapRecordId}
-              mapType={mapType}
-              onMapTypeChange={setMapType}
-            />
-
-            <section style={panelStyle}>
-              <div style={sectionHeader}>
-                <div>
-                  <div style={eyebrow}>OPERASYON MERKEZİ</div>
-                  <h2 style={sectionTitle}>Son Analizler</h2>
-                </div>
-                <button type="button" onClick={() => setView("reports")} style={softButton}>
-                  Tümünü Gör
-                </button>
-              </div>
-
-              <div style={{ display: "grid", gap: 10 }}>
-                {activeRecords.slice(0, 5).map((item) => (
-                  <ReportRow
-                    key={item.id}
-                    item={item}
-                    onOpen={() => openRecord(item)}
-                    onMap={() => window.open(googleMapsUrl(item), "_blank", "noopener,noreferrer")}
+            {dashboardMode === "personal" ? (
+              <>
+                <section style={statsGrid}>
+                  <Stat title="Aktif Raporlarım" value={activeRecords.length} text="Bulutta saklanan kişisel karar dosyaları" />
+                  <Stat title="Bu Ay" value={thisMonthCount} text="Bu ay oluşturduğum analiz" />
+                  <Stat title="Favorilerim" value={favoriteRecords.length} text="Öncelik verdiğim raporlar" />
+                  <Stat
+                    title="Son Karar"
+                    value={activeRecords[0]?.decision || (activeRecords[0]?.report ? decisionFromReport(activeRecords[0].report) : "—")}
+                    text="En son oluşturulan raporun kararı"
                   />
-                ))}
-                {!activeRecords.length ? <div style={emptyState}>Henüz aktif rapor bulunmuyor.</div> : null}
-              </div>
-            </section>
+                </section>
+
+                <section style={panelStyle}>
+                  <div style={sectionHeader}>
+                    <div>
+                      <div style={eyebrow}>BENİM RAPORLARIM</div>
+                      <h2 style={sectionTitle}>Son Kararlarım</h2>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <button type="button" onClick={startNewAnalysis} style={softButton}>+ Yeni Analiz</button>
+                      <button type="button" onClick={() => setView("compare")} style={softButton}>Karşılaştır</button>
+                      <button type="button" onClick={() => setView("reports")} style={softButton}>Tüm Raporlarım</button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {activeRecords.slice(0, 5).map((item) => (
+                      <ReportRow
+                        key={item.id}
+                        item={item}
+                        onOpen={() => openRecord(item)}
+                        onMap={() => window.open(googleMapsUrl(item), "_blank", "noopener,noreferrer")}
+                      />
+                    ))}
+                    {!activeRecords.length ? (
+                      <div style={emptyState}>
+                        Henüz raporunuz yok. İlk gayrimenkul analizinizi başlatmak için “+ Yeni Analiz” seçeneğini kullanın.
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section style={{ ...panelStyle, padding: 18 }}>
+                  <div style={eyebrow}>KİŞİSEL KULLANIM</div>
+                  <h2 style={{ ...sectionTitle, marginTop: 6 }}>Sade Akış</h2>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
+                    <div style={insightCardStyle}><strong>1. Analiz Et</strong><small>Taşınmaz bilgilerini gir ve AI karar raporunu oluştur.</small></div>
+                    <div style={insightCardStyle}><strong>2. Karşılaştır</strong><small>İki raporu yan yana değerlendir, güçlü ve zayıf yönleri gör.</small></div>
+                    <div style={insightCardStyle}><strong>3. Doğrula</strong><small>Premium PDF ve QR ile rapor kimliğini doğrula.</small></div>
+                  </div>
+                </section>
+              </>
+            ) : (
+              <>
+                <section style={statsGrid}>
+                  <Stat title="Toplam Aktif Rapor" value={activeRecords.length} text="Bulutta saklanan karar dosyası" />
+                  <Stat title="Bu Ay" value={thisMonthCount} text="Bu ay oluşturulan analiz" />
+                  <Stat title="Favoriler" value={favoriteRecords.length} text="Öncelikli yatırım dosyası" />
+                  <Stat
+                    title="Ortalama Yatırım"
+                    value={avgScores.investment ?? "—"}
+                    suffix={avgScores.investment === null ? "" : "/100"}
+                    text="Tüm aktif rapor ortalaması"
+                  />
+                </section>
+
+                <section style={insightPanel}>
+                  <div style={sectionHeader}>
+                    <div>
+                      <div style={eyebrow}>AKILLI PORTFÖY ÖZETİ</div>
+                      <h2 style={sectionTitle}>Şimdi Neye Odaklanmalı?</h2>
+                    </div>
+                    <button type="button" onClick={() => setView("compare")} style={softButton}>
+                      Karşılaştır
+                    </button>
+                  </div>
+
+                  <div style={insightCallout}>{portfolioInsights.priority}</div>
+
+                  <div style={insightGrid}>
+                    <InsightCard label="Aksiyon Alınabilir" value={portfolioInsights.actionableFiles} text="AL veya pazarlık kararı bulunan dosya" icon="↗" />
+                    <InsightCard label="Güçlü Fırsat" value={portfolioInsights.strongOpportunities} text="Fırsat puanı 65 ve üzeri rapor" icon="✦" />
+                    <InsightCard label="Yüksek Risk" value={portfolioInsights.highRiskFiles} text="Risk puanı 65 ve üzeri dosya" icon="!" />
+                    <InsightCard label="Düşük Veri Güveni" value={portfolioInsights.lowTrustFiles} text="Veri güveni 50 altında kalan rapor" icon="✓" />
+                  </div>
+                </section>
+
+                <section style={{ ...panelStyle, padding: 0, overflow: "hidden" }}>
+                  <div style={{ padding: 20, background: "linear-gradient(135deg,#071d35,#0b5fa8 68%,#7a35cf)", color: "white" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+                      <div style={{ maxWidth: 760 }}>
+                        <div style={{ ...eyebrow, color: "#b9d9ff" }}>AI KARAR KOMUTANI</div>
+                        <h2 style={{ margin: "7px 0 8px", fontSize: 28, lineHeight: 1.12 }}>Bugünkü En Önemli Hareket</h2>
+                        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, opacity: .9 }}>
+                          {commandRecord
+                            ? portfolioInsights.priority
+                            : "İlk raporunuzu oluşturun; Yaşam AI karar, kanıt ve aksiyon zincirini sizin için yönetsin."}
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button type="button" disabled={!commandRecord} onClick={() => commandRecord && openRecord(commandRecord)} style={{ ...softButton, background: "white" }}>İncele</button>
+                        <button type="button" disabled={!commandRecord} onClick={() => setView("compare")} style={{ ...softButton, background: "white" }}>Karşılaştır</button>
+                        <button type="button" disabled={!commandRecord} onClick={() => { setView("reports"); setNotice("Doğrulama için ilgili raporu açıp Premium PDF / QR alanını kullanın."); }} style={{ ...softButton, background: "#f4cc75", borderColor: "#f4cc75" }}>Doğrula</button>
+                      </div>
+                    </div>
+
+                    {commandRecord ? (
+                      <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1.4fr .8fr", gap: 12 }}>
+                        <div style={{ padding: 14, borderRadius: 16, background: "rgba(255,255,255,.10)", border: "1px solid rgba(255,255,255,.16)" }}>
+                          <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 1.2, opacity: .72 }}>NEDEN BU KARAR?</div>
+                          <strong style={{ display: "block", marginTop: 5, fontSize: 19 }}>{commandDecision}</strong>
+                          <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                            {commandReasons.map((reason) => <div key={reason} style={{ fontSize: 12, lineHeight: 1.45 }}>• {reason}</div>)}
+                          </div>
+                        </div>
+                        <div style={{ padding: 14, borderRadius: 16, background: "rgba(255,255,255,.10)", border: "1px solid rgba(255,255,255,.16)" }}>
+                          <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 1.2, opacity: .72 }}>AKTİF DOSYA</div>
+                          <strong style={{ display: "block", marginTop: 5, fontSize: 16 }}>{[commandRecord.city, commandRecord.district, commandRecord.neighborhood].filter(Boolean).join(" / ") || "Konum yok"}</strong>
+                          <small style={{ display: "block", marginTop: 6, lineHeight: 1.5, opacity: .82 }}>{commandRecord.property_type || "Taşınmaz"} · {commandRecord.area ? `${commandRecord.area} m²` : "Alan yok"} · {commandRecord.asking_price ? formatCurrency(String(commandRecord.asking_price)) : "Fiyat yok"}</small>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div style={{ padding: 18 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 8 }}>
+                      {workflowSteps.map((step) => (
+                        <div key={step.label} style={{ padding: 11, borderRadius: 13, background: "#f3f7fb", border: "1px solid #dbe7f3" }}>
+                          <small style={{ display: "block", color: "#73879a", fontWeight: 900 }}>{step.label}</small>
+                          <strong style={{ display: "block", marginTop: 4, fontSize: 12 }}>{step.status}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+
+                <section style={twoColumnGrid}>
+                  <article style={panelStyle}>
+                    <div style={sectionHeader}><div><div style={eyebrow}>AKSİYON MERKEZİ</div><h2 style={sectionTitle}>Hemen İncele · İzle · Sorun Yok</h2></div></div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 9 }}>
+                      {[
+                        ["Hemen İncele", actionBuckets.immediate.length, "Risk yüksek veya veri güveni düşük", "#b42318"],
+                        ["İzle", actionBuckets.watch.length, "Karar/veri seviyesi takip edilmeli", "#9a6500"],
+                        ["Sorun Yok", actionBuckets.clear.length, "Mevcut görünümde kritik sinyal yok", "#16794a"],
+                      ].map(([label, count, text, color]) => (
+                        <div key={String(label)} style={{ padding: 13, borderRadius: 15, background: "#f7fafc", border: "1px solid #dbe7f3" }}>
+                          <strong style={{ display: "block", fontSize: 22, color: String(color) }}>{count}</strong>
+                          <b style={{ display: "block", marginTop: 3, fontSize: 12 }}>{label}</b>
+                          <small style={{ display: "block", marginTop: 5, color: "#74889b", lineHeight: 1.35 }}>{text}</small>
+                        </div>
+                      ))}
+                    </div>
+                    {actionBuckets.immediate.slice(0, 3).map((item) => (
+                      <button key={item.id} type="button" onClick={() => openRecord(item)} style={{ ...softButton, width: "100%", marginTop: 8, textAlign: "left" }}>
+                        {[item.city, item.district, item.neighborhood].filter(Boolean).join(" / ") || "Konum yok"} · {(item.decision || decisionFromReport(item.report || "")) || "Karar yok"}
+                      </button>
+                    ))}
+                  </article>
+
+                  <article style={panelStyle}>
+                    <div style={sectionHeader}><div><div style={eyebrow}>KANIT & DOĞRULAMA</div><h2 style={sectionTitle}>Karar İçin Eksik Kanıtlar</h2></div></div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {[
+                        ["Rapor kaydı", commandRecord ? "Kayıtlı" : "Bekliyor"],
+                        ["Veri güveni", commandRecord ? `${commandScores.trust ?? "—"}/100` : "Bekliyor"],
+                        ["Gerçekleşmiş emsal", "Doğrulama gerekli"],
+                        ["Tapu / imar", "Resmî teyit gerekli"],
+                        ["Teknik inceleme", "Uzman teyidi gerekli"],
+                      ].map(([label, status]) => (
+                        <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "10px 12px", borderRadius: 12, background: "#f5f8fb", border: "1px solid #e0e9f2" }}>
+                          <span style={{ fontSize: 12, fontWeight: 850 }}>{label}</span><strong style={{ fontSize: 11 }}>{status}</strong>
+                        </div>
+                      ))}
+                    </div>
+                    <button type="button" onClick={() => { setView("reports"); setNotice("Kanıt ve doğrulama adımları için ilgili raporu açın."); }} style={{ ...softButton, width: "100%", marginTop: 10 }}>Doğrulama Akışını Aç</button>
+                  </article>
+                </section>
+
+                <section style={twoColumnGrid}>
+                  <article style={panelStyle}>
+                    <div style={sectionHeader}><div><div style={eyebrow}>PAZARLIK ASİSTANI</div><h2 style={sectionTitle}>Teklif Planı</h2></div></div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+                      <div style={insightCardStyle}><small>Talep</small><strong>{commandRecord?.asking_price ? formatCurrency(String(commandRecord.asking_price)) : "—"}</strong></div>
+                      <div style={insightCardStyle}><small>İlk Teklif</small><strong>{negotiationSnapshot.opening ? formatCurrency(String(negotiationSnapshot.opening)) : "Raporda yok"}</strong></div>
+                      <div style={insightCardStyle}><small>Üst Sınır</small><strong>{negotiationSnapshot.ceiling ? formatCurrency(String(negotiationSnapshot.ceiling)) : "Raporda yok"}</strong></div>
+                    </div>
+                    <div style={{ marginTop: 10, padding: 12, borderRadius: 13, background: "#fff8e8", border: "1px solid #f0d89d", fontSize: 12, lineHeight: 1.5 }}>
+                      Sabit yüzde uydurulmaz. Teklif değerleri yalnızca mevcut raporda hesaplandıysa gösterilir; yoksa raporu yeniden analiz edin.
+                    </div>
+                    <button type="button" disabled={!commandRecord} onClick={() => runAiCommand(commandRecord, "Bu dosya için satıcıya gönderebileceğim kısa, profesyonel ve gerekçeli pazarlık mesajı hazırla. Rapor dışı rakam uydurma.")} style={{ ...softButton, width: "100%", marginTop: 10 }}>Satıcı Mesajı Hazırla</button>
+                  </article>
+
+                  <article style={panelStyle}>
+                    <div style={sectionHeader}><div><div style={eyebrow}>YAŞAM UYUMU</div><h2 style={sectionTitle}>Konum ve Günlük Yaşam</h2></div></div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8 }}>
+                      <div style={insightCardStyle}><small>Ulaşım</small><strong>{commandRegionalData?.transportScore ? `${commandRegionalData.transportScore}/100` : "Veri yok"}</strong></div>
+                      <div style={insightCardStyle}><small>Altyapı</small><strong>{commandRegionalData?.infrastructureScore ? `${commandRegionalData.infrastructureScore}/100` : "Veri yok"}</strong></div>
+                      <div style={insightCardStyle}><small>Okul / Hastane</small><strong>Harita teyidi</strong></div>
+                      <div style={insightCardStyle}><small>Market / Çevre</small><strong>Harita teyidi</strong></div>
+                    </div>
+                    <button type="button" disabled={!commandRecord} onClick={() => commandRecord && window.open(googleMapsUrl(commandRecord), "_blank", "noopener,noreferrer")} style={{ ...softButton, width: "100%", marginTop: 10 }}>Haritada İncele</button>
+                  </article>
+                </section>
+
+                <section style={twoColumnGrid}>
+                  <article style={panelStyle}>
+                    <div style={sectionHeader}><div><div style={eyebrow}>AKILLI HAFIZA</div><h2 style={sectionTitle}>Yatırım Tercihlerim</h2></div></div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8 }}>
+                      <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 850 }}>Amaç
+                        <select value={userMemory.investmentGoal} onChange={(event) => setUserMemory((current) => ({ ...current, investmentGoal: event.target.value }))} style={inputStyle}>
+                          <option>Dengeli getiri</option><option>Yüksek kira getirisi</option><option>Değer artışı</option><option>Düşük risk</option>
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 850 }}>Risk toleransı
+                        <select value={userMemory.riskTolerance} onChange={(event) => setUserMemory((current) => ({ ...current, riskTolerance: event.target.value }))} style={inputStyle}>
+                          <option>Düşük</option><option>Orta</option><option>Yüksek</option>
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 850 }}>Maksimum bina yaşı
+                        <input value={userMemory.maxBuildingAge} onChange={(event) => setUserMemory((current) => ({ ...current, maxBuildingAge: event.target.value }))} placeholder="Örn. 10" style={inputStyle} />
+                      </label>
+                      <label style={{ display: "grid", gap: 5, fontSize: 11, fontWeight: 850 }}>Minimum kira getirisi %
+                        <input value={userMemory.minRentalYield} onChange={(event) => setUserMemory((current) => ({ ...current, minRentalYield: event.target.value }))} placeholder="Örn. 5" style={inputStyle} />
+                      </label>
+                    </div>
+                    <button type="button" onClick={saveUserMemory} style={{ ...softButton, width: "100%", marginTop: 10 }}>{memorySaved ? "✓ Hafızaya Kaydedildi" : "Tercihlerimi Hatırla"}</button>
+                  </article>
+
+                  <article style={panelStyle}>
+                    <div style={sectionHeader}><div><div style={eyebrow}>KARAR DEĞİŞİKLİĞİ MERKEZİ</div><h2 style={sectionTitle}>Son 7 Gün</h2></div></div>
+                    <div style={{ padding: 12, borderRadius: 13, background: "#f5f8fb", border: "1px solid #dbe7f3", fontSize: 12, lineHeight: 1.5 }}>
+                      {recentSevenDayRecords.length} rapor son 7 günde oluşturuldu veya güncellendi. Gerçek “önceki karar → yeni karar” karşılaştırması için sürüm geçmişi kaydı gerekir; sistem olmayan geçmişi uydurmaz.
+                    </div>
+                    <div style={{ display: "grid", gap: 7, marginTop: 9 }}>
+                      {recentSevenDayRecords.slice(0, 4).map((item) => <button key={item.id} type="button" onClick={() => openRecord(item)} style={{ ...softButton, width: "100%", textAlign: "left" }}>{[item.city, item.district, item.neighborhood].filter(Boolean).join(" / ") || "Konum yok"} · {item.decision || decisionFromReport(item.report || "") || "Karar yok"}</button>)}
+                    </div>
+                  </article>
+                </section>
+
+                <section style={panelStyle}>
+                  <div style={sectionHeader}>
+                    <div><div style={eyebrow}>AI İLE SOR</div><h2 style={sectionTitle}>Senaryo ve Karar Asistanı</h2></div>
+                    <span style={{ fontSize: 11, fontWeight: 900, color: "#6d8297" }}>Aktif dosya: {commandRecord ? [commandRecord.city, commandRecord.district].filter(Boolean).join(" / ") : "Yok"}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 9 }}>
+                    {["Bu dosyanın en büyük riski ne?", "Bu fiyat mantıklı mı?", "Hangi veri eksik?", "Pazarlıkta ne söylemeliyim?"].map((preset) => <button key={preset} type="button" disabled={!commandRecord || aiCommandLoading} onClick={() => { setAiCommand(preset); void runAiCommand(commandRecord, preset); }} style={softButton}>{preset}</button>)}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                    <input value={aiCommand} onChange={(event) => setAiCommand(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !aiCommandLoading) void runAiCommand(commandRecord); }} placeholder="Örn. 4,2 milyon teklif verirsem nasıl değerlendirmeliyim?" style={inputStyle} />
+                    <button type="button" disabled={aiCommandLoading || !commandRecord} onClick={() => void runAiCommand(commandRecord)} style={primaryButton}>{aiCommandLoading ? "Analiz ediliyor..." : "AI'ya Sor"}</button>
+                  </div>
+                  {aiCommandResult ? <div style={{ marginTop: 12, padding: 14, borderRadius: 14, background: "#f3f8fc", border: "1px solid #dbe7f3", whiteSpace: "pre-wrap", fontSize: 12, lineHeight: 1.65 }}>{aiCommandResult}</div> : null}
+                </section>
+
+                <section style={panelStyle}>
+                  <div style={sectionHeader}>
+                    <div>
+                      <div style={eyebrow}>ÖNCELİKLİ DOSYALAR</div>
+                      <h2 style={sectionTitle}>Bugün Önce Bunlara Bakın</h2>
+                    </div>
+                    <button type="button" onClick={() => setView("reports")} style={softButton}>Tüm Raporlar</button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                    {priorityRecords.map(({ item, scores, decision }, index) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => openRecord(item)}
+                        style={{
+                          appearance: "none",
+                          border: "1px solid #dbe7f3",
+                          borderRadius: 18,
+                          padding: 16,
+                          background: "linear-gradient(145deg,#ffffff,#f4f8fc)",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          boxShadow: "0 10px 24px rgba(20,63,102,.08)",
+                          color: "#17324d",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                          <span style={{ fontSize: 11, fontWeight: 950, letterSpacing: 1, color: "#67809a" }}>ÖNCELİK #{index + 1}</span>
+                          <span style={{ fontSize: 11, fontWeight: 950, color: decision.includes("AL") ? "#16794a" : decision.includes("PAZARLIK") ? "#9a6500" : "#5a6d80" }}>
+                            {decision || "—"}
+                          </span>
+                        </div>
+                        <strong style={{ display: "block", marginTop: 10, fontSize: 16 }}>
+                          {[item.city, item.district, item.neighborhood].filter(Boolean).join(" / ") || "Konum bilgisi yok"}
+                        </strong>
+                        <small style={{ display: "block", marginTop: 5, color: "#6f8295" }}>
+                          {item.property_type || "Taşınmaz"} · {item.area ? `${item.area} m²` : "Alan yok"} · {item.asking_price ? formatCurrency(String(item.asking_price)) : "Fiyat yok"}
+                        </small>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginTop: 14 }}>
+                          {[["Yatırım", scores.investment], ["Fırsat", scores.opportunity], ["Güven", scores.trust], ["Risk", scores.risk]].map(([label, value]) => (
+                            <div key={String(label)} style={{ padding: "8px 6px", borderRadius: 10, background: "#edf4fa", textAlign: "center" }}>
+                              <small style={{ display: "block", fontSize: 8, fontWeight: 900, color: "#70859a" }}>{label}</small>
+                              <strong style={{ display: "block", marginTop: 2, fontSize: 14 }}>{value ?? "—"}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </button>
+                    ))}
+                    {!priorityRecords.length ? <div style={emptyState}>Önceliklendirilecek aktif rapor bulunmuyor.</div> : null}
+                  </div>
+                </section>
+
+                <section style={twoColumnGrid}>
+                  <article style={panelStyle}>
+                    <div style={sectionHeader}><div><div style={eyebrow}>PORTFÖY SAĞLIK PANELİ</div><h2 style={sectionTitle}>Ortalama Skorlar</h2></div></div>
+                    <DashboardScore label="Veri Güven" value={avgScores.trust} />
+                    <DashboardScore label="Yatırım" value={avgScores.investment} />
+                    <DashboardScore label="Fırsat" value={avgScores.opportunity} />
+                    <DashboardScore label="Risk" value={avgScores.risk} inverse />
+                    <DashboardScore label="Likidite" value={avgScores.liquidity} />
+                  </article>
+
+                  <article style={panelStyle}>
+                    <div style={sectionHeader}><div><div style={eyebrow}>KARAR DAĞILIMI</div><h2 style={sectionTitle}>AI Karar Özeti</h2></div></div>
+                    <DecisionBar label="AL" value={decisionStats.AL} total={activeRecords.length} />
+                    <DecisionBar label="PAZARLIK YAP" value={decisionStats.PAZARLIK} total={activeRecords.length} />
+                    <DecisionBar label="BEKLE" value={decisionStats.BEKLE} total={activeRecords.length} />
+                    <DecisionBar label="UZAK DUR" value={decisionStats.UZAK} total={activeRecords.length} />
+                    <DecisionBar label="DİĞER" value={decisionStats.DIGER} total={activeRecords.length} />
+                  </article>
+                </section>
+
+                <LocationIntelligencePanel
+                  records={activeRecords}
+                  selected={selectedMapRecord}
+                  selectedId={selectedMapRecord?.id ?? ""}
+                  onSelect={setMapRecordId}
+                  mapType={mapType}
+                  onMapTypeChange={setMapType}
+                />
+
+                <section style={panelStyle}>
+                  <div style={sectionHeader}>
+                    <div><div style={eyebrow}>OPERASYON MERKEZİ</div><h2 style={sectionTitle}>Son Analizler</h2></div>
+                    <button type="button" onClick={() => setView("reports")} style={softButton}>Tümünü Gör</button>
+                  </div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {activeRecords.slice(0, 5).map((item) => (
+                      <ReportRow key={item.id} item={item} onOpen={() => openRecord(item)} onMap={() => window.open(googleMapsUrl(item), "_blank", "noopener,noreferrer")} />
+                    ))}
+                    {!activeRecords.length ? <div style={emptyState}>Henüz aktif rapor bulunmuyor.</div> : null}
+                  </div>
+                </section>
+              </>
+            )}
           </>
         ) : null}
 
@@ -6978,6 +7462,34 @@ const smallButton = {
   lineHeight: 1.2,
   cursor: "pointer",
   transition: "background .2s ease, color .2s ease, border-color .2s ease",
+};
+
+
+const primaryButton = {
+  appearance: "none" as const,
+  border: "1px solid #0d5bd7",
+  borderRadius: 12,
+  padding: "10px 16px",
+  background: "linear-gradient(135deg, #0d5bd7, #164ea5)",
+  color: "#ffffff",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 12,
+  lineHeight: 1.2,
+  whiteSpace: "nowrap" as const,
+  boxShadow: "0 8px 18px rgba(13, 91, 215, 0.20)",
+  transition: "transform .18s ease, box-shadow .18s ease, opacity .18s ease",
+};
+
+const insightCardStyle = {
+  display: "grid",
+  gap: 6,
+  padding: "14px 16px",
+  borderRadius: 14,
+  border: "1px solid #dbe7f3",
+  background: "#ffffff",
+  boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
+  color: "#17324d",
 };
 
 const footerStyle = {
