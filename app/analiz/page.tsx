@@ -846,6 +846,33 @@ KURALLAR
     return stats;
   }, [activeRecords]);
 
+  const portfolioInsights = useMemo(() => {
+    const scored = activeRecords.map((item) => scoresFromReport(item.report ?? ""));
+    const strongOpportunities = scored.filter((score) => (score.opportunity ?? 0) >= 65).length;
+    const highRiskFiles = scored.filter((score) => (score.risk ?? 0) >= 65).length;
+    const lowTrustFiles = scored.filter((score) => (score.trust ?? 100) < 50).length;
+    const actionableFiles = decisionStats.AL + decisionStats.PAZARLIK;
+
+    const priority =
+      highRiskFiles > 0
+        ? `${highRiskFiles} dosyada yüksek risk var. Önce doğrulama ve risk kontrolü önerilir.`
+        : lowTrustFiles > 0
+          ? `${lowTrustFiles} dosyada veri güveni düşük. Eksik verileri tamamlamak en doğru sonraki adım.`
+          : strongOpportunities > 0
+            ? `${strongOpportunities} güçlü fırsat adayı var. Karşılaştırma ekranında önceliklendirebilirsiniz.`
+            : activeRecords.length
+              ? "Portföy dengeli görünüyor. Yeni analiz veya karşılaştırma ile karar kalitesini artırabilirsiniz."
+              : "Henüz aktif rapor yok. İlk gayrimenkul analizinizi oluşturarak başlayın.";
+
+    return {
+      strongOpportunities,
+      highRiskFiles,
+      lowTrustFiles,
+      actionableFiles,
+      priority,
+    };
+  }, [activeRecords, decisionStats]);
+
   const visibleRecords = useMemo(() => {
     const source =
       historyMode === "archive"
@@ -1291,102 +1318,118 @@ KURALLAR
             </p>
           </div>
 
-          <div style={accountCard}>
-            <small style={{ opacity: 0.74, fontWeight: 900 }}>AKTİF HESAP</small>
-            <strong style={{ overflowWrap: "anywhere", marginTop: 5 }}>{user?.email}</strong>
-            <span style={onlineBadge}>● Bulut sistemi aktif</span>
-            <button type="button" onClick={signOut} style={smallWhiteButton}>
-              Çıkış Yap
-            </button>
-          </div>
+          <div
+  style={{
+    ...accountCard,
+    padding: "12px 14px",
+    minWidth: 190,
+    maxWidth: 220,
+    gap: 4,
+  }}
+>
+  <small style={{ opacity: 0.7, fontWeight: 900 }}>AKTİF HESAP</small>
+  <strong style={{ overflowWrap: "anywhere", fontSize: 12 }}>{user?.email}</strong>
+  <span style={{ ...onlineBadge, fontSize: 11 }}>● Bulut sistemi aktif</span>
+  <button
+    type="button"
+    onClick={signOut}
+    style={{ ...smallWhiteButton, padding: "7px 10px", marginTop: 4 }}
+  >
+    Çıkış Yap
+  </button>
+</div>
         </header>
 
-        <div style={systemMenuLabel}>ÜST ANA SİSTEM MENÜSÜ</div>
-        <nav style={navBar}>
-          <NavButton active={view === "dashboard"} onClick={() => setView("dashboard")}>
-            Dashboard
-          </NavButton>
-          <NavButton active={view === "reports"} onClick={() => setView("reports")}>
-            Raporlar
-          </NavButton>
-          <NavButton active={view === "compare"} onClick={() => setView("compare")}>
-            AI Karşılaştırma
-          </NavButton>
-          <NavButton active={view === "data"} onClick={() => setView("data")}>
-            Türkiye Veri Motoru
-          </NavButton>
-          <NavButton active={view === "verification"} onClick={() => setView("verification")}>
-            Veri Doğrulama
-          </NavButton>
-          <NavButton active={view === "ecosystem"} onClick={() => setView("ecosystem")}>
-            Gayrimenkul Karar Merkezi
-          </NavButton>
+<div style={systemMenuLabel}>HIZLI BAŞLANGIÇ</div>
+
+        <nav
+          style={{
+            ...navBar,
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          }}
+        >
           <NavButton active={view === "new"} onClick={startNewAnalysis}>
             + Yeni Analiz
           </NavButton>
+
+          <NavButton active={view === "reports"} onClick={() => setView("reports")}>
+            Raporlarım
+          </NavButton>
+
+          <NavButton active={view === "compare"} onClick={() => setView("compare")}>
+            AI Karşılaştırma
+          </NavButton>
         </nav>
 
-        <nav
-          aria-label="Yaşam AI modül menüsü"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(9,minmax(0,1fr))",
-            gap: 7,
-            alignItems: "stretch",
-            margin: "14px 0 18px",
-            padding: "10px",
-            borderRadius: 22,
-            border: "2px solid rgba(91,159,216,.72)",
-            background: "linear-gradient(145deg,rgba(255,255,255,.98),rgba(238,247,255,.97))",
-            boxShadow: "0 16px 36px rgba(13,67,111,.14), inset 0 0 0 1px rgba(255,255,255,.80)",
-            width: "100%",
-            boxSizing: "border-box",
-          }}
-        >
-          {[
-            ["Ana Merkez", "⌂", "Kontrol Paneli", "command", "", "#0d5bd7"],
-            ["AI Analiz", "✦", "Akıllı Analiz", "ai", "", "#7a35cf"],
-            ["Türkiye", "◉", "81 İl Veri Motoru", "market", "", "#039bc1"],
-            ["Banka", "▥", "Finans Merkezi", "enterprise", "bank", "#16a05d"],
-            ["Projeler", "▰", "Proje Yönetimi", "enterprise", "developer", "#e89413"],
-            ["Portföy", "◔", "Yatırım Portföyü", "enterprise", "investor", "#c42679"],
-            ["Raporlar", "▥", "Rapor Merkezi", "pdf", "", "#008c98"],
-            ["Üyelik", "♛", "Üyelik İşlemleri", "membership", "", "#c99100"],
-            ["Yönetim", "⚙", "Sistem Yönetimi", "admin", "", "#40536f"],
-          ].map(([label, icon, subtitle, sectionTarget, role, color]) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => openPlatformModule(sectionTarget, role || undefined)}
-              style={{
-                minWidth: 0,
-                width: "100%",
-                minHeight: 82,
-                display: "grid",
-                gridTemplateColumns: "34px minmax(0,1fr)",
-                alignItems: "center",
-                gap: 7,
-                padding: "10px 8px",
-                borderRadius: 15,
-                border: `2px solid ${color}72`,
-                background: "linear-gradient(145deg,#ffffff,#f3f8fc)",
-                color: "#234866",
-                boxShadow: `0 7px 16px rgba(31,66,96,.09), inset 0 -4px 0 ${color}`,
-                cursor: "pointer",
-                textAlign: "left",
-                transition: "transform .18s ease, box-shadow .18s ease",
-                overflow: "hidden",
-                boxSizing: "border-box",
-              }}
-            >
-              <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: `${color}18`, border: `1px solid ${color}38`, color, fontSize: 19, fontWeight: 950 }}>{icon}</span>
-              <span style={{ minWidth: 0, overflow: "hidden" }}>
-                <strong style={{ display: "block", fontSize: 12, lineHeight: 1.15, fontWeight: 950, whiteSpace: "normal", overflowWrap: "anywhere" }}>{label}</strong>
-                <small style={{ display: "block", marginTop: 4, opacity: .72, fontSize: 8, lineHeight: 1.15, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</small>
-              </span>
-            </button>
-          ))}
-        </nav>
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{
+              ...systemMenuLabel,
+              marginBottom: 8,
+              opacity: 0.72,
+            }}
+          >
+            DİĞER MODÜLLER
+          </div>
+
+          <nav
+            aria-label="Yaşam AI modül menüsü"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+              gap: 7,
+              alignItems: "stretch",
+              padding: "10px",
+              borderRadius: 16,
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.14)",
+            }}
+          >
+            {[
+              ["Ana Merkez", "⌂", "Kontrol Paneli", "command", "", "#0d5bd7"],
+              ["AI Analiz", "✦", "Akıllı Analiz", "ai", "", "#7a35cf"],
+              ["Türkiye", "◉", "81 İl Veri Motoru", "market", "", "#039bc1"],
+              ["Banka", "▥", "Finans Merkezi", "enterprise", "bank", "#16a05d"],
+              ["Projeler", "▰", "Proje Yönetimi", "enterprise", "developer", "#e89413"],
+              ["Portföy", "◔", "Yatırım Portföyü", "enterprise", "investor", "#c42679"],
+              ["Raporlar", "▥", "Rapor Merkezi", "pdf", "", "#008c98"],
+              ["Üyelik", "♛", "Üyelik İşlemleri", "membership", "", "#c99100"],
+              ["Yönetim", "⚙", "Sistem Yönetimi", "admin", "", "#40536f"],
+            ].map(([label, icon, subtitle, sectionTarget, role, color]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => openPlatformModule(sectionTarget, role || undefined)}
+                style={{
+                  minWidth: 0,
+                  width: "100%",
+                  minHeight: 82,
+                  display: "grid",
+                  gridTemplateColumns: "34px minmax(0,1fr)",
+                  alignItems: "center",
+                  gap: 7,
+                  padding: "10px 8px",
+                  borderRadius: 15,
+                  border: `2px solid ${color}72`,
+                  background: "linear-gradient(145deg,#ffffff,#f3f8fc)",
+                  color: "#234866",
+                  boxShadow: `0 7px 16px rgba(31,66,96,.09), inset 0 -4px 0 ${color}`,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transition: "transform .18s ease, box-shadow .18s ease",
+                  overflow: "hidden",
+                  boxSizing: "border-box",
+                }}
+              >
+                <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: `${color}18`, border: `1px solid ${color}38`, color, fontSize: 19, fontWeight: 950 }}>{icon}</span>
+                <span style={{ minWidth: 0, overflow: "hidden" }}>
+                  <strong style={{ display: "block", fontSize: 12, lineHeight: 1.15, fontWeight: 950, whiteSpace: "normal", overflowWrap: "anywhere" }}>{label}</strong>
+                  <small style={{ display: "block", marginTop: 4, opacity: .72, fontSize: 8, lineHeight: 1.15, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</small>
+                </span>
+              </button>
+            ))}
+          </nav>
+        </div>
 
         {notice ? <div style={successNotice}>{notice}</div> : null}
         {error ? <div style={errorNotice}>{error}</div> : null}
@@ -1403,6 +1446,47 @@ KURALLAR
                 suffix={avgScores.investment === null ? "" : "/100"}
                 text="Tüm aktif rapor ortalaması"
               />
+            </section>
+
+            <section style={insightPanel}>
+              <div style={sectionHeader}>
+                <div>
+                  <div style={eyebrow}>AKILLI PORTFÖY ÖZETİ</div>
+                  <h2 style={sectionTitle}>Şimdi Neye Odaklanmalı?</h2>
+                </div>
+                <button type="button" onClick={() => setView("compare")} style={softButton}>
+                  Karşılaştır
+                </button>
+              </div>
+
+              <div style={insightCallout}>{portfolioInsights.priority}</div>
+
+              <div style={insightGrid}>
+                <InsightCard
+                  label="Aksiyon Alınabilir"
+                  value={portfolioInsights.actionableFiles}
+                  text="AL veya pazarlık kararı bulunan dosya"
+                  icon="↗"
+                />
+                <InsightCard
+                  label="Güçlü Fırsat"
+                  value={portfolioInsights.strongOpportunities}
+                  text="Fırsat puanı 65 ve üzeri rapor"
+                  icon="✦"
+                />
+                <InsightCard
+                  label="Yüksek Risk"
+                  value={portfolioInsights.highRiskFiles}
+                  text="Risk puanı 65 ve üzeri dosya"
+                  icon="!"
+                />
+                <InsightCard
+                  label="Düşük Veri Güveni"
+                  value={portfolioInsights.lowTrustFiles}
+                  text="Veri güveni 50 altında kalan rapor"
+                  icon="✓"
+                />
+              </div>
             </section>
 
             <section style={twoColumnGrid}>
@@ -4135,6 +4219,33 @@ function Stat({
   );
 }
 
+function InsightCard({
+  label,
+  value,
+  text,
+  icon,
+}: {
+  label: string;
+  value: string | number;
+  text: string;
+  icon: string;
+}) {
+  return (
+    <article style={insightCard}>
+      <div style={insightIcon}>{icon}</div>
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 950, letterSpacing: 0.7, color: "#6a7f94" }}>
+          {label.toUpperCase()}
+        </div>
+        <div style={{ marginTop: 4, fontSize: 26, lineHeight: 1, fontWeight: 950, color: "#123d67" }}>
+          {value}
+        </div>
+        <div style={{ marginTop: 6, fontSize: 11, lineHeight: 1.35, color: "#61778d" }}>{text}</div>
+      </div>
+    </article>
+  );
+}
+
 function DashboardScore({
   label,
   value,
@@ -5705,6 +5816,58 @@ const twoColumnGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
   gap: 14,
+};
+
+const insightPanel = {
+  marginBottom: 16,
+  padding: "clamp(17px,2.6vw,24px)",
+  borderRadius: 24,
+  background: "linear-gradient(145deg,rgba(255,255,255,.98),rgba(241,248,255,.98))",
+  border: "1px solid rgba(255,255,255,.65)",
+  boxShadow: "0 18px 44px rgba(1,19,45,.16)",
+};
+
+const insightCallout = {
+  marginBottom: 14,
+  padding: "12px 14px",
+  borderRadius: 14,
+  background: "#eef6ff",
+  border: "1px solid #cfe3f7",
+  color: "#244c72",
+  fontSize: 13,
+  lineHeight: 1.5,
+  fontWeight: 800,
+};
+
+const insightGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
+  gap: 10,
+};
+
+const insightCard = {
+  display: "grid",
+  gridTemplateColumns: "38px minmax(0,1fr)",
+  gap: 10,
+  alignItems: "start",
+  padding: 14,
+  borderRadius: 16,
+  background: "#ffffff",
+  border: "1px solid #dbe7f2",
+  boxShadow: "0 8px 22px rgba(23,58,92,.07)",
+};
+
+const insightIcon = {
+  width: 38,
+  height: 38,
+  borderRadius: 12,
+  display: "grid",
+  placeItems: "center",
+  background: "#edf5ff",
+  border: "1px solid #d6e7f8",
+  color: "#155f9e",
+  fontWeight: 950,
+  fontSize: 18,
 };
 
 const panelStyle = {
