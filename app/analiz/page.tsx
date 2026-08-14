@@ -846,6 +846,33 @@ KURALLAR
     return stats;
   }, [activeRecords]);
 
+  const portfolioInsights = useMemo(() => {
+    const scored = activeRecords.map((item) => scoresFromReport(item.report ?? ""));
+    const strongOpportunities = scored.filter((score) => (score.opportunity ?? 0) >= 65).length;
+    const highRiskFiles = scored.filter((score) => (score.risk ?? 0) >= 65).length;
+    const lowTrustFiles = scored.filter((score) => (score.trust ?? 100) < 50).length;
+    const actionableFiles = decisionStats.AL + decisionStats.PAZARLIK;
+
+    const priority =
+      highRiskFiles > 0
+        ? `${highRiskFiles} dosyada yüksek risk var. Önce doğrulama ve risk kontrolü önerilir.`
+        : lowTrustFiles > 0
+          ? `${lowTrustFiles} dosyada veri güveni düşük. Eksik verileri tamamlamak en doğru sonraki adım.`
+          : strongOpportunities > 0
+            ? `${strongOpportunities} güçlü fırsat adayı var. Karşılaştırma ekranında önceliklendirebilirsiniz.`
+            : activeRecords.length
+              ? "Portföy dengeli görünüyor. Yeni analiz veya karşılaştırma ile karar kalitesini artırabilirsiniz."
+              : "Henüz aktif rapor yok. İlk gayrimenkul analizinizi oluşturarak başlayın.";
+
+    return {
+      strongOpportunities,
+      highRiskFiles,
+      lowTrustFiles,
+      actionableFiles,
+      priority,
+    };
+  }, [activeRecords, decisionStats]);
+
   const visibleRecords = useMemo(() => {
     const source =
       historyMode === "archive"
@@ -1419,6 +1446,47 @@ KURALLAR
                 suffix={avgScores.investment === null ? "" : "/100"}
                 text="Tüm aktif rapor ortalaması"
               />
+            </section>
+
+            <section style={insightPanel}>
+              <div style={sectionHeader}>
+                <div>
+                  <div style={eyebrow}>AKILLI PORTFÖY ÖZETİ</div>
+                  <h2 style={sectionTitle}>Şimdi Neye Odaklanmalı?</h2>
+                </div>
+                <button type="button" onClick={() => setView("compare")} style={softButton}>
+                  Karşılaştır
+                </button>
+              </div>
+
+              <div style={insightCallout}>{portfolioInsights.priority}</div>
+
+              <div style={insightGrid}>
+                <InsightCard
+                  label="Aksiyon Alınabilir"
+                  value={portfolioInsights.actionableFiles}
+                  text="AL veya pazarlık kararı bulunan dosya"
+                  icon="↗"
+                />
+                <InsightCard
+                  label="Güçlü Fırsat"
+                  value={portfolioInsights.strongOpportunities}
+                  text="Fırsat puanı 65 ve üzeri rapor"
+                  icon="✦"
+                />
+                <InsightCard
+                  label="Yüksek Risk"
+                  value={portfolioInsights.highRiskFiles}
+                  text="Risk puanı 65 ve üzeri dosya"
+                  icon="!"
+                />
+                <InsightCard
+                  label="Düşük Veri Güveni"
+                  value={portfolioInsights.lowTrustFiles}
+                  text="Veri güveni 50 altında kalan rapor"
+                  icon="✓"
+                />
+              </div>
             </section>
 
             <section style={twoColumnGrid}>
@@ -4151,6 +4219,33 @@ function Stat({
   );
 }
 
+function InsightCard({
+  label,
+  value,
+  text,
+  icon,
+}: {
+  label: string;
+  value: string | number;
+  text: string;
+  icon: string;
+}) {
+  return (
+    <article style={insightCard}>
+      <div style={insightIcon}>{icon}</div>
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 950, letterSpacing: 0.7, color: "#6a7f94" }}>
+          {label.toUpperCase()}
+        </div>
+        <div style={{ marginTop: 4, fontSize: 26, lineHeight: 1, fontWeight: 950, color: "#123d67" }}>
+          {value}
+        </div>
+        <div style={{ marginTop: 6, fontSize: 11, lineHeight: 1.35, color: "#61778d" }}>{text}</div>
+      </div>
+    </article>
+  );
+}
+
 function DashboardScore({
   label,
   value,
@@ -5721,6 +5816,58 @@ const twoColumnGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
   gap: 14,
+};
+
+const insightPanel = {
+  marginBottom: 16,
+  padding: "clamp(17px,2.6vw,24px)",
+  borderRadius: 24,
+  background: "linear-gradient(145deg,rgba(255,255,255,.98),rgba(241,248,255,.98))",
+  border: "1px solid rgba(255,255,255,.65)",
+  boxShadow: "0 18px 44px rgba(1,19,45,.16)",
+};
+
+const insightCallout = {
+  marginBottom: 14,
+  padding: "12px 14px",
+  borderRadius: 14,
+  background: "#eef6ff",
+  border: "1px solid #cfe3f7",
+  color: "#244c72",
+  fontSize: 13,
+  lineHeight: 1.5,
+  fontWeight: 800,
+};
+
+const insightGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
+  gap: 10,
+};
+
+const insightCard = {
+  display: "grid",
+  gridTemplateColumns: "38px minmax(0,1fr)",
+  gap: 10,
+  alignItems: "start",
+  padding: 14,
+  borderRadius: 16,
+  background: "#ffffff",
+  border: "1px solid #dbe7f2",
+  boxShadow: "0 8px 22px rgba(23,58,92,.07)",
+};
+
+const insightIcon = {
+  width: 38,
+  height: 38,
+  borderRadius: 12,
+  display: "grid",
+  placeItems: "center",
+  background: "#edf5ff",
+  border: "1px solid #d6e7f8",
+  color: "#155f9e",
+  fontWeight: 950,
+  fontSize: 18,
 };
 
 const panelStyle = {
