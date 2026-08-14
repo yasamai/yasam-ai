@@ -976,7 +976,7 @@ KURALLAR
     return output.join("");
   }
 
-  const PREMIUM_REPORT_VERSION = "Yaşam AI Enterprise Report Engine v5.4";
+  const PREMIUM_REPORT_VERSION = "Premium Karar Motoru v2.5";
 
   function stableReportCode(seed: string) {
     let hash = 2166136261;
@@ -1195,7 +1195,7 @@ KURALLAR
       <h2>9. Nihai Karar</h2>
       <p><strong>Karar: ${effectiveDecision}</strong></p><p>${decisionSummary}</p>
       <h2>10. Eylem Planı</h2>
-      <ol><li>Tapu, takyidat ve imar belgelerini resmî kaynaktan doğrula.</li><li>En az üç güncel ve karşılaştırılabilir emsal topla.</li><li>Teknik ekspertiz ve yapı incelemesi yaptır.</li><li>Kira sözleşmesi ve gelir sürekliliğini kontrol et.</li><li>Doğrulama sonuçlarına göre Başlangıç teklif önerisini ve üst teklif sınırını doğrulama sonuçlarına göre yeniden hesapla.</li></ol>`;
+      <ol><li>Tapu, takyidat ve imar belgelerini resmî kaynaktan doğrula.</li><li>En az üç güncel ve karşılaştırılabilir emsal topla.</li><li>Teknik ekspertiz ve yapı incelemesi yaptır.</li><li>Kira sözleşmesi ve gelir sürekliliğini kontrol et.</li><li>Doğrulama sonuçlarına göre güvenli teklif sınırını yeniden hesapla.</li></ol>`;
 
     const [aiAnalysisMainHtml, aiAnalysisFinalHtml] = aiAnalysisHtml.split("<!--AI_PAGE_BREAK-->");
 
