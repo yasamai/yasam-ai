@@ -58,6 +58,9 @@ export default function AnalysisPage() {
   const [aiCommand, setAiCommand] = useState("");
   const [aiCommandResult, setAiCommandResult] = useState("");
   const [aiCommandLoading, setAiCommandLoading] = useState(false);
+  const [scenarioPrice, setScenarioPrice] = useState("");
+  const [scenarioRent, setScenarioRent] = useState("");
+  const [scenarioHorizon, setScenarioHorizon] = useState<"1" | "3" | "5">("3");
   const [memorySaved, setMemorySaved] = useState(false);
   const [userMemory, setUserMemory] = useState({
     investmentGoal: "Dengeli getiri",
@@ -875,13 +878,23 @@ Alan: ${record.area || "Belirtilmedi"}
 Talep fiyatı: ${record.asking_price || "Belirtilmedi"}
 Karar: ${record.decision || decisionFromReport(record.report || "")}
 
+PORTFÖY BAĞLAMI
+${activeRecords.slice(0, 8).map((item, index) => {
+  const scores = scoresFromReport(item.report || "");
+  return `${index + 1}. ${[item.city, item.district, item.neighborhood].filter(Boolean).join(" / ") || "Konum yok"} · ${item.property_type || "Tür yok"} · ${item.asking_price || "Fiyat yok"} · Karar: ${item.decision || decisionFromReport(item.report || "") || "—"} · Yatırım: ${scores.investment ?? "—"} · Fırsat: ${scores.opportunity ?? "—"} · Risk: ${scores.risk ?? "—"} · Güven: ${scores.trust ?? "—"}`;
+}).join("\n")}
+
 MEVCUT RAPOR
 ${record.report || "Rapor metni yok"}
 
 SORU
 ${question}
 
-Yanıt biçimi: 1) Net cevap, 2) En önemli 3 gerekçe, 3) Bir sonraki en doğru aksiyon.`,
+Yanıtı MUTLAKA şu dört başlıkla ver:
+NET KARAR: tek cümlelik sonuç
+NEDEN: en önemli 3 gerekçeyi kısa maddeler halinde yaz
+ÖNERİLEN AKSİYON: kullanıcının şimdi yapması gereken tek en doğru hareket
+KRİTİK UYARI: kararı değiştirebilecek en önemli eksik veri veya risk; yoksa "Kritik uyarı yok" yaz.`,
         }),
       });
       const data: unknown = await response.json();
@@ -1085,6 +1098,59 @@ Yanıt biçimi: 1) Net cevap, 2) En önemli 3 gerekçe, 3) Bir sonraki en doğru
       })
       .sort((a, b) => b.score - a.score)[0]?.item ?? null;
   }, [commandRecord, regionalData]);
+
+  const aiStructuredResult = useMemo(() => {
+    const raw = aiCommandResult.trim();
+    if (!raw) return null;
+    const section = (label: string, nextLabels: string[]) => {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const next = nextLabels.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+      const rx = new RegExp(`${escaped}\\s*:?\\s*([\\s\\S]*?)(?=\\n(?:${next})\\s*:|$)`, "i");
+      return raw.match(rx)?.[1]?.trim() || "";
+    };
+    const net = section("NET KARAR", ["NEDEN", "ÖNERİLEN AKSİYON", "KRİTİK UYARI"]);
+    const why = section("NEDEN", ["ÖNERİLEN AKSİYON", "KRİTİK UYARI"]);
+    const action = section("ÖNERİLEN AKSİYON", ["KRİTİK UYARI"]);
+    const warning = section("KRİTİK UYARI", []);
+    return {
+      net: net || raw.split(/\r?\n/).find(Boolean) || "AI değerlendirmesi hazır.",
+      why: why || raw,
+      action: action || "Raporun en kritik doğrulama adımını tamamlayın ve kararı yeniden kontrol edin.",
+      warning: warning || ((commandScores.trust ?? 0) < 65 ? "Veri güveni güçlendirilmeden nihai karar vermeyin." : "Kritik uyarı yok."),
+    };
+  }, [aiCommandResult, commandScores.trust]);
+
+  const decisionConfidence = useMemo(() => {
+    const trust = commandScores.trust ?? 0;
+    const risk = commandScores.risk ?? 50;
+    const missing: string[] = [];
+    if (!commandRecord) missing.push("aktif rapor");
+    if (!commandRecord?.asking_price) missing.push("talep fiyatı");
+    if (!commandRecord?.area) missing.push("alan");
+    if (!commandRegionalData || (commandRegionalData.dataConfidence ?? 0) < 65) missing.push("güçlü bölgesel veri");
+    if (trust < 65) missing.push("kanıt / doğrulama");
+    const level = trust >= 78 && risk < 55 ? "Yüksek" : trust >= 55 && risk < 72 ? "Orta" : "Düşük";
+    const tone = level === "Yüksek" ? "#148653" : level === "Orta" ? "#b07800" : "#b83c3c";
+    return { level, tone, missing: Array.from(new Set(missing)).slice(0, 4) };
+  }, [commandRecord, commandRegionalData, commandScores.risk, commandScores.trust]);
+
+  const scenarioResult = useMemo(() => {
+    const basePrice = commandRecord ? parseMoney(commandRecord.asking_price) : 0;
+    const price = scenarioPrice.trim() ? parseMoney(scenarioPrice) : basePrice;
+    const rent = scenarioRent.trim() ? parseMoney(scenarioRent) : 0;
+    const priceAdvantage = basePrice > 0 && price > 0 ? (basePrice - price) / basePrice : 0;
+    const grossYield = price > 0 && rent > 0 ? (rent * 12 / price) * 100 : 0;
+    const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+    const investment = clamp((commandScores.investment ?? 50) + priceAdvantage * 38 + (grossYield ? (grossYield - 4.5) * 4 : 0));
+    const opportunity = clamp((commandScores.opportunity ?? 50) + priceAdvantage * 52 + (grossYield ? (grossYield - 4.5) * 3 : 0));
+    const risk = clamp((commandScores.risk ?? 50) - priceAdvantage * 22 + (grossYield > 0 && grossYield < 3 ? 8 : 0));
+    const horizon = Number(scenarioHorizon);
+    const annualRate = commandRegionalData && Number.isFinite(commandRegionalData.annualChange) && commandRegionalData.annualChange !== 0
+      ? Math.max(-0.2, Math.min(0.4, commandRegionalData.annualChange / 100))
+      : null;
+    const projectedValue = annualRate != null && price > 0 ? price * Math.pow(1 + annualRate, horizon) : 0;
+    return { basePrice, price, rent, grossYield, investment, opportunity, risk, horizon, annualRate, projectedValue };
+  }, [commandRecord, commandRegionalData, commandScores.investment, commandScores.opportunity, commandScores.risk, scenarioHorizon, scenarioPrice, scenarioRent]);
 
   const visibleRecords = useMemo(() => {
     const source =
@@ -2063,19 +2129,115 @@ Yanıt biçimi: 1) Net cevap, 2) En önemli 3 gerekçe, 3) Bir sonraki en doğru
                   </article>
                 </section>
 
-                <section style={panelStyle}>
+                <section style={{ ...panelStyle, overflow: "hidden" }}>
                   <div style={sectionHeader}>
-                    <div><div style={eyebrow}>AI İLE SOR</div><h2 style={sectionTitle}>Senaryo ve Karar Asistanı</h2></div>
-                    <span style={{ fontSize: 11, fontWeight: 900, color: "#6d8297" }}>Aktif dosya: {commandRecord ? [commandRecord.city, commandRecord.district].filter(Boolean).join(" / ") : "Yok"}</span>
+                    <div>
+                      <div style={eyebrow}>AI KARAR KOMUTANI · v3</div>
+                      <h2 style={sectionTitle}>Senaryo, Güven ve Aksiyon Merkezi</h2>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ padding: "7px 10px", borderRadius: 999, background: `${decisionConfidence.tone}12`, border: `1px solid ${decisionConfidence.tone}38`, color: decisionConfidence.tone, fontSize: 10, fontWeight: 950 }}>● Karar güveni: {decisionConfidence.level}</span>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: "#6d8297" }}>Aktif dosya: {commandRecord ? [commandRecord.city, commandRecord.district].filter(Boolean).join(" / ") : "Yok"}</span>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 9 }}>
-                    {["Bu dosyanın en büyük riski ne?", "Bu fiyat mantıklı mı?", "Hangi veri eksik?", "Pazarlıkta ne söylemeliyim?"].map((preset) => <button key={preset} type="button" disabled={!commandRecord || aiCommandLoading} onClick={() => { setAiCommand(preset); void runAiCommand(commandRecord, preset); }} style={softButton}>{preset}</button>)}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 9, marginBottom: 12 }}>
+                    {[
+                      ["⚠", "Risk Tarama", "Bu dosyanın en büyük 3 riski nedir ve hangisi kararımı değiştirebilir?"],
+                      ["₺", "Fiyat Kontrolü", "Talep fiyatı mevcut rapora göre mantıklı mı? Bana net fiyat yorumu ve gerekçesini ver."],
+                      ["↘", "Teklif Stratejisi", "Bu dosya için ilk teklif, hedef anlaşma ve vazgeçme sınırını nasıl belirlemeliyim?"],
+                      ["✓", "Doğrulama", "Bu dosyada karar vermeden önce hangi verileri doğrulamam gerekiyor? Öncelik sırasına koy."],
+                      ["⇄", "Portföyle Kıyasla", "Bu dosyayı portföyümdeki diğer güçlü adaylarla karşılaştır. Hangi dosya neden daha iyi olabilir?"],
+                      ["◎", "Çıkış Planı", "Bu yatırımı alırsam 1-3-5 yıllık çıkış stratejisini hangi risk ve fırsatlara göre planlamalıyım?"],
+                    ].map(([icon, label, preset]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        disabled={!commandRecord || aiCommandLoading}
+                        onClick={() => { setAiCommand(preset); void runAiCommand(commandRecord, preset); }}
+                        style={{
+                          ...softButton,
+                          display: "grid",
+                          gridTemplateColumns: "38px 1fr",
+                          alignItems: "center",
+                          gap: 9,
+                          padding: "12px",
+                          textAlign: "left",
+                          minHeight: 62,
+                          background: "linear-gradient(145deg,#ffffff,#f4f8ff)",
+                          border: "1px solid #cfe0f1",
+                          boxShadow: "0 8px 20px rgba(30,73,113,.07)",
+                        }}
+                      >
+                        <span style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", background: "linear-gradient(145deg,#0b78e5,#3735d8)", color: "white", fontWeight: 950, fontSize: 17, boxShadow: "0 8px 18px rgba(23,76,151,.22)" }}>{icon}</span>
+                        <span style={{ display: "grid", gap: 2 }}><strong style={{ fontSize: 12 }}>{label}</strong><small style={{ color: "#6d8297", lineHeight: 1.25 }}>Tek tık AI değerlendirmesi</small></span>
+                      </button>
+                    ))}
                   </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
+                    <div style={{ ...insightCardStyle, background: "linear-gradient(145deg,#f9fbff,#eef5ff)" }}><small>Aktif karar</small><strong>{commandDecision}</strong></div>
+                    <div style={{ ...insightCardStyle, background: "linear-gradient(145deg,#f9fbff,#eef5ff)" }}><small>Yatırım</small><strong>{commandScores.investment ?? "—"}/100</strong></div>
+                    <div style={{ ...insightCardStyle, background: "linear-gradient(145deg,#fff9f6,#fff1eb)" }}><small>Risk</small><strong>{commandScores.risk ?? "—"}/100</strong></div>
+                    <div style={{ ...insightCardStyle, background: `${decisionConfidence.tone}0d`, border: `1px solid ${decisionConfidence.tone}33` }}><small>Veri güveni</small><strong style={{ color: decisionConfidence.tone }}>{commandScores.trust ?? "—"}/100 · {decisionConfidence.level}</strong></div>
+                  </div>
+
                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
                     <input value={aiCommand} onChange={(event) => setAiCommand(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !aiCommandLoading) void runAiCommand(commandRecord); }} placeholder="Örn. 4,2 milyon teklif verirsem nasıl değerlendirmeliyim?" style={inputStyle} />
                     <button type="button" disabled={aiCommandLoading || !commandRecord} onClick={() => void runAiCommand(commandRecord)} style={primaryButton}>{aiCommandLoading ? "Analiz ediliyor..." : "AI'ya Sor"}</button>
                   </div>
-                  {aiCommandResult ? <div style={{ marginTop: 12, padding: 14, borderRadius: 14, background: "#f3f8fc", border: "1px solid #dbe7f3", whiteSpace: "pre-wrap", fontSize: 12, lineHeight: 1.65 }}>{aiCommandResult}</div> : null}
+
+                  {aiStructuredResult ? (
+                    <div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                      {[
+                        ["NET KARAR", aiStructuredResult.net, "#0b6fd6", "◆"],
+                        ["NEDEN", aiStructuredResult.why, "#6a37c8", "≡"],
+                        ["ÖNERİLEN AKSİYON", aiStructuredResult.action, "#12845a", "→"],
+                        ["KRİTİK UYARI", aiStructuredResult.warning, "#b96d00", "!"],
+                      ].map(([label, value, color, icon]) => (
+                        <article key={label} style={{ padding: 15, borderRadius: 16, background: "linear-gradient(145deg,#ffffff,#f7faff)", border: `1px solid ${color}2f`, boxShadow: "0 9px 22px rgba(22,54,88,.07)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                            <span style={{ width: 28, height: 28, borderRadius: 9, display: "grid", placeItems: "center", background: `${color}12`, color, fontWeight: 950 }}>{icon}</span>
+                            <strong style={{ fontSize: 10, letterSpacing: .8, color }}>{label}</strong>
+                          </div>
+                          <div style={{ color: "#29435c", whiteSpace: "pre-wrap", fontSize: 12, lineHeight: 1.6 }}>{value}</div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1.25fr .75fr", gap: 12 }}>
+                    <article style={{ padding: 16, borderRadius: 18, background: "linear-gradient(145deg,#071f45,#0d3e79)", border: "1px solid rgba(92,190,255,.23)", color: "#fff", boxShadow: "0 14px 32px rgba(3,29,66,.18)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <div><small style={{ color: "#8fd6ff", fontWeight: 950, letterSpacing: .9 }}>SENARYO SİMÜLATÖRÜ</small><h3 style={{ margin: "5px 0 0", fontSize: 20 }}>Fiyat · Kira · Vade</h3></div>
+                        <span style={{ fontSize: 10, color: "rgba(255,255,255,.62)" }}>Anlık karar etkisi</span>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr .65fr", gap: 8, marginTop: 12 }}>
+                        <label style={{ display: "grid", gap: 5, fontSize: 9, fontWeight: 900, color: "#b9dcf5" }}>TEKLİF FİYATI (TL)<input value={scenarioPrice} onChange={(e) => setScenarioPrice(e.target.value)} placeholder={scenarioResult.basePrice ? String(Math.round(scenarioResult.basePrice)) : "Örn. 4200000"} style={{ ...inputStyle, background: "rgba(255,255,255,.96)" }} /></label>
+                        <label style={{ display: "grid", gap: 5, fontSize: 9, fontWeight: 900, color: "#b9dcf5" }}>AYLIK KİRA (TL)<input value={scenarioRent} onChange={(e) => setScenarioRent(e.target.value)} placeholder="Örn. 30000" style={{ ...inputStyle, background: "rgba(255,255,255,.96)" }} /></label>
+                        <label style={{ display: "grid", gap: 5, fontSize: 9, fontWeight: 900, color: "#b9dcf5" }}>VADE<select value={scenarioHorizon} onChange={(e) => setScenarioHorizon(e.target.value as "1" | "3" | "5")} style={{ ...inputStyle, background: "rgba(255,255,255,.96)" }}><option value="1">1 yıl</option><option value="3">3 yıl</option><option value="5">5 yıl</option></select></label>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginTop: 12 }}>
+                        <div style={scenarioMetric}><small>Yatırım</small><strong>{scenarioResult.investment}/100</strong></div>
+                        <div style={scenarioMetric}><small>Fırsat</small><strong>{scenarioResult.opportunity}/100</strong></div>
+                        <div style={scenarioMetric}><small>Risk</small><strong>{scenarioResult.risk}/100</strong></div>
+                        <div style={scenarioMetric}><small>Brüt kira</small><strong>{scenarioResult.grossYield > 0 ? `%${scenarioResult.grossYield.toFixed(2)}` : "—"}</strong></div>
+                      </div>
+                      <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.10)", fontSize: 10, lineHeight: 1.5, color: "rgba(255,255,255,.76)" }}>
+                        {scenarioResult.annualRate != null && scenarioResult.projectedValue > 0 ? `${scenarioResult.horizon} yıllık matematiksel senaryo değeri: ${formatCurrency(String(Math.round(scenarioResult.projectedValue)))}. Bölgesel yıllık değişim oranının sabit kaldığı varsayılır; resmî değer tahmini değildir.` : "Bölgesel yıllık değişim verisi güçlü değilse gelecek değer üretilmez. Fiyat ve kira girdileri skor etkisini karşılaştırmak içindir."}
+                      </div>
+                    </article>
+
+                    <article style={{ padding: 16, borderRadius: 18, background: "linear-gradient(145deg,#ffffff,#f5f9fd)", border: `1px solid ${decisionConfidence.tone}35`, boxShadow: "0 12px 28px rgba(24,59,93,.08)" }}>
+                      <small style={{ color: decisionConfidence.tone, fontWeight: 950, letterSpacing: .85 }}>KARAR GÜVEN GÖSTERGESİ</small>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 7 }}><strong style={{ fontSize: 28, color: decisionConfidence.tone }}>{decisionConfidence.level}</strong><span style={{ color: "#71859a", fontSize: 11 }}>{commandScores.trust ?? 0}/100 veri güveni</span></div>
+                      <div style={{ height: 8, borderRadius: 999, background: "#e8eef4", overflow: "hidden", marginTop: 10 }}><div style={{ height: "100%", width: `${Math.max(0, Math.min(100, commandScores.trust ?? 0))}%`, background: decisionConfidence.tone, borderRadius: 999 }} /></div>
+                      <div style={{ marginTop: 13, fontSize: 10, fontWeight: 900, color: "#5c7288" }}>Eksik / güçlendirilecek alanlar</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                        {(decisionConfidence.missing.length ? decisionConfidence.missing : ["Kritik eksik görünmüyor"]).map((item) => <span key={item} style={{ padding: "6px 8px", borderRadius: 999, background: "#eef4f9", border: "1px solid #dae6f0", color: "#526b82", fontSize: 9, fontWeight: 850 }}>{item}</span>)}
+                      </div>
+                    </article>
+                  </div>
                 </section>
 
                 <section style={panelStyle}>
@@ -4777,9 +4939,9 @@ function NavButton({
 }) {
   const label = typeof children === "string" ? children : "Modül";
   const meta: Record<string, { subtitle: string; description: string; gradient: string; accent: string; cta: string }> = {
-    "+ Yeni Analiz": { subtitle: "Yeni karar dosyası", description: "Gayrimenkul bilgilerini girin; AI, risk ve fırsat analizini başlatsın.", gradient: "linear-gradient(145deg,#0d63d7 0%,#0a3d91 58%,#082861 100%)", accent: "#6fc2ff", cta: "Analize Başla" },
-    Raporlarım: { subtitle: "Karar arşiviniz", description: "Oluşturduğunuz raporları açın, doğrulayın, favorileyin ve yönetin.", gradient: "linear-gradient(145deg,#0b5fba 0%,#0a467f 58%,#082d59 100%)", accent: "#7fe0ff", cta: "Raporları Gör" },
-    "AI Karşılaştırma": { subtitle: "Akıllı karşılaştırma", description: "İki gayrimenkulü aynı kriterlerde kıyaslayın; güçlü ve zayıf yönleri görün.", gradient: "linear-gradient(145deg,#7d2cdf 0%,#5416a2 58%,#30106c 100%)", accent: "#d49aff", cta: "Karşılaştır" },
+    "+ Yeni Analiz": { subtitle: "Yeni karar dosyası", description: "Gayrimenkul bilgilerini girin; AI, risk ve fırsat analizini başlatsın.", gradient: "linear-gradient(145deg,#008cff 0%,#0755d7 48%,#06296f 100%)", accent: "#9cecff", cta: "Analize Başla" },
+    Raporlarım: { subtitle: "Karar arşiviniz", description: "Oluşturduğunuz raporları açın, doğrulayın, favorileyin ve yönetin.", gradient: "linear-gradient(145deg,#00a983 0%,#087966 48%,#06443d 100%)", accent: "#a1ffd9", cta: "Raporları Gör" },
+    "AI Karşılaştırma": { subtitle: "Akıllı karşılaştırma", description: "İki gayrimenkulü aynı kriterlerde kıyaslayın; güçlü ve zayıf yönleri görün.", gradient: "linear-gradient(145deg,#b426f1 0%,#7818d2 48%,#3b0b88 100%)", accent: "#ffc1ff", cta: "Karşılaştır" },
     Dashboard: { subtitle: "Genel Bakış", description: "Komuta merkezine dönün.", gradient: "linear-gradient(145deg,#0d5bd7,#082c68)", accent: "#39a8ff", cta: "Aç" },
     Raporlar: { subtitle: "Rapor Merkezi", description: "Raporlarınızı yönetin.", gradient: "linear-gradient(145deg,#7b35c8,#35146f)", accent: "#c67cff", cta: "Aç" },
     "Türkiye Veri Motoru": { subtitle: "81 İl Veri Motoru", description: "Türkiye veri merkezini açın.", gradient: "linear-gradient(145deg,#008bbd,#064c80)", accent: "#25d5ff", cta: "Aç" },
@@ -4795,7 +4957,7 @@ function NavButton({
       style={{
         position: "relative",
         minWidth: 190,
-        minHeight: 214,
+        minHeight: 226,
         padding: "18px 18px 16px",
         borderRadius: 22,
         border: active ? `2px solid ${item.accent}` : "1px solid rgba(255,255,255,.20)",
@@ -4804,13 +4966,13 @@ function NavButton({
         cursor: "pointer",
         textAlign: "left",
         overflow: "hidden",
-        boxShadow: active ? `0 20px 46px ${item.accent}38, inset 0 1px 0 rgba(255,255,255,.24)` : "0 15px 34px rgba(0,13,38,.28), inset 0 1px 0 rgba(255,255,255,.14)",
+        boxShadow: active ? `0 24px 52px ${item.accent}48, inset 0 1px 0 rgba(255,255,255,.30)` : `0 20px 42px rgba(0,13,38,.34), 0 0 0 1px ${item.accent}22, inset 0 1px 0 rgba(255,255,255,.18)`,
         transform: active ? "translateY(-4px)" : "none",
         transition: "transform .22s ease, box-shadow .22s ease, border-color .22s ease, filter .22s ease",
       }}
     >
       <span style={{ position: "absolute", width: 150, height: 150, borderRadius: "50%", right: -56, top: -62, background: `radial-gradient(circle,${item.accent}35,transparent 68%)`, pointerEvents: "none" }} />
-      <span style={{ display: "grid", placeItems: "center", width: 64, height: 64, borderRadius: 18, marginBottom: 14, background: "rgba(255,255,255,.11)", border: "1px solid rgba(255,255,255,.18)", color: item.accent, boxShadow: `inset 0 0 24px ${item.accent}14` }}><QuickActionGlyph label={label} /></span>
+      <span style={{ display: "grid", placeItems: "center", width: 72, height: 72, borderRadius: 21, marginBottom: 14, background: `linear-gradient(145deg,rgba(255,255,255,.20),${item.accent}1f)`, border: `1px solid ${item.accent}72`, color: item.accent, boxShadow: `0 10px 24px ${item.accent}22, inset 0 0 28px ${item.accent}18` }}><QuickActionGlyph label={label} /></span>
       <small style={{ display: "block", color: item.accent, fontSize: 10, fontWeight: 950, letterSpacing: 1.05, marginBottom: 5 }}>{item.subtitle.toLocaleUpperCase("tr-TR")}</small>
       <strong style={{ display: "block", fontSize: 21, lineHeight: 1.12, letterSpacing: -.35 }}>{label.replace(/^\+\s*/, "")}</strong>
       <span style={{ display: "block", marginTop: 8, color: "rgba(255,255,255,.72)", fontSize: 11, lineHeight: 1.5, maxWidth: 290 }}>{item.description}</span>
@@ -7682,6 +7844,16 @@ const smallButton = {
   lineHeight: 1.2,
   cursor: "pointer",
   transition: "background .2s ease, color .2s ease, border-color .2s ease",
+};
+
+const scenarioMetric = {
+  display: "grid",
+  gap: 4,
+  padding: "10px 11px",
+  borderRadius: 12,
+  background: "rgba(255,255,255,.09)",
+  border: "1px solid rgba(255,255,255,.11)",
+  color: "#ffffff",
 };
 
 const primaryButton = {
