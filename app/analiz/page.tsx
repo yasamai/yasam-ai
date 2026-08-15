@@ -3114,6 +3114,65 @@ type ListingInquiryMessage = {
   created_at: string;
 };
 
+
+type AgencyClient = {
+  id: string;
+  agency_user_id: string;
+  linked_inquiry_id: string | null;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  transaction_type: "Satılık" | "Kiralık";
+  city: string | null;
+  district: string | null;
+  neighborhood: string | null;
+  property_type: string | null;
+  room_preference: string | null;
+  min_area_m2: number | null;
+  max_area_m2: number | null;
+  min_budget: number | null;
+  max_budget: number | null;
+  max_building_age: number | null;
+  financing_type: "cash" | "credit" | "mixed" | "unknown";
+  urgency: "low" | "normal" | "high" | "urgent";
+  status: "active" | "paused" | "won" | "lost";
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+
+type AgencyTask = {
+  id: string;
+  agency_user_id: string;
+  client_id: string | null;
+  listing_id: string | null;
+  task_type: "call" | "followup" | "visit" | "offer" | "note";
+  title: string;
+  note: string | null;
+  due_at: string;
+  status: "open" | "done" | "cancelled";
+  priority: "low" | "normal" | "high" | "urgent";
+  created_at: string;
+  updated_at: string;
+};
+
+
+type AgencyAdvisor = {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  role: "owner" | "manager" | "advisor";
+  status: "active" | "inactive";
+  listing_ids: string[];
+  client_ids: string[];
+  target_monthly: number;
+  created_at: string;
+  updated_at: string;
+};
+
 function StrategicExpansionCenter({
   records,
   regionalData,
@@ -3215,6 +3274,66 @@ function StrategicExpansionCenter({
   const [listingLeadAiLoading, setListingLeadAiLoading] = useState(false);
   const [listingLeadAiResult, setListingLeadAiResult] = useState("");
 
+  const [agencyClientsReady, setAgencyClientsReady] = useState<boolean | null>(null);
+  const [agencyClientsLoading, setAgencyClientsLoading] = useState(false);
+  const [agencyClients, setAgencyClients] = useState<AgencyClient[]>([]);
+  const [selectedAgencyClientId, setSelectedAgencyClientId] = useState("");
+  const [agencyClientNotice, setAgencyClientNotice] = useState("");
+  const [agencyClientSaving, setAgencyClientSaving] = useState(false);
+  const [agencyClientForm, setAgencyClientForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    transactionType: "Satılık" as "Satılık" | "Kiralık",
+    city: "",
+    district: "",
+    neighborhood: "",
+    propertyType: "Konut",
+    roomPreference: "",
+    minArea: "",
+    maxArea: "",
+    minBudget: "",
+    maxBudget: "",
+    maxBuildingAge: "",
+    financingType: "unknown" as "cash" | "credit" | "mixed" | "unknown",
+    urgency: "normal" as "low" | "normal" | "high" | "urgent",
+    notes: "",
+  });
+
+  const [agencyTasksReady, setAgencyTasksReady] = useState<boolean | null>(null);
+  const [agencyTasksLoading, setAgencyTasksLoading] = useState(false);
+  const [agencyTasks, setAgencyTasks] = useState<AgencyTask[]>([]);
+  const [agencyTaskNotice, setAgencyTaskNotice] = useState("");
+  const [agencyTaskSaving, setAgencyTaskSaving] = useState(false);
+  const [agencyTaskFilter, setAgencyTaskFilter] = useState<"today" | "upcoming" | "overdue" | "all">("today");
+  const [agencyCalendarDate, setAgencyCalendarDate] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [agencyCalendarSelectedDay, setAgencyCalendarSelectedDay] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; });
+  const [agencyTaskForm, setAgencyTaskForm] = useState({
+    clientId: "",
+    listingId: "",
+    taskType: "call" as AgencyTask["task_type"],
+    title: "",
+    note: "",
+    dueDate: "",
+    dueTime: "10:00",
+    priority: "normal" as AgencyTask["priority"],
+  });
+
+  const [agencyAdvisorsReady, setAgencyAdvisorsReady] = useState<boolean | null>(null);
+  const [agencyAdvisorsLoading, setAgencyAdvisorsLoading] = useState(false);
+  const [agencyAdvisors, setAgencyAdvisors] = useState<AgencyAdvisor[]>([]);
+  const [agencyAdvisorNotice, setAgencyAdvisorNotice] = useState("");
+  const [agencyAdvisorSaving, setAgencyAdvisorSaving] = useState(false);
+  const [selectedAgencyAdvisorId, setSelectedAgencyAdvisorId] = useState("");
+  const [agencyAdvisorForm, setAgencyAdvisorForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    role: "advisor" as AgencyAdvisor["role"],
+    targetMonthly: "5",
+  });
+
+
 
 
   useEffect(() => {
@@ -3259,6 +3378,27 @@ function StrategicExpansionCenter({
     // İlan sahibinin alıcı talepleri oturum değiştiğinde RLS üzerinden yeniden okunur.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+
+  useEffect(() => {
+    void loadAgencyClients();
+    // Emlak ofisi müşteri profilleri oturum değiştiğinde RLS üzerinden yeniden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    void loadAgencyTasks();
+    // Görev ve randevular oturum değiştiğinde RLS üzerinden yeniden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+
+  useEffect(() => {
+    void loadAgencyAdvisors();
+    // Ofis danışmanları oturum değiştiğinde RLS üzerinden yeniden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
 
   useEffect(() => {
     const urls = listingFiles.map((file) => URL.createObjectURL(file));
@@ -3502,6 +3642,435 @@ function StrategicExpansionCenter({
       setListingInbox((data ?? []) as ListingInquiry[]);
     }
     setListingInboxLoading(false);
+  }
+
+
+  async function loadAgencyClients() {
+    if (!user) {
+      setAgencyClients([]);
+      setAgencyClientsReady(null);
+      return;
+    }
+    setAgencyClientsLoading(true);
+    const { data, error } = await supabase
+      .from("agency_clients")
+      .select("id,agency_user_id,linked_inquiry_id,name,phone,email,transaction_type,city,district,neighborhood,property_type,room_preference,min_area_m2,max_area_m2,min_budget,max_budget,max_building_age,financing_type,urgency,status,notes,created_at,updated_at")
+      .eq("agency_user_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(500);
+    if (error) {
+      const missing = /agency_clients|relation .* does not exist|schema cache/i.test(error.message);
+      setAgencyClientsReady(missing ? false : null);
+      if (!missing) setAgencyClientNotice(`Müşteri profilleri okunamadı: ${error.message}`);
+      setAgencyClients([]);
+    } else {
+      setAgencyClientsReady(true);
+      setAgencyClients((data ?? []) as AgencyClient[]);
+    }
+    setAgencyClientsLoading(false);
+  }
+
+  function resetAgencyClientForm() {
+    setSelectedAgencyClientId("");
+    setAgencyClientForm({
+      name: "",
+      phone: "",
+      email: "",
+      transactionType: "Satılık",
+      city: "",
+      district: "",
+      neighborhood: "",
+      propertyType: "Konut",
+      roomPreference: "",
+      minArea: "",
+      maxArea: "",
+      minBudget: "",
+      maxBudget: "",
+      maxBuildingAge: "",
+      financingType: "unknown",
+      urgency: "normal",
+      notes: "",
+    });
+  }
+
+  function editAgencyClient(client: AgencyClient) {
+    setSelectedAgencyClientId(client.id);
+    setAgencyClientForm({
+      name: client.name || "",
+      phone: client.phone || "",
+      email: client.email || "",
+      transactionType: client.transaction_type || "Satılık",
+      city: client.city || "",
+      district: client.district || "",
+      neighborhood: client.neighborhood || "",
+      propertyType: client.property_type || "Konut",
+      roomPreference: client.room_preference || "",
+      minArea: client.min_area_m2 ? String(client.min_area_m2) : "",
+      maxArea: client.max_area_m2 ? String(client.max_area_m2) : "",
+      minBudget: client.min_budget ? String(client.min_budget) : "",
+      maxBudget: client.max_budget ? String(client.max_budget) : "",
+      maxBuildingAge: client.max_building_age != null ? String(client.max_building_age) : "",
+      financingType: client.financing_type || "unknown",
+      urgency: client.urgency || "normal",
+      notes: client.notes || "",
+    });
+    setAgencyClientNotice(`${client.name} düzenleme için açıldı.`);
+  }
+
+  async function saveAgencyClient() {
+    if (!user) return;
+    const name = agencyClientForm.name.trim();
+    if (name.length < 2) {
+      setAgencyClientNotice("Müşteri adı en az 2 karakter olmalıdır.");
+      return;
+    }
+    const numberOrNull = (value: string) => {
+      const number = parseMoney(value);
+      return Number.isFinite(number) && number > 0 ? number : null;
+    };
+    const payload = {
+      agency_user_id: user.id,
+      name,
+      phone: agencyClientForm.phone.trim() || null,
+      email: agencyClientForm.email.trim() || null,
+      transaction_type: agencyClientForm.transactionType,
+      city: agencyClientForm.city.trim() || null,
+      district: agencyClientForm.district.trim() || null,
+      neighborhood: agencyClientForm.neighborhood.trim() || null,
+      property_type: agencyClientForm.propertyType.trim() || null,
+      room_preference: agencyClientForm.roomPreference.trim() || null,
+      min_area_m2: numberOrNull(agencyClientForm.minArea),
+      max_area_m2: numberOrNull(agencyClientForm.maxArea),
+      min_budget: numberOrNull(agencyClientForm.minBudget),
+      max_budget: numberOrNull(agencyClientForm.maxBudget),
+      max_building_age: agencyClientForm.maxBuildingAge.trim() ? Math.max(0, Math.round(Number(agencyClientForm.maxBuildingAge))) : null,
+      financing_type: agencyClientForm.financingType,
+      urgency: agencyClientForm.urgency,
+      status: "active",
+      notes: agencyClientForm.notes.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    setAgencyClientSaving(true);
+    const query = selectedAgencyClientId
+      ? supabase.from("agency_clients").update(payload).eq("id", selectedAgencyClientId).eq("agency_user_id", user.id)
+      : supabase.from("agency_clients").insert(payload);
+    const { error } = await query;
+    if (error) {
+      setAgencyClientNotice(`Müşteri kaydedilemedi: ${error.message}`);
+    } else {
+      setAgencyClientNotice(selectedAgencyClientId ? "Müşteri profili güncellendi." : "Yeni müşteri profili CRM'e eklendi.");
+      resetAgencyClientForm();
+      await loadAgencyClients();
+    }
+    setAgencyClientSaving(false);
+  }
+
+  async function updateAgencyClientStatus(client: AgencyClient, status: AgencyClient["status"]) {
+    if (!user) return;
+    const { error } = await supabase.from("agency_clients").update({ status, updated_at: new Date().toISOString() }).eq("id", client.id).eq("agency_user_id", user.id);
+    if (error) setAgencyClientNotice(`Müşteri durumu güncellenemedi: ${error.message}`);
+    else {
+      setAgencyClientNotice(`${client.name} durumu güncellendi.`);
+      setAgencyClients((current) => current.map((item) => item.id === client.id ? { ...item, status } : item));
+    }
+  }
+
+
+  async function loadAgencyTasks() {
+    if (!user) {
+      setAgencyTasks([]);
+      setAgencyTasksReady(null);
+      return;
+    }
+    setAgencyTasksLoading(true);
+    const { data, error } = await supabase
+      .from("agency_tasks")
+      .select("id,agency_user_id,client_id,listing_id,task_type,title,note,due_at,status,priority,created_at,updated_at")
+      .eq("agency_user_id", user.id)
+      .order("due_at", { ascending: true })
+      .limit(1000);
+
+    if (error) {
+      const missing = /agency_tasks|relation .* does not exist|schema cache/i.test(error.message);
+      setAgencyTasksReady(missing ? false : null);
+      if (!missing) setAgencyTaskNotice(`Görevler okunamadı: ${error.message}`);
+      setAgencyTasks([]);
+    } else {
+      setAgencyTasksReady(true);
+      setAgencyTasks((data ?? []) as AgencyTask[]);
+    }
+    setAgencyTasksLoading(false);
+  }
+
+  async function saveAgencyTask() {
+    if (!user) return;
+    const title = agencyTaskForm.title.trim();
+    if (title.length < 2) {
+      setAgencyTaskNotice("Görev başlığı en az 2 karakter olmalıdır.");
+      return;
+    }
+    if (!agencyTaskForm.dueDate) {
+      setAgencyTaskNotice("Takip veya randevu tarihi seçin.");
+      return;
+    }
+    const dueAt = new Date(`${agencyTaskForm.dueDate}T${agencyTaskForm.dueTime || "10:00"}:00`);
+    if (Number.isNaN(dueAt.getTime())) {
+      setAgencyTaskNotice("Geçerli bir tarih ve saat seçin.");
+      return;
+    }
+
+    setAgencyTaskSaving(true);
+    const { error } = await supabase.from("agency_tasks").insert({
+      agency_user_id: user.id,
+      client_id: agencyTaskForm.clientId || null,
+      listing_id: agencyTaskForm.listingId || null,
+      task_type: agencyTaskForm.taskType,
+      title,
+      note: agencyTaskForm.note.trim() || null,
+      due_at: dueAt.toISOString(),
+      status: "open",
+      priority: agencyTaskForm.priority,
+    });
+
+    if (error) {
+      setAgencyTaskNotice(`Görev kaydedilemedi: ${error.message}`);
+    } else {
+      setAgencyTaskNotice("Takip / randevu görevi kaydedildi.");
+      setAgencyTaskForm({
+        clientId: "",
+        listingId: "",
+        taskType: "call",
+        title: "",
+        note: "",
+        dueDate: "",
+        dueTime: "10:00",
+        priority: "normal",
+      });
+      await loadAgencyTasks();
+    }
+    setAgencyTaskSaving(false);
+  }
+
+  async function setAgencyTaskStatus(task: AgencyTask, status: AgencyTask["status"]) {
+    if (!user) return;
+    const { error } = await supabase
+      .from("agency_tasks")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", task.id)
+      .eq("agency_user_id", user.id);
+
+    if (error) setAgencyTaskNotice(`Görev güncellenemedi: ${error.message}`);
+    else {
+      setAgencyTasks((current) => current.map((item) => item.id === task.id ? { ...item, status } : item));
+      setAgencyTaskNotice(status === "done" ? "Görev tamamlandı." : "Görev durumu güncellendi.");
+    }
+  }
+
+  function quickAgencyTask(client: AgencyClient, kind: AgencyTask["task_type"]) {
+    const next = new Date();
+    if (kind === "visit") next.setDate(next.getDate() + 1);
+    else next.setHours(next.getHours() + 2);
+    const yyyy = next.getFullYear();
+    const mm = String(next.getMonth() + 1).padStart(2, "0");
+    const dd = String(next.getDate()).padStart(2, "0");
+    const hh = String(next.getHours()).padStart(2, "0");
+    const mi = String(next.getMinutes()).padStart(2, "0");
+    const labels: Record<AgencyTask["task_type"], string> = {
+      call: `${client.name} ile görüş`,
+      followup: `${client.name} geri dönüş takibi`,
+      visit: `${client.name} için portföy ziyareti`,
+      offer: `${client.name} teklif sürecini takip et`,
+      note: `${client.name} müşteri notunu güncelle`,
+    };
+    setAgencyTaskForm((current) => ({
+      ...current,
+      clientId: client.id,
+      taskType: kind,
+      title: labels[kind],
+      dueDate: `${yyyy}-${mm}-${dd}`,
+      dueTime: `${hh}:${mi}`,
+      priority: client.urgency === "urgent" ? "urgent" : client.urgency === "high" ? "high" : "normal",
+    }));
+    setAgencyTaskNotice(`${client.name} için görev taslağı hazırlandı.`);
+  }
+
+
+  async function loadAgencyAdvisors() {
+    if (!user) {
+      setAgencyAdvisors([]);
+      setAgencyAdvisorsReady(null);
+      return;
+    }
+    setAgencyAdvisorsLoading(true);
+    const { data, error } = await supabase
+      .from("agency_advisors")
+      .select("id,owner_user_id,name,phone,email,role,status,listing_ids,client_ids,target_monthly,created_at,updated_at")
+      .eq("owner_user_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(200);
+
+    if (error) {
+      const missing = /agency_advisors|relation .* does not exist|schema cache/i.test(error.message);
+      setAgencyAdvisorsReady(missing ? false : null);
+      if (!missing) setAgencyAdvisorNotice(`Danışmanlar okunamadı: ${error.message}`);
+      setAgencyAdvisors([]);
+    } else {
+      setAgencyAdvisorsReady(true);
+      setAgencyAdvisors((data ?? []).map((item: any) => ({
+        ...item,
+        listing_ids: Array.isArray(item.listing_ids) ? item.listing_ids : [],
+        client_ids: Array.isArray(item.client_ids) ? item.client_ids : [],
+      })) as AgencyAdvisor[]);
+    }
+    setAgencyAdvisorsLoading(false);
+  }
+
+  function resetAgencyAdvisorForm() {
+    setSelectedAgencyAdvisorId("");
+    setAgencyAdvisorForm({ name: "", phone: "", email: "", role: "advisor", targetMonthly: "5" });
+  }
+
+  function editAgencyAdvisor(advisor: AgencyAdvisor) {
+    setSelectedAgencyAdvisorId(advisor.id);
+    setAgencyAdvisorForm({
+      name: advisor.name || "",
+      phone: advisor.phone || "",
+      email: advisor.email || "",
+      role: advisor.role || "advisor",
+      targetMonthly: String(advisor.target_monthly || 0),
+    });
+    setAgencyAdvisorNotice(`${advisor.name} düzenleme için açıldı.`);
+  }
+
+  async function saveAgencyAdvisor() {
+    if (!user) return;
+    const name = agencyAdvisorForm.name.trim();
+    if (name.length < 2) {
+      setAgencyAdvisorNotice("Danışman adı en az 2 karakter olmalıdır.");
+      return;
+    }
+    setAgencyAdvisorSaving(true);
+    const payload = {
+      owner_user_id: user.id,
+      name,
+      phone: agencyAdvisorForm.phone.trim() || null,
+      email: agencyAdvisorForm.email.trim() || null,
+      role: agencyAdvisorForm.role,
+      target_monthly: Math.max(0, Math.round(Number(agencyAdvisorForm.targetMonthly) || 0)),
+      status: "active",
+      updated_at: new Date().toISOString(),
+    };
+    const query = selectedAgencyAdvisorId
+      ? supabase.from("agency_advisors").update(payload).eq("id", selectedAgencyAdvisorId).eq("owner_user_id", user.id)
+      : supabase.from("agency_advisors").insert({ ...payload, listing_ids: [], client_ids: [] });
+
+    const { error } = await query;
+    if (error) {
+      setAgencyAdvisorNotice(`Danışman kaydedilemedi: ${error.message}`);
+    } else {
+      setAgencyAdvisorNotice(selectedAgencyAdvisorId ? "Danışman profili güncellendi." : "Yeni danışman ofise eklendi.");
+      resetAgencyAdvisorForm();
+      await loadAgencyAdvisors();
+    }
+    setAgencyAdvisorSaving(false);
+  }
+
+  async function toggleAgencyAdvisorStatus(advisor: AgencyAdvisor) {
+    if (!user) return;
+    const nextStatus: AgencyAdvisor["status"] = advisor.status === "active" ? "inactive" : "active";
+    const { error } = await supabase
+      .from("agency_advisors")
+      .update({ status: nextStatus, updated_at: new Date().toISOString() })
+      .eq("id", advisor.id)
+      .eq("owner_user_id", user.id);
+    if (error) setAgencyAdvisorNotice(`Danışman durumu değiştirilemedi: ${error.message}`);
+    else {
+      setAgencyAdvisors((current) => current.map((item) => item.id === advisor.id ? { ...item, status: nextStatus } : item));
+      setAgencyAdvisorNotice(`${advisor.name} durumu güncellendi.`);
+    }
+  }
+
+  async function assignAdvisorListing(advisor: AgencyAdvisor, listingId: string) {
+    if (!user || !listingId) return;
+    const exists = advisor.listing_ids.includes(listingId);
+    const next = exists ? advisor.listing_ids.filter((id) => id !== listingId) : [...advisor.listing_ids, listingId];
+    const { error } = await supabase
+      .from("agency_advisors")
+      .update({ listing_ids: next, updated_at: new Date().toISOString() })
+      .eq("id", advisor.id)
+      .eq("owner_user_id", user.id);
+    if (error) setAgencyAdvisorNotice(`İlan ataması yapılamadı: ${error.message}`);
+    else setAgencyAdvisors((current) => current.map((item) => item.id === advisor.id ? { ...item, listing_ids: next } : item));
+  }
+
+  async function assignAdvisorClient(advisor: AgencyAdvisor, clientId: string) {
+    if (!user || !clientId) return;
+    const exists = advisor.client_ids.includes(clientId);
+    const next = exists ? advisor.client_ids.filter((id) => id !== clientId) : [...advisor.client_ids, clientId];
+    const { error } = await supabase
+      .from("agency_advisors")
+      .update({ client_ids: next, updated_at: new Date().toISOString() })
+      .eq("id", advisor.id)
+      .eq("owner_user_id", user.id);
+    if (error) setAgencyAdvisorNotice(`Müşteri ataması yapılamadı: ${error.message}`);
+    else setAgencyAdvisors((current) => current.map((item) => item.id === advisor.id ? { ...item, client_ids: next } : item));
+  }
+
+
+  async function copyAgencyPhase3Report() {
+    const topAdvisor = agencyPhase3Final.leaderboard[0];
+    const report = [
+      "YAŞAM AI · EMLAK OFİSİ YÖNETİCİ ÖZETİ",
+      `Ofis skoru: ${agencyPhase3Final.officeScore}/100`,
+      `Yayındaki ilan: ${agencyPhase3Final.published}`,
+      `Aktif müşteri: ${agencyPhase3Final.activeClients}`,
+      `Güçlü eşleşme: ${agencyPhase3Final.strongMatches}`,
+      `Açık görev: ${agencyPhase3Final.openTasks}`,
+      `Geciken görev: ${agencyPhase3Final.overdueTasks}`,
+      `Görev tamamlama: %${agencyPhase3Final.taskCompletion}`,
+      `Kazanılan müşteri: ${agencyPhase3Final.wonClients}`,
+      topAdvisor ? `En yüksek danışman skoru: ${topAdvisor.advisor.name} · ${topAdvisor.performance}/100` : "Danışman performansı: veri yok",
+      "",
+      "ÖNCELİKLİ AKSİYONLAR",
+      ...agencyPhase3Final.alerts.map((item, index) => `${index + 1}. ${item}`),
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(report);
+      setEnterpriseNotice("Emlak Ofisi yönetici özeti panoya kopyalandı.");
+    } catch {
+      setEnterpriseNotice("Yönetici özeti kopyalanamadı. Tarayıcı pano iznini kontrol edin.");
+    }
+  }
+
+  function printAgencyPhase3Report() {
+    const topAdvisor = agencyPhase3Final.leaderboard[0];
+    const report = [
+      "YAŞAM AI · EMLAK OFİSİ YÖNETİCİ ÖZETİ",
+      `Ofis skoru: ${agencyPhase3Final.officeScore}/100`,
+      `Yayındaki ilan: ${agencyPhase3Final.published}`,
+      `Aktif müşteri: ${agencyPhase3Final.activeClients}`,
+      `Güçlü eşleşme: ${agencyPhase3Final.strongMatches}`,
+      `Açık görev: ${agencyPhase3Final.openTasks}`,
+      `Geciken görev: ${agencyPhase3Final.overdueTasks}`,
+      `Görev tamamlama: %${agencyPhase3Final.taskCompletion}`,
+      `Kazanılan müşteri: ${agencyPhase3Final.wonClients}`,
+      topAdvisor ? `En yüksek danışman skoru: ${topAdvisor.advisor.name} · ${topAdvisor.performance}/100` : "Danışman performansı: veri yok",
+      "",
+      "ÖNCELİKLİ AKSİYONLAR",
+      ...agencyPhase3Final.alerts.map((item, index) => `${index + 1}. ${item}`),
+    ].join("\n");
+
+    const popup = window.open("", "_blank", "width=900,height=720");
+    if (!popup) {
+      setEnterpriseNotice("PDF/Yazdır penceresi açılamadı. Tarayıcı açılır pencere iznini kontrol edin.");
+      return;
+    }
+    const safe = report.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    popup.document.write(`<!doctype html><html lang="tr"><head><meta charset="utf-8"/><title>Yaşam AI Emlak Ofisi Raporu</title><style>body{font-family:Arial,sans-serif;padding:38px;color:#173b56;line-height:1.6}h1{font-size:25px;margin-bottom:18px}pre{white-space:pre-wrap;font:15px/1.65 Arial,sans-serif;background:#f7fafc;border:1px solid #dce7ef;padding:22px;border-radius:16px}</style></head><body><h1>Yaşam AI · Emlak Ofisi Yönetici Özeti</h1><pre>${safe}</pre></body></html>`);
+    popup.document.close();
+    popup.focus();
+    window.setTimeout(() => popup.print(), 250);
   }
 
   async function openListingInquiry(inquiry: ListingInquiry) {
@@ -3932,6 +4501,293 @@ ${currentText}`
     };
   }, [listingInbox]);
 
+  const agencyCenter = useMemo(() => {
+    const ownListings = liveListings.filter((item) => item.user_id === user?.id);
+    const published = ownListings.filter((item) => item.status === "published");
+    const drafts = ownListings.filter((item) => item.status === "draft");
+    const paused = ownListings.filter((item) => item.status === "paused");
+    const now = Date.now();
+    const pipelineStages = ["new", "contacted", "qualified", "visit", "offer", "won", "lost"] as const;
+    const pipeline = Object.fromEntries(pipelineStages.map((stage) => [stage, listingInbox.filter((item) => item.lead_status === stage).length])) as Record<(typeof pipelineStages)[number], number>;
+    const qualityFor = (listing: LiveListing) => {
+      const photos = (listing.media || []).length;
+      const description = (listing.description || "").trim().length;
+      let score = 0;
+      score += photos >= 10 ? 30 : photos >= 6 ? 26 : photos >= 3 ? 19 : photos ? 10 : 0;
+      score += description >= 220 ? 22 : description >= 120 ? 17 : description >= 60 ? 11 : description ? 6 : 0;
+      score += listing.verification_status === "verified" ? 22 : listing.verification_status === "pending" ? 13 : 4;
+      score += listing.status === "published" ? 16 : 7;
+      score += Number(listing.price || 0) > 0 && Number(listing.area_m2 || 0) > 0 ? 10 : 3;
+      return Math.min(100, score);
+    };
+    const leadCountFor = (listingId: string) => listingInbox.filter((item) => item.listing_id === listingId).length;
+    const portfolio = ownListings.map((listing) => ({ listing, quality: qualityFor(listing), leads: leadCountFor(listing.id) })).sort((a, b) => (b.leads * 14 + b.quality) - (a.leads * 14 + a.quality));
+    const avgQuality = portfolio.length ? Math.round(portfolio.reduce((sum, entry) => sum + entry.quality, 0) / portfolio.length) : 0;
+    const rankLead = (item: ListingInquiry) => (item.priority === "urgent" ? 50 : item.priority === "high" ? 35 : 0) + (item.lead_status === "offer" ? 30 : item.lead_status === "visit" ? 22 : item.lead_status === "qualified" ? 15 : 0);
+    const hotLeads = listingInbox.filter((item) => item.priority === "urgent" || item.priority === "high" || ["qualified", "visit", "offer"].includes(item.lead_status)).sort((a, b) => rankLead(b) - rankLead(a));
+    const followUps = listingInbox.filter((item) => item.follow_up_at && new Date(item.follow_up_at).getTime() <= now + 24 * 60 * 60 * 1000 && !["won", "lost"].includes(item.lead_status));
+    const matching = hotLeads.slice(0, 4).map((lead) => {
+      const target = ownListings.find((listing) => listing.id === lead.listing_id) ?? null;
+      const alternatives = target ? published.filter((listing) => listing.id !== target.id).map((listing) => {
+        let score = 0;
+        if (listing.property_type === target.property_type) score += 35;
+        if (listing.transaction_type === target.transaction_type) score += 20;
+        if (listing.city === target.city) score += 18;
+        if (listing.district && listing.district === target.district) score += 12;
+        const targetPrice = Number(target.price || 0), price = Number(listing.price || 0);
+        if (targetPrice > 0 && price > 0) score += Math.max(0, 15 - Math.abs(price - targetPrice) / targetPrice * 30);
+        return { listing, score };
+      }).sort((a, b) => b.score - a.score).slice(0, 2) : [];
+      return { lead, target, alternatives };
+    });
+    return { ownListings, published, drafts, paused, pipeline, portfolio, avgQuality, hotLeads, followUps, matching };
+  }, [liveListings, listingInbox, user?.id]);
+
+
+  const agencyClientIntelligence = useMemo(() => {
+    const activeClients = agencyClients.filter((client) => client.status === "active");
+    const normalize = (value: string | null | undefined) => (value || "").trim().toLocaleLowerCase("tr-TR");
+    const scoreListing = (client: AgencyClient, listing: LiveListing) => {
+      let earned = 0;
+      let possible = 0;
+      const reasons: string[] = [];
+      const gaps: string[] = [];
+      const add = (weight: number, condition: boolean, okText: string, failText?: string) => {
+        possible += weight;
+        if (condition) {
+          earned += weight;
+          reasons.push(okText);
+        } else if (failText) gaps.push(failText);
+      };
+      add(16, listing.transaction_type === client.transaction_type, `${client.transaction_type} talebiyle uyumlu`, "İşlem tipi farklı");
+      if (client.property_type) add(15, normalize(listing.property_type) === normalize(client.property_type), "Gayrimenkul türü uyumlu", "Gayrimenkul türü farklı");
+      if (client.city) add(18, normalize(listing.city) === normalize(client.city), "Şehir uyumlu", "Şehir tercihi dışında");
+      if (client.district) add(12, normalize(listing.district) === normalize(client.district), "İlçe uyumlu", "İlçe tercihi dışında");
+      if (client.neighborhood) add(8, normalize(listing.neighborhood) === normalize(client.neighborhood), "Mahalle uyumlu", "Mahalle tercihi dışında");
+      const price = Number(listing.price || 0);
+      if (client.min_budget || client.max_budget) {
+        const min = Number(client.min_budget || 0);
+        const max = Number(client.max_budget || Number.MAX_SAFE_INTEGER);
+        add(21, price > 0 && price >= min && price <= max, "Bütçe aralığında", price > max ? "Bütçe üstünde" : "Bütçe altında");
+      }
+      const area = Number(listing.area_m2 || 0);
+      if (client.min_area_m2 || client.max_area_m2) {
+        const min = Number(client.min_area_m2 || 0);
+        const max = Number(client.max_area_m2 || Number.MAX_SAFE_INTEGER);
+        add(10, area > 0 && area >= min && area <= max, "m² beklentisine uyumlu", "m² beklentisi dışında");
+      }
+      const score = possible > 0 ? Math.round((earned / possible) * 100) : 0;
+      return { listing, score, reasons: reasons.slice(0, 4), gaps: gaps.slice(0, 3) };
+    };
+    const matches = activeClients.map((client) => ({
+      client,
+      matches: agencyCenter.published
+        .map((listing) => scoreListing(client, listing))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 4),
+    }));
+    const hotClients = activeClients
+      .map((client) => {
+        const best = matches.find((entry) => entry.client.id === client.id)?.matches[0] ?? null;
+        const urgencyBoost = client.urgency === "urgent" ? 25 : client.urgency === "high" ? 15 : client.urgency === "normal" ? 5 : 0;
+        return { client, best, priorityScore: (best?.score ?? 0) + urgencyBoost };
+      })
+      .sort((a, b) => b.priorityScore - a.priorityScore);
+    return {
+      activeClients,
+      matches,
+      hotClients,
+      strongMatchCount: matches.filter((entry) => (entry.matches[0]?.score ?? 0) >= 75).length,
+    };
+  }, [agencyCenter.published, agencyClients]);
+
+  const agencyTaskIntelligence = useMemo(() => {
+    const open = agencyTasks.filter((task) => task.status === "open");
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endToday = new Date(startToday);
+    endToday.setDate(endToday.getDate() + 1);
+    const weekEnd = new Date(endToday);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    const overdue = open.filter((task) => new Date(task.due_at).getTime() < now.getTime());
+    const today = open.filter((task) => {
+      const due = new Date(task.due_at);
+      return due >= startToday && due < endToday;
+    });
+    const upcoming = open.filter((task) => {
+      const due = new Date(task.due_at);
+      return due >= endToday && due < weekEnd;
+    });
+
+    const visible =
+      agencyTaskFilter === "overdue" ? overdue :
+      agencyTaskFilter === "upcoming" ? upcoming :
+      agencyTaskFilter === "all" ? open : today;
+
+    const priorityRank = { urgent: 4, high: 3, normal: 2, low: 1 } as const;
+    const sorted = [...visible].sort((a, b) => {
+      const priorityDiff = priorityRank[b.priority] - priorityRank[a.priority];
+      return priorityDiff || new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
+    });
+
+    const nextBest = [...open].sort((a, b) => {
+      const priorityDiff = priorityRank[b.priority] - priorityRank[a.priority];
+      return priorityDiff || new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
+    })[0] ?? null;
+
+    return {
+      open,
+      today,
+      upcoming,
+      overdue,
+      visible: sorted,
+      nextBest,
+      dueSoon: open.filter((task) => new Date(task.due_at).getTime() <= Date.now() + 24 * 60 * 60 * 1000).length,
+    };
+  }, [agencyTaskFilter, agencyTasks]);
+
+
+  const agencyCalendarIntelligence = useMemo(() => {
+    const year = agencyCalendarDate.getFullYear();
+    const month = agencyCalendarDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const mondayOffset = (firstDay.getDay() + 6) % 7;
+    const days: Array<{ date: Date; key: string; inMonth: boolean; tasks: AgencyTask[] }> = [];
+    const cursor = new Date(year, month, 1 - mondayOffset);
+    for (let i = 0; i < 42; i += 1) {
+      const day = new Date(cursor);
+      day.setDate(cursor.getDate() + i);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      const tasks = agencyTasks.filter((task) => {
+        if (task.status !== "open") return false;
+        const due = new Date(task.due_at);
+        const dueKey = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`;
+        return dueKey === key;
+      });
+      days.push({ date: day, key, inMonth: day.getMonth() === month, tasks });
+    }
+    const selectedTasks = days.find((day) => day.key === agencyCalendarSelectedDay)?.tasks ?? [];
+    const monthTasks = agencyTasks.filter((task) => {
+      const due = new Date(task.due_at);
+      return task.status === "open" && due.getFullYear() === year && due.getMonth() === month;
+    });
+    const visits = monthTasks.filter((task) => task.task_type === "visit").length;
+    const offers = monthTasks.filter((task) => task.task_type === "offer").length;
+    const calls = monthTasks.filter((task) => task.task_type === "call" || task.task_type === "followup").length;
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+    return { days, selectedTasks, monthTasks, visits, offers, calls, todayKey, monthLabel: agencyCalendarDate.toLocaleDateString("tr-TR", { month: "long", year: "numeric" }) };
+  }, [agencyCalendarDate, agencyCalendarSelectedDay, agencyTasks]);
+
+
+  const agencyAdvisorIntelligence = useMemo(() => {
+    const active = agencyAdvisors.filter((advisor) => advisor.status === "active");
+    const metrics = active.map((advisor) => {
+      const listingCount = advisor.listing_ids.filter((id) => agencyCenter.published.some((listing) => listing.id === id)).length;
+      const clientCount = advisor.client_ids.filter((id) => agencyClients.some((client) => client.id === id && client.status === "active")).length;
+      const advisorTasks = agencyTasks.filter((task) => {
+        if (task.status !== "open") return false;
+        return (task.client_id && advisor.client_ids.includes(task.client_id)) || (task.listing_id && advisor.listing_ids.includes(task.listing_id));
+      });
+      const overdue = advisorTasks.filter((task) => new Date(task.due_at).getTime() < Date.now()).length;
+      const completed = agencyTasks.filter((task) => task.status === "done" && (
+        (task.client_id && advisor.client_ids.includes(task.client_id)) ||
+        (task.listing_id && advisor.listing_ids.includes(task.listing_id))
+      )).length;
+      const performance = Math.max(0, Math.min(100, Math.round(
+        40 +
+        Math.min(20, listingCount * 5) +
+        Math.min(20, clientCount * 4) +
+        Math.min(20, completed * 3) -
+        overdue * 8
+      )));
+      return { advisor, listingCount, clientCount, taskCount: advisorTasks.length, overdue, completed, performance };
+    });
+    const unassignedListings = agencyCenter.published.filter((listing) => !active.some((advisor) => advisor.listing_ids.includes(listing.id)));
+    const unassignedClients = agencyClients.filter((client) => client.status === "active" && !active.some((advisor) => advisor.client_ids.includes(client.id)));
+    return {
+      active,
+      metrics,
+      unassignedListings,
+      unassignedClients,
+      avgPerformance: metrics.length ? Math.round(metrics.reduce((sum, item) => sum + item.performance, 0) / metrics.length) : 0,
+    };
+  }, [agencyAdvisors, agencyCenter.published, agencyClients, agencyTasks]);
+
+
+  const agencyPhase3Final = useMemo(() => {
+    const activeClients = agencyClients.filter((client) => client.status === "active").length;
+    const wonClients = agencyClients.filter((client) => client.status === "won").length;
+    const lostClients = agencyClients.filter((client) => client.status === "lost").length;
+    const openTasks = agencyTasks.filter((task) => task.status === "open").length;
+    const doneTasks = agencyTasks.filter((task) => task.status === "done").length;
+    const overdueTasks = agencyTasks.filter((task) => task.status === "open" && new Date(task.due_at).getTime() < Date.now()).length;
+    const visitTasks = agencyTasks.filter((task) => task.task_type === "visit").length;
+    const offerTasks = agencyTasks.filter((task) => task.task_type === "offer").length;
+    const published = agencyCenter.published.length;
+    const strongMatches = agencyClientIntelligence.strongMatchCount;
+
+    const taskCompletion = Math.round((doneTasks / Math.max(1, doneTasks + openTasks)) * 100);
+    const portfolioAssignment = Math.round(
+      ((published - agencyAdvisorIntelligence.unassignedListings.length) / Math.max(1, published)) * 100
+    );
+    const clientAssignment = Math.round(
+      ((activeClients - agencyAdvisorIntelligence.unassignedClients.length) / Math.max(1, activeClients)) * 100
+    );
+
+    const officeScore = Math.max(0, Math.min(100, Math.round(
+      Number(agencyCenter.avgQuality || 0) * 0.30 +
+      taskCompletion * 0.22 +
+      portfolioAssignment * 0.18 +
+      clientAssignment * 0.14 +
+      Math.min(100, strongMatches * 20) * 0.10 +
+      Math.max(0, 100 - overdueTasks * 15) * 0.06
+    )));
+
+    const funnel = [
+      { label: "CRM Profili", value: agencyClients.length, note: "Kayıtlı müşteri" },
+      { label: "Aktif Müşteri", value: activeClients, note: "Takipteki müşteri" },
+      { label: "Güçlü Eşleşme", value: strongMatches, note: "%75+ portföy uyumu" },
+      { label: "Ziyaret", value: visitTasks, note: "Ziyaret görevi" },
+      { label: "Teklif", value: offerTasks, note: "Teklif takibi" },
+      { label: "Kazanıldı", value: wonClients, note: "Sonuçlanan müşteri" },
+    ];
+
+    const leaderboard = [...agencyAdvisorIntelligence.metrics]
+      .sort((a, b) => b.performance - a.performance || b.completed - a.completed)
+      .slice(0, 6);
+
+    const alerts: string[] = [];
+    if (overdueTasks > 0) alerts.push(`${overdueTasks} geciken görev var; önce bunları kapat.`);
+    if (agencyAdvisorIntelligence.unassignedClients.length > 0) alerts.push(`${agencyAdvisorIntelligence.unassignedClients.length} aktif müşteri danışmana atanmamış.`);
+    if (agencyAdvisorIntelligence.unassignedListings.length > 0) alerts.push(`${agencyAdvisorIntelligence.unassignedListings.length} ilan danışmana atanmamış.`);
+    if (strongMatches > 0) alerts.push(`${strongMatches} güçlü müşteri-ilan eşleşmesine bugün temas et.`);
+    if (!alerts.length) alerts.push("Kritik operasyon uyarısı görünmüyor.");
+
+    return {
+      activeClients,
+      wonClients,
+      lostClients,
+      openTasks,
+      doneTasks,
+      overdueTasks,
+      visitTasks,
+      offerTasks,
+      published,
+      strongMatches,
+      taskCompletion,
+      portfolioAssignment,
+      clientAssignment,
+      officeScore,
+      funnel,
+      leaderboard,
+      alerts,
+    };
+  }, [agencyAdvisorIntelligence, agencyCenter.avgQuality, agencyCenter.published.length, agencyClientIntelligence.strongMatchCount, agencyClients, agencyTasks]);
+
+
   const filteredMarketplaceDrafts = useMemo(() => {
     const q = listingQuery.trim().toLocaleLowerCase("tr-TR");
     return listingDrafts.filter((draft) => {
@@ -3945,6 +4801,9 @@ ${currentText}`
 
   const [enterpriseNotice, setEnterpriseNotice] = useState("");
   const [enterpriseQuestion, setEnterpriseQuestion] = useState("");
+  const [agencyAiQuestion, setAgencyAiQuestion] = useState("");
+  const [agencyAiLoading, setAgencyAiLoading] = useState(false);
+  const [agencyAiAnswer, setAgencyAiAnswer] = useState("");
   const [bankScenario, setBankScenario] = useState<"balanced" | "conservative" | "growth">("balanced");
   const [bankQueueFilter, setBankQueueFilter] = useState<"all" | "urgent" | "review">("all");
   const [developerProject, setDeveloperProject] = useState<"elysium" | "nova" | "vera">("elysium");
@@ -4573,6 +5432,31 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
     } catch {
       setPdfNotice("Tarayıcı pano erişimine izin vermedi.");
     }
+  }
+
+  async function runAgencySalesAi(preset?: string) {
+    const question = (preset ?? agencyAiQuestion).trim();
+    if (!question) { setEnterpriseNotice("AI Satış Ko-Pilotu için bir soru veya görev yazın."); return; }
+    setAgencyAiLoading(true);
+    setAgencyAiAnswer("");
+    setEnterpriseNotice("");
+    try {
+      const topPortfolio = agencyCenter.portfolio.slice(0, 6).map((entry, index) => `${index + 1}. ${entry.listing.title} · ${entry.listing.city}/${entry.listing.district || "—"} · ${Math.round(Number(entry.listing.price || 0)).toLocaleString("tr-TR")} TL · Kalite ${entry.quality}/100 · Talep ${entry.leads}`).join("\n");
+      const topLeads = agencyCenter.hotLeads.slice(0, 6).map((lead, index) => {
+        const listing = agencyCenter.ownListings.find((item) => item.id === lead.listing_id);
+        return `${index + 1}. ${listing?.title || "İlan"} · Aşama ${lead.lead_status} · Öncelik ${lead.priority} · Mesaj: ${lead.message.slice(0, 180)}`;
+      }).join("\n");
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: `Sen Yaşam AI Emlak Ofisi Satış Ko-Pilotusun. Aşağıdaki GERÇEK platform verilerine göre kısa, uygulanabilir ve açıklanabilir satış desteği ver. Verilmeyen müşteri bütçesi, iletişim bilgisi, portföy özelliği veya piyasa verisini uydurma. Satış baskısı kurma; güvenli, profesyonel ve müşteri odaklı ol.\n\nOFİS ÖZETİ\nAktif ilan: ${agencyCenter.published.length}\nTaslak: ${agencyCenter.drafts.length}\nDurdurulmuş: ${agencyCenter.paused.length}\nYeni talep: ${listingCrmSummary.newCount}\nSıcak talep: ${agencyCenter.hotLeads.length}\nTakip zamanı gelen: ${agencyCenter.followUps.length}\nKazanılan: ${agencyCenter.pipeline.won}\nOrtalama ilan kalite skoru: ${agencyCenter.avgQuality}/100\n\nÖNCELİKLİ PORTFÖY\n${topPortfolio || "Portföy kaydı yok"}\n\nÖNCELİKLİ TALEPLER\n${topLeads || "Sıcak talep yok"}\n\nKULLANICI GÖREVİ\n${question}\n\nYanıtı şu yapıda ver:\nÖNCELİK: bugün yapılacak tek en önemli iş\nNEDEN: en fazla 3 kısa gerekçe\nAKSİYON PLANI: 1-2-3 şeklinde en fazla 3 adım\nSATIŞ FIRSATI: varsa hangi ilan/talep; veri yetersizse açıkça söyle\nDİKKAT: karar öncesi doğrulanması gereken en önemli nokta` })
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) throw new Error(extractText(data) || "AI satış ko-pilotu çalıştırılamadı.");
+      setAgencyAiAnswer(extractText(data).trim());
+    } catch (error) {
+      setEnterpriseNotice(error instanceof Error ? error.message : "AI satış ko-pilotu çalıştırılamadı.");
+    } finally { setAgencyAiLoading(false); }
   }
 
   const modules = [
@@ -5808,7 +6692,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {([['bank','Banka'],['developer','Müteahhit'],['investor','Yatırımcı'],['valuation','Değerleme'],['agency','Emlak Ofisi'],['technical','Mimar & Mühendis']] as const).map(([id,label]) => {
                   const active = enterpriseRole === id;
-                  const accent = id === "bank" ? "#0b5fa5" : id === "developer" ? "#a56609" : id === "agency" ? "#9b2c67" : id === "investor" ? "#0f8065" : id === "valuation" ? "#6b46c1" : "#285c86";
+                  const accent = id === "bank" ? "#0b5fa5" : id === "developer" ? "#a56609" : id === "agency" ? "#c56b12" : id === "investor" ? "#0f8065" : id === "valuation" ? "#6b46c1" : "#285c86";
                   return <button key={id} type="button" onClick={() => { setEnterpriseRole(id); setEnterpriseNotice(""); }} style={{ padding: "10px 13px", borderRadius: 12, border: active ? `1px solid ${accent}` : "1px solid #d7e4f0", background: active ? `${accent}12` : "#fff", color: active ? accent : "#607890", fontSize: 10, fontWeight: 950, cursor: "pointer", boxShadow: active ? `0 8px 18px ${accent}18` : "none", transition: "all .2s ease" }}>{label}</button>
                 })}
               </div>
@@ -5816,7 +6700,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
           </article>
           {enterpriseNotice ? <div style={{ ...locationInfoBox, marginTop: 12 }}>{enterpriseNotice}</div> : null}
 
-          {(["bank", "developer", "agency"] as const).includes(enterpriseRole as "bank" | "developer" | "agency") ? (() => {
+          {(["bank", "developer"] as const).includes(enterpriseRole as "bank" | "developer") ? (() => {
             const roleDesign = enterpriseRole === "bank" ? {
               eyebrow: "FİNANSAL KURUMLAR İÇİN GÜVENLİ KARAR ALANI",
               title: "Banka Gayrimenkul Karar Merkezi",
@@ -5851,12 +6735,444 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
             </section>
           })() : null}
 
+          {enterpriseRole === "agency" ? (
+            <section style={{ marginTop: 16 }}>
+              <article style={{ position: "relative", overflow: "hidden", padding: 24, borderRadius: 27, background: "radial-gradient(circle at 88% 12%,rgba(255,176,71,.28),transparent 30%),linear-gradient(145deg,#071b2c,#0b3e54 58%,#8b4c0b)", color: "#fff", boxShadow: "0 26px 64px rgba(7,43,64,.24)" }}>
+                <div style={{ position: "relative", display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(300px,.85fr)", gap: 18, alignItems: "end" }}>
+                  <div><div style={{ color: "#ffd18a", fontSize: 10, fontWeight: 950, letterSpacing: 1.55 }}>EMLAK OFİSİ KOMUTA MERKEZİ · CANLI VERİ</div><h3 style={{ margin: "9px 0 7px", fontSize: 30, letterSpacing: "-.7px" }}>Portföyü, müşteriyi ve satışı tek ekrandan yönetin.</h3><p style={{ margin: 0, maxWidth: 760, color: "rgba(255,255,255,.72)", fontSize: 11.5, lineHeight: 1.7 }}>İlanlar, alıcı talepleri, CRM aşamaları ve AI satış desteği aynı veri katmanında birleşir. Göstergeler mevcut Supabase kayıtlarından hesaplanır.</p><div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 15 }}><button type="button" onClick={() => { setSection("listings"); setListingCrmOpen(false); }} style={{ padding: "10px 14px", borderRadius: 12, border: 0, background: "#fff", color: "#0b4258", fontWeight: 950, cursor: "pointer" }}>Portföyü Aç →</button><button type="button" onClick={() => { setSection("listings"); setListingCrmOpen(true); void loadListingInbox(); }} style={{ padding: "10px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,.2)", background: "rgba(255,255,255,.08)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>CRM & Mesaj Kutusu</button></div></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>{[["YAYINDA",agencyCenter.published.length,`${agencyCenter.drafts.length} taslak`],["MÜŞTERİ",agencyClientIntelligence.activeClients.length,`${agencyClientIntelligence.strongMatchCount} güçlü eşleşme`],["TAKİP",agencyTaskIntelligence.dueSoon,`${agencyTaskIntelligence.overdue.length} geciken`],["İLAN KALİTESİ",`${agencyCenter.avgQuality}/100`,agencyCenter.avgQuality>=75?"Güçlü":agencyCenter.avgQuality>=55?"Gelişiyor":"İyileştir"]].map(([label,value,note]) => <div key={String(label)} style={{ padding: 13, borderRadius: 15, background: "rgba(255,255,255,.075)", border: "1px solid rgba(255,255,255,.1)" }}><span style={{ display: "block", color: "#ffd18a", fontSize: 7.5, fontWeight: 950 }}>{label}</span><strong style={{ display: "block", marginTop: 5, fontSize: 22 }}>{String(value)}</strong><span style={{ display: "block", marginTop: 3, color: "rgba(255,255,255,.5)", fontSize: 7.5 }}>{String(note)}</span></div>)}</div>
+                </div>
+              </article>
+
+              <article style={{ ...qualityRuleStyle, padding: 20, marginTop: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ ...eyebrow, color: "#b7660c" }}>MÜŞTERİ MERKEZİ · GERÇEK CRM PROFİLİ</div>
+                    <h3 style={{ margin: "6px 0 3px", color: "#153a65", fontSize: 23 }}>Müşteriyi tanıyın, uygun portföyü otomatik bulun.</h3>
+                    <p style={{ margin: 0, color: "#74899e", fontSize: 11.5 }}>Bütçe, konum ve temel tercihleri kaydedin. Eşleştirme yalnızca ilanlarda gerçekten bulunan alanları kullanır.</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                    <span style={{ padding: "7px 10px", borderRadius: 999, background: agencyClientsReady === true ? "#e8f8f2" : agencyClientsReady === false ? "#fff0ed" : "#eef5f8", color: agencyClientsReady === true ? "#087b5e" : agencyClientsReady === false ? "#b24d34" : "#60788a", fontSize: 10, fontWeight: 950 }}>{agencyClientsReady === true ? "● Müşteri veritabanı canlı" : agencyClientsReady === false ? "SQL kurulumu gerekli" : "Bağlantı kontrol ediliyor"}</span>
+                    <button type="button" onClick={() => void loadAgencyClients()} style={{ padding: "7px 10px", borderRadius: 10, border: "1px solid #d8e6ef", background: "#fff", color: "#315b76", fontSize: 10, fontWeight: 900, cursor: "pointer" }}>{agencyClientsLoading ? "Yükleniyor…" : "Yenile"}</button>
+                  </div>
+                </div>
+
+                {agencyClientNotice ? <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 11, background: "#fff8e8", border: "1px solid #f1d8a8", color: "#7a5a19", fontSize: 10.5, fontWeight: 800 }}>{agencyClientNotice}</div> : null}
+
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(320px,.82fr) minmax(0,1.18fr)", gap: 12, marginTop: 13 }}>
+                  <div style={{ padding: 15, borderRadius: 18, background: "linear-gradient(145deg,#f8fbfd,#ffffff)", border: "1px solid #dce7ef" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                      <div><strong style={{ color: "#24445f", fontSize: 12 }}>{selectedAgencyClientId ? "Müşteri Profilini Düzenle" : "Yeni Müşteri Profili"}</strong><span style={{ display: "block", color: "#8a9aa8", fontSize: 10, marginTop: 3 }}>Zorunlu olmayan alanları bilmiyorsanız boş bırakın.</span></div>
+                      {selectedAgencyClientId ? <button type="button" onClick={resetAgencyClientForm} style={{ padding: "6px 8px", borderRadius: 9, border: "1px solid #dce6ed", background: "#fff", color: "#647d8f", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>Yeni profil</button> : null}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 11 }}>
+                      <input value={agencyClientForm.name} onChange={(e) => setAgencyClientForm((c) => ({ ...c, name: e.target.value }))} placeholder="Ad Soyad *" style={{ ...inputStyle, gridColumn: "1 / -1" }} />
+                      <input value={agencyClientForm.phone} onChange={(e) => setAgencyClientForm((c) => ({ ...c, phone: e.target.value }))} placeholder="Telefon" style={inputStyle} />
+                      <input value={agencyClientForm.email} onChange={(e) => setAgencyClientForm((c) => ({ ...c, email: e.target.value }))} placeholder="E-posta" style={inputStyle} />
+                      <select value={agencyClientForm.transactionType} onChange={(e) => setAgencyClientForm((c) => ({ ...c, transactionType: e.target.value as "Satılık" | "Kiralık" }))} style={inputStyle}><option>Satılık</option><option>Kiralık</option></select>
+                      <select value={agencyClientForm.propertyType} onChange={(e) => setAgencyClientForm((c) => ({ ...c, propertyType: e.target.value }))} style={inputStyle}><option>Konut</option><option>Arsa</option><option>İşyeri</option><option>Ticari</option><option>Proje</option></select>
+                      <input value={agencyClientForm.city} onChange={(e) => setAgencyClientForm((c) => ({ ...c, city: e.target.value }))} placeholder="İl" style={inputStyle} />
+                      <input value={agencyClientForm.district} onChange={(e) => setAgencyClientForm((c) => ({ ...c, district: e.target.value }))} placeholder="İlçe" style={inputStyle} />
+                      <input value={agencyClientForm.neighborhood} onChange={(e) => setAgencyClientForm((c) => ({ ...c, neighborhood: e.target.value }))} placeholder="Mahalle" style={inputStyle} />
+                      <input value={agencyClientForm.roomPreference} onChange={(e) => setAgencyClientForm((c) => ({ ...c, roomPreference: e.target.value }))} placeholder="Oda tercihi (örn. 3+1)" style={inputStyle} />
+                      <input value={agencyClientForm.minBudget} onChange={(e) => setAgencyClientForm((c) => ({ ...c, minBudget: e.target.value }))} placeholder="Min. bütçe TL" style={inputStyle} />
+                      <input value={agencyClientForm.maxBudget} onChange={(e) => setAgencyClientForm((c) => ({ ...c, maxBudget: e.target.value }))} placeholder="Maks. bütçe TL" style={inputStyle} />
+                      <input value={agencyClientForm.minArea} onChange={(e) => setAgencyClientForm((c) => ({ ...c, minArea: e.target.value }))} placeholder="Min. m²" style={inputStyle} />
+                      <input value={agencyClientForm.maxArea} onChange={(e) => setAgencyClientForm((c) => ({ ...c, maxArea: e.target.value }))} placeholder="Maks. m²" style={inputStyle} />
+                      <input value={agencyClientForm.maxBuildingAge} onChange={(e) => setAgencyClientForm((c) => ({ ...c, maxBuildingAge: e.target.value }))} placeholder="Maks. bina yaşı" style={inputStyle} />
+                      <select value={agencyClientForm.financingType} onChange={(e) => setAgencyClientForm((c) => ({ ...c, financingType: e.target.value as typeof agencyClientForm.financingType }))} style={inputStyle}><option value="unknown">Finansman bilinmiyor</option><option value="cash">Nakit</option><option value="credit">Kredi</option><option value="mixed">Nakit + kredi</option></select>
+                      <select value={agencyClientForm.urgency} onChange={(e) => setAgencyClientForm((c) => ({ ...c, urgency: e.target.value as typeof agencyClientForm.urgency }))} style={inputStyle}><option value="low">Düşük aciliyet</option><option value="normal">Normal</option><option value="high">Yüksek</option><option value="urgent">Acil</option></select>
+                      <textarea value={agencyClientForm.notes} onChange={(e) => setAgencyClientForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Müşteri notu" style={{ ...inputStyle, gridColumn: "1 / -1", minHeight: 68, resize: "vertical" }} />
+                    </div>
+                    <button type="button" disabled={agencyClientSaving || agencyClientsReady === false} onClick={() => void saveAgencyClient()} style={{ width: "100%", marginTop: 9, padding: "11px 12px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#d87816,#f2a13a)", color: "#fff", fontWeight: 950, cursor: "pointer", boxShadow: "0 10px 22px rgba(210,120,24,.18)" }}>{agencyClientSaving ? "Kaydediliyor…" : selectedAgencyClientId ? "Müşteriyi Güncelle" : "+ Müşteriyi CRM'e Ekle"}</button>
+                  </div>
+
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+                      {[["AKTİF MÜŞTERİ",agencyClientIntelligence.activeClients.length,"CRM profili"],["GÜÇLÜ EŞLEŞME",agencyClientIntelligence.strongMatchCount,"%75+ portföy uyumu"],["PORTFÖY",agencyCenter.published.length,"yayındaki ilan"]].map(([label,value,note]) => <div key={String(label)} style={{ padding: 11, borderRadius: 14, background: "#fff", border: "1px solid #e0e9f0" }}><span style={{ color: "#8294a5", fontSize: 9, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: "#153a65", fontSize: 19 }}>{String(value)}</strong><span style={{ color: "#97a6b2", fontSize: 9 }}>{String(note)}</span></div>)}
+                    </div>
+                    <div style={{ display: "grid", gap: 8, marginTop: 9, maxHeight: 470, overflowY: "auto", paddingRight: 3 }}>
+                      {agencyClientIntelligence.hotClients.length ? agencyClientIntelligence.hotClients.map(({ client, best }) => (
+                        <div key={client.id} style={{ padding: 12, borderRadius: 16, border: "1px solid #dde8ef", background: "#fff" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 }}>
+                            <div><strong style={{ color: "#24445f", fontSize: 11.5 }}>{client.name}</strong><span style={{ display: "block", marginTop: 3, color: "#7d91a1", fontSize: 10 }}>{[client.city,client.district,client.neighborhood].filter(Boolean).join(" / ") || "Konum belirtilmedi"} · {client.property_type || "Tür belirtilmedi"} · {client.transaction_type}</span></div>
+                            <span style={{ padding: "4px 7px", borderRadius: 999, background: client.urgency === "urgent" ? "#fff0ed" : client.urgency === "high" ? "#fff6e6" : "#eef6fb", color: client.urgency === "urgent" ? "#b24d34" : client.urgency === "high" ? "#9a6700" : "#4c6e85", fontSize: 9, fontWeight: 950 }}>{client.urgency.toLocaleUpperCase("tr-TR")}</span>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 9 }}>
+                            <div style={{ padding: 8, borderRadius: 10, background: "#f7fafc" }}><span style={{ display: "block", color: "#91a2af", fontSize: 9 }}>BÜTÇE</span><strong style={{ color: "#34556c", fontSize: 10 }}>{client.max_budget ? `≤ ${Math.round(client.max_budget).toLocaleString("tr-TR")} TL` : "Belirtilmedi"}</strong></div>
+                            <div style={{ padding: 8, borderRadius: 10, background: "#f7fafc" }}><span style={{ display: "block", color: "#91a2af", fontSize: 9 }}>ALAN</span><strong style={{ color: "#34556c", fontSize: 10 }}>{client.min_area_m2 ? `${client.min_area_m2}+ m²` : "Belirtilmedi"}</strong></div>
+                            <div style={{ padding: 8, borderRadius: 10, background: best && best.score >= 75 ? "#eaf8f2" : "#fff8e8" }}><span style={{ display: "block", color: "#91a2af", fontSize: 9 }}>EN İYİ EŞLEŞME</span><strong style={{ color: best && best.score >= 75 ? "#087b5e" : "#9a6700", fontSize: 10.5 }}>{best ? `${best.score}%` : "—"}</strong></div>
+                          </div>
+                          {best ? <button type="button" onClick={() => { setSection("listings"); setSelectedListingId(best.listing.id); setSelectedListingImageIndex(0); }} style={{ width: "100%", marginTop: 8, padding: 8, borderRadius: 10, border: "1px solid #dce8ef", background: "#f9fcfd", color: "#315b76", fontSize: 10, fontWeight: 900, cursor: "pointer", display: "flex", justifyContent: "space-between", gap: 8 }}><span>{best.listing.title}</span><strong style={{ color: best.score >= 75 ? "#087b5e" : "#9a6700" }}>{best.score}% →</strong></button> : null}
+                          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => editAgencyClient(client)} style={{ padding: "6px 8px", borderRadius: 9, border: "1px solid #dce6ed", background: "#fff", color: "#526f82", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>Düzenle</button>
+                            <button type="button" onClick={() => void updateAgencyClientStatus(client, "won")} style={{ padding: "6px 8px", borderRadius: 9, border: "1px solid #bde2d3", background: "#effaf5", color: "#087b5e", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>Kazanıldı</button>
+                            <button type="button" onClick={() => void updateAgencyClientStatus(client, "paused")} style={{ padding: "6px 8px", borderRadius: 9, border: "1px solid #e0e6eb", background: "#f8fafb", color: "#6f8290", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>Beklet</button>
+                          </div>
+                        </div>
+                      )) : <div style={{ padding: 18, borderRadius: 14, background: "#f8fbfd", color: "#72879a", fontSize: 10.5 }}>{agencyClientsReady === false ? "Önce müşteri profili SQL migration'ını çalıştırın." : "Henüz müşteri profili yok. İlk müşterinizi soldaki formdan ekleyin."}</div>}
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article style={{ ...qualityRuleStyle, padding: 20, marginTop: 13 }}>
+                <div style={{ ...eyebrow, color: "#0b7c72" }}>AI MÜŞTERİ ↔ İLAN EŞLEŞTİRME MOTORU v1</div>
+                <h3 style={{ margin: "6px 0 3px", color: "#153a65" }}>Her müşteri için en uygun ilanları açıklanabilir şekilde sıralayın.</h3>
+                <p style={{ margin: 0, color: "#74899e", fontSize: 11 }}>Skor; işlem tipi, tür, konum, bütçe ve m² verilerinden hesaplanır. Oda sayısı veya bina yaşı ilanda yoksa skora dahil edilmez.</p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(275px,1fr))", gap: 9, marginTop: 12 }}>
+                  {agencyClientIntelligence.matches.length ? agencyClientIntelligence.matches.map(({ client, matches }) => (
+                    <div key={client.id} style={{ padding: 13, borderRadius: 16, background: "#fff", border: "1px solid #dde8ef" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <div><strong style={{ color: "#24445f", fontSize: 11 }}>{client.name}</strong><span style={{ display: "block", marginTop: 3, color: "#8193a1", fontSize: 9 }}>{client.max_budget ? `Bütçe ≤ ${Math.round(client.max_budget).toLocaleString("tr-TR")} TL` : "Bütçe belirtilmedi"} · {client.city || "Türkiye geneli"}</span></div>
+                        <span style={{ color: "#b7660c", fontSize: 9, fontWeight: 950 }}>{client.urgency === "urgent" ? "BUGÜN ARA" : client.urgency === "high" ? "ÖNCELİKLİ" : "AKTİF"}</span>
+                      </div>
+                      <div style={{ display: "grid", gap: 6, marginTop: 9 }}>
+                        {matches.length ? matches.slice(0, 3).map((match, index) => <button key={match.listing.id} type="button" onClick={() => { setSection("listings"); setSelectedListingId(match.listing.id); setSelectedListingImageIndex(0); }} style={{ width: "100%", display: "grid", gridTemplateColumns: "28px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 8, borderRadius: 11, border: match.score >= 75 ? "1px solid #b9e3d2" : "1px solid #e3e9ee", background: match.score >= 75 ? "#f0faf6" : "#fafcfd", textAlign: "left", cursor: "pointer" }}><span style={{ display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 9, background: match.score >= 75 ? "#dff4ea" : "#eef4f7", color: match.score >= 75 ? "#087b5e" : "#627d90", fontWeight: 950, fontSize: 10 }}>#{index + 1}</span><span><strong style={{ display: "block", color: "#34556c", fontSize: 10 }}>{match.listing.title}</strong><small style={{ color: "#8798a5", fontSize: 9 }}>{match.reasons.slice(0,2).join(" · ") || "Temel ilan verileriyle karşılaştırıldı"}</small></span><strong style={{ color: match.score >= 75 ? "#087b5e" : match.score >= 55 ? "#9a6700" : "#a04d40", fontSize: 11 }}>{match.score}%</strong></button>) : <span style={{ color: "#9aabb7", fontSize: 10 }}>Yayındaki portföyde karşılaştırılabilir ilan bulunamadı.</span>}
+                      </div>
+                    </div>
+                  )) : <div style={{ padding: 17, borderRadius: 14, background: "#f8fbfd", color: "#72879a", fontSize: 10.5 }}>Eşleştirme için en az bir aktif müşteri profili ve yayında ilan gerekir.</div>}
+                </div>
+              </article>
+
+              <article style={{ ...qualityRuleStyle, padding: 20, marginTop: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ ...eyebrow, color: "#0f8065" }}>TAKİP · GÖREV · RANDEVU MERKEZİ</div>
+                    <h3 style={{ margin: "6px 0 3px", color: "#153a65", fontSize: 23 }}>Bugün kimi arayacağınızı ve hangi randevunun yaklaşmakta olduğunu tek ekranda görün.</h3>
+                    <p style={{ margin: 0, color: "#74899e", fontSize: 11.5 }}>Arama, geri dönüş, ziyaret ve teklif görevlerini müşteri ve ilanla ilişkilendirin.</p>
+                  </div>
+                  <span style={{ padding: "7px 10px", borderRadius: 999, background: agencyTasksReady === true ? "#e9f8f3" : agencyTasksReady === false ? "#fff0ed" : "#eef5f8", color: agencyTasksReady === true ? "#087b5e" : agencyTasksReady === false ? "#b24d34" : "#60788a", fontSize: 12, fontWeight: 950 }}>{agencyTasksReady === true ? "● Görev veritabanı canlı" : agencyTasksReady === false ? "SQL kurulumu gerekli" : "Bağlantı kontrol ediliyor"}</span>
+                </div>
+
+                {agencyTaskNotice ? <div style={{ marginTop: 10, padding: "9px 11px", borderRadius: 11, background: "#fff8e8", border: "1px solid #f1d8a8", color: "#7a5a19", fontSize: 12.5, fontWeight: 800 }}>{agencyTaskNotice}</div> : null}
+
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(300px,.74fr) minmax(0,1.26fr)", gap: 12, marginTop: 13 }}>
+                  <div style={{ padding: 14, borderRadius: 17, background: "linear-gradient(145deg,#f8fbfd,#fff)", border: "1px solid #dce7ef" }}>
+                    <strong style={{ color: "#24445f", fontSize: 11 }}>Yeni takip / randevu</strong>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+                      <select value={agencyTaskForm.clientId} onChange={(e) => setAgencyTaskForm((c) => ({ ...c, clientId: e.target.value }))} style={{ ...inputStyle, gridColumn: "1 / -1" }}>
+                        <option value="">Müşteri seç (opsiyonel)</option>
+                        {agencyClients.filter((client) => client.status === "active").map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                      </select>
+                      <select value={agencyTaskForm.listingId} onChange={(e) => setAgencyTaskForm((c) => ({ ...c, listingId: e.target.value }))} style={{ ...inputStyle, gridColumn: "1 / -1" }}>
+                        <option value="">İlan seç (opsiyonel)</option>
+                        {agencyCenter.published.map((listing) => <option key={listing.id} value={listing.id}>{listing.title}</option>)}
+                      </select>
+                      <select value={agencyTaskForm.taskType} onChange={(e) => setAgencyTaskForm((c) => ({ ...c, taskType: e.target.value as AgencyTask["task_type"] }))} style={inputStyle}>
+                        <option value="call">Telefon</option><option value="followup">Geri dönüş</option><option value="visit">Ziyaret / randevu</option><option value="offer">Teklif takibi</option><option value="note">Not</option>
+                      </select>
+                      <select value={agencyTaskForm.priority} onChange={(e) => setAgencyTaskForm((c) => ({ ...c, priority: e.target.value as AgencyTask["priority"] }))} style={inputStyle}>
+                        <option value="low">Düşük</option><option value="normal">Normal</option><option value="high">Yüksek</option><option value="urgent">Acil</option>
+                      </select>
+                      <input value={agencyTaskForm.title} onChange={(e) => setAgencyTaskForm((c) => ({ ...c, title: e.target.value }))} placeholder="Görev başlığı *" style={{ ...inputStyle, gridColumn: "1 / -1" }} />
+                      <input type="date" value={agencyTaskForm.dueDate} onChange={(e) => setAgencyTaskForm((c) => ({ ...c, dueDate: e.target.value }))} style={inputStyle} />
+                      <input type="time" value={agencyTaskForm.dueTime} onChange={(e) => setAgencyTaskForm((c) => ({ ...c, dueTime: e.target.value }))} style={inputStyle} />
+                      <textarea value={agencyTaskForm.note} onChange={(e) => setAgencyTaskForm((c) => ({ ...c, note: e.target.value }))} placeholder="Görev notu" style={{ ...inputStyle, gridColumn: "1 / -1", minHeight: 62, resize: "vertical" }} />
+                    </div>
+                    <button type="button" disabled={agencyTaskSaving || agencyTasksReady === false} onClick={() => void saveAgencyTask()} style={{ width: "100%", marginTop: 8, padding: "10px 12px", borderRadius: 11, border: 0, background: "linear-gradient(135deg,#087b5e,#10a57d)", color: "#fff", fontWeight: 950, cursor: "pointer" }}>{agencyTaskSaving ? "Kaydediliyor…" : "+ Görevi / Randevuyu Kaydet"}</button>
+                  </div>
+
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+                      {[["BUGÜN",agencyTaskIntelligence.today.length],["YAKLAŞAN",agencyTaskIntelligence.upcoming.length],["GECİKEN",agencyTaskIntelligence.overdue.length],["AÇIK",agencyTaskIntelligence.open.length]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 13, background: "#fff", border: "1px solid #e0e9ef" }}><span style={{ color: "#8698a6", fontSize: 11, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: String(label)==="GECİKEN" && Number(value)>0 ? "#b84d3f" : "#153a65", fontSize: 19 }}>{String(value)}</strong></div>)}
+                    </div>
+
+                    <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                      {([["today","Bugün"],["upcoming","Yaklaşan"],["overdue","Geciken"],["all","Tümü"]] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setAgencyTaskFilter(id)} style={{ padding: "6px 9px", borderRadius: 999, border: agencyTaskFilter===id ? "1px solid #0f8065" : "1px solid #dce6ed", background: agencyTaskFilter===id ? "#eaf8f3" : "#fff", color: agencyTaskFilter===id ? "#087b5e" : "#6d8291", fontSize: 12, fontWeight: 900, cursor: "pointer" }}>{label}</button>)}
+                    </div>
+
+                    <div style={{ display: "grid", gap: 7, marginTop: 9, maxHeight: 320, overflowY: "auto", paddingRight: 3 }}>
+                      {agencyTaskIntelligence.visible.length ? agencyTaskIntelligence.visible.map((task) => {
+                        const client = agencyClients.find((item) => item.id === task.client_id);
+                        const listing = agencyCenter.published.find((item) => item.id === task.listing_id);
+                        const due = new Date(task.due_at);
+                        const overdue = task.status === "open" && due.getTime() < Date.now();
+                        const typeLabel = task.task_type === "call" ? "Telefon" : task.task_type === "followup" ? "Geri dönüş" : task.task_type === "visit" ? "Ziyaret" : task.task_type === "offer" ? "Teklif" : "Not";
+                        return <div key={task.id} style={{ padding: 14, borderRadius: 14, background: overdue ? "#fff7f5" : "#fff", border: overdue ? "1px solid #f0c8bf" : "1px solid #e0e9ef" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                            <div><strong style={{ color: "#29485f", fontSize: 12.5 }}>{task.title}</strong><span style={{ display: "block", marginTop: 3, color: "#8294a2", fontSize: 11 }}>{typeLabel} · {due.toLocaleDateString("tr-TR")} {due.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})}</span></div>
+                            <span style={{ padding: "4px 7px", borderRadius: 999, background: task.priority==="urgent" ? "#ffe9e5" : task.priority==="high" ? "#fff4df" : "#eef6f8", color: task.priority==="urgent" ? "#b33f31" : task.priority==="high" ? "#966000" : "#5d7889", fontSize: 11, fontWeight: 950 }}>{overdue ? "GECİKTİ" : task.priority.toLocaleUpperCase("tr-TR")}</span>
+                          </div>
+                          {(client || listing) ? <span style={{ display: "block", marginTop: 5, color: "#637d8f", fontSize: 11 }}>{client ? `👤 ${client.name}` : ""}{client && listing ? " · " : ""}{listing ? `🏠 ${listing.title}` : ""}</span> : null}
+                          {task.note ? <p style={{ margin: "6px 0 0", color: "#758a99", fontSize: 12, lineHeight: 1.45 }}>{task.note}</p> : null}
+                          <div style={{ display: "flex", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => void setAgencyTaskStatus(task,"done")} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #bde2d3", background: "#effaf5", color: "#087b5e", fontSize: 11, fontWeight: 900, cursor: "pointer" }}>✓ Tamamlandı</button>
+                            {client ? <button type="button" onClick={() => editAgencyClient(client)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #dce6ed", background: "#fff", color: "#526f82", fontSize: 11, fontWeight: 900, cursor: "pointer" }}>Müşteri</button> : null}
+                            {listing ? <button type="button" onClick={() => { setSection("listings"); setSelectedListingId(listing.id); setSelectedListingImageIndex(0); }} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #dce6ed", background: "#fff", color: "#526f82", fontSize: 11, fontWeight: 900, cursor: "pointer" }}>İlan</button> : null}
+                          </div>
+                        </div>
+                      }) : <div style={{ padding: 17, borderRadius: 14, background: "#f8fbfd", color: "#72879a", fontSize: 12.5 }}>{agencyTasksReady === false ? "Önce görev/randevu SQL migration'ını çalıştırın." : "Bu görünümde açık görev yok."}</div>}
+                    </div>
+                  </div>
+                </div>
+
+                {agencyClientIntelligence.hotClients.length ? <div style={{ marginTop: 12, padding: 13, borderRadius: 16, background: "linear-gradient(135deg,#0c2940,#0f8065)", color: "#fff" }}>
+                  <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 1.1, color: "#bdebdc" }}>AI TAKİP ÖNERİSİ</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 5 }}>
+                    <div><strong style={{ fontSize: 12 }}>{agencyClientIntelligence.hotClients[0].client.name}</strong><span style={{ display: "block", color: "rgba(255,255,255,.72)", fontSize: 12, marginTop: 3 }}>{agencyClientIntelligence.hotClients[0].best ? `En iyi portföy eşleşmesi %${agencyClientIntelligence.hotClients[0].best?.score}.` : "Henüz güçlü portföy eşleşmesi yok."} {agencyClientIntelligence.hotClients[0].client.urgency === "urgent" ? "Bugün temas önerilir." : "Takip planına ekleyin."}</span></div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button type="button" onClick={() => quickAgencyTask(agencyClientIntelligence.hotClients[0].client,"call")} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,.22)", background: "#fff", color: "#0d6d55", fontSize: 12, fontWeight: 950, cursor: "pointer" }}>Telefon görevi hazırla</button>
+                      <button type="button" onClick={() => quickAgencyTask(agencyClientIntelligence.hotClients[0].client,"visit")} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.10)", color: "#fff", fontSize: 12, fontWeight: 950, cursor: "pointer" }}>Ziyaret planla</button>
+                    </div>
+                  </div>
+                </div> : null}
+              </article>
+
+              <article style={{ ...qualityRuleStyle, padding: 20, marginTop: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ ...eyebrow, color: "#b7660c" }}>EMLAK OFİSİ · EKİP & DANIŞMAN YÖNETİMİ</div>
+                    <h3 style={{ margin: "6px 0 3px", color: "#153a65", fontSize: 23 }}>Portföyü, müşterileri ve iş yükünü doğru danışmana dağıtın.</h3>
+                    <p style={{ margin: 0, color: "#74899e", fontSize: 12 }}>Danışman bazında portföy, müşteri, açık görev ve takip yükünü tek ekranda yönetin.</p>
+                  </div>
+                  <span style={{ padding: "8px 11px", borderRadius: 999, background: agencyAdvisorsReady === true ? "#e9f8f3" : agencyAdvisorsReady === false ? "#fff0ed" : "#eef5f8", color: agencyAdvisorsReady === true ? "#087b5e" : agencyAdvisorsReady === false ? "#b24d34" : "#60788a", fontSize: 10, fontWeight: 950 }}>{agencyAdvisorsReady === true ? "● Ekip veritabanı canlı" : agencyAdvisorsReady === false ? "SQL kurulumu gerekli" : "Bağlantı kontrol ediliyor"}</span>
+                </div>
+
+                {agencyAdvisorNotice ? <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 11, background: "#fff8e8", border: "1px solid #f1d8a8", color: "#7a5a19", fontSize: 10.5, fontWeight: 800 }}>{agencyAdvisorNotice}</div> : null}
+
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(300px,.72fr) minmax(0,1.28fr)", gap: 12, marginTop: 13 }}>
+                  <div style={{ padding: 15, borderRadius: 18, background: "linear-gradient(145deg,#f8fbfd,#fff)", border: "1px solid #dce7ef" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <div><strong style={{ color: "#24445f", fontSize: 12 }}>{selectedAgencyAdvisorId ? "Danışmanı Düzenle" : "Yeni Danışman Ekle"}</strong><span style={{ display: "block", color: "#8799a7", fontSize: 9, marginTop: 3 }}>İlk sürümde ofis sahibinin yönettiği ekip profilleri.</span></div>
+                      {selectedAgencyAdvisorId ? <button type="button" onClick={resetAgencyAdvisorForm} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #dce6ed", background: "#fff", color: "#647d8f", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>Yeni profil</button> : null}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 11 }}>
+                      <input value={agencyAdvisorForm.name} onChange={(e) => setAgencyAdvisorForm((c) => ({ ...c, name: e.target.value }))} placeholder="Ad Soyad *" style={{ ...inputStyle, gridColumn: "1 / -1" }} />
+                      <input value={agencyAdvisorForm.phone} onChange={(e) => setAgencyAdvisorForm((c) => ({ ...c, phone: e.target.value }))} placeholder="Telefon" style={inputStyle} />
+                      <input value={agencyAdvisorForm.email} onChange={(e) => setAgencyAdvisorForm((c) => ({ ...c, email: e.target.value }))} placeholder="E-posta" style={inputStyle} />
+                      <select value={agencyAdvisorForm.role} onChange={(e) => setAgencyAdvisorForm((c) => ({ ...c, role: e.target.value as AgencyAdvisor["role"] }))} style={inputStyle}>
+                        <option value="advisor">Danışman</option><option value="manager">Ofis Müdürü</option><option value="owner">Ofis Sahibi</option>
+                      </select>
+                      <input value={agencyAdvisorForm.targetMonthly} onChange={(e) => setAgencyAdvisorForm((c) => ({ ...c, targetMonthly: e.target.value }))} placeholder="Aylık hedef" style={inputStyle} />
+                    </div>
+                    <button type="button" disabled={agencyAdvisorSaving || agencyAdvisorsReady === false} onClick={() => void saveAgencyAdvisor()} style={{ width: "100%", marginTop: 9, padding: "11px 12px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#d87816,#f2a13a)", color: "#fff", fontWeight: 950, cursor: "pointer" }}>{agencyAdvisorSaving ? "Kaydediliyor…" : selectedAgencyAdvisorId ? "Danışmanı Güncelle" : "+ Danışmanı Ofise Ekle"}</button>
+
+                    <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid #e4ebf0" }}>
+                      <strong style={{ color: "#34556c", fontSize: 10.5 }}>Atanmamış iş yükü</strong>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 7 }}>
+                        <div style={{ padding: 10, borderRadius: 12, background: "#fff8e8" }}><span style={{ color: "#8e7442", fontSize: 8 }}>İLAN</span><strong style={{ display: "block", color: "#7a5a19", fontSize: 18, marginTop: 3 }}>{agencyAdvisorIntelligence.unassignedListings.length}</strong></div>
+                        <div style={{ padding: 10, borderRadius: 12, background: "#eef7fb" }}><span style={{ color: "#607f91", fontSize: 8 }}>MÜŞTERİ</span><strong style={{ display: "block", color: "#315b76", fontSize: 18, marginTop: 3 }}>{agencyAdvisorIntelligence.unassignedClients.length}</strong></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+                      {[["AKTİF DANIŞMAN",agencyAdvisorIntelligence.active.length],["ORT. PERFORMANS",`${agencyAdvisorIntelligence.avgPerformance}/100`],["ATANMAMIŞ",agencyAdvisorIntelligence.unassignedListings.length + agencyAdvisorIntelligence.unassignedClients.length]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 14, background: "#fff", border: "1px solid #e0e9f0" }}><span style={{ color: "#8294a5", fontSize: 9, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: "#153a65", fontSize: 20 }}>{String(value)}</strong></div>)}
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8, marginTop: 9, maxHeight: 520, overflowY: "auto", paddingRight: 3 }}>
+                      {agencyAdvisorIntelligence.metrics.length ? agencyAdvisorIntelligence.metrics.map(({ advisor, listingCount, clientCount, taskCount, overdue, completed, performance }) => (
+                        <div key={advisor.id} style={{ padding: 13, borderRadius: 16, background: "#fff", border: "1px solid #dde8ef" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 }}>
+                            <div><strong style={{ color: "#24445f", fontSize: 11.5 }}>{advisor.name}</strong><span style={{ display: "block", marginTop: 3, color: "#7d91a1", fontSize: 9 }}>{advisor.role === "manager" ? "Ofis Müdürü" : advisor.role === "owner" ? "Ofis Sahibi" : "Gayrimenkul Danışmanı"} · Hedef {advisor.target_monthly}/ay</span></div>
+                            <span style={{ padding: "5px 8px", borderRadius: 999, background: performance >= 75 ? "#eaf8f2" : performance >= 55 ? "#fff8e8" : "#fff0ed", color: performance >= 75 ? "#087b5e" : performance >= 55 ? "#9a6700" : "#b24d34", fontSize: 9, fontWeight: 950 }}>{performance}/100</span>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 9 }}>
+                            {[["İLAN",listingCount],["MÜŞTERİ",clientCount],["AÇIK İŞ",taskCount],["GECİKEN",overdue]].map(([label,value]) => <div key={String(label)} style={{ padding: 8, borderRadius: 10, background: "#f7fafc" }}><span style={{ display: "block", color: "#91a2af", fontSize: 8 }}>{String(label)}</span><strong style={{ color: String(label)==="GECİKEN" && Number(value)>0 ? "#b24d34" : "#34556c", fontSize: 11 }}>{String(value)}</strong></div>)}
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
+                            <select defaultValue="" onChange={(e) => { const value = e.target.value; if (value) void assignAdvisorListing(advisor, value); e.currentTarget.value = ""; }} style={inputStyle}>
+                              <option value="">İlan ata / kaldır</option>
+                              {agencyCenter.published.map((listing) => <option key={listing.id} value={listing.id}>{advisor.listing_ids.includes(listing.id) ? "✓ " : ""}{listing.title}</option>)}
+                            </select>
+                            <select defaultValue="" onChange={(e) => { const value = e.target.value; if (value) void assignAdvisorClient(advisor, value); e.currentTarget.value = ""; }} style={inputStyle}>
+                              <option value="">Müşteri ata / kaldır</option>
+                              {agencyClients.filter((client) => client.status === "active").map((client) => <option key={client.id} value={client.id}>{advisor.client_ids.includes(client.id) ? "✓ " : ""}{client.name}</option>)}
+                            </select>
+                          </div>
+
+                          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => editAgencyAdvisor(advisor)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #dce6ed", background: "#fff", color: "#526f82", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>Düzenle</button>
+                            <button type="button" onClick={() => void toggleAgencyAdvisorStatus(advisor)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #e0e6eb", background: "#f8fafb", color: "#6f8290", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>{advisor.status === "active" ? "Pasife Al" : "Aktifleştir"}</button>
+                            <span style={{ alignSelf: "center", marginLeft: "auto", color: "#8193a1", fontSize: 9 }}>{completed} tamamlanan görev</span>
+                          </div>
+                        </div>
+                      )) : <div style={{ padding: 18, borderRadius: 14, background: "#f8fbfd", color: "#72879a", fontSize: 10.5 }}>{agencyAdvisorsReady === false ? "Önce ekip/danışman SQL migration'ını çalıştırın." : "Henüz danışman eklenmedi. Soldaki formdan ilk ekip üyesini oluşturun."}</div>}
+                    </div>
+                  </div>
+                </div>
+
+                {agencyAdvisorIntelligence.active.length ? <div style={{ marginTop: 12, padding: 13, borderRadius: 16, background: "linear-gradient(135deg,#0c2940,#b7660c)", color: "#fff" }}>
+                  <div style={{ fontSize: 9, fontWeight: 950, letterSpacing: 1, color: "#ffe1bc" }}>AI OFİS YÖNETİCİSİ</div>
+                  <strong style={{ display: "block", marginTop: 5, fontSize: 12.5 }}>{agencyAdvisorIntelligence.unassignedClients.length || agencyAdvisorIntelligence.unassignedListings.length ? "Atanmamış portföy veya müşteri var." : "İş yükünün tamamı ekibe dağıtılmış görünüyor."}</strong>
+                  <span style={{ display: "block", marginTop: 4, color: "rgba(255,255,255,.78)", fontSize: 10, lineHeight: 1.45 }}>{agencyAdvisorIntelligence.unassignedListings.length} ilan ve {agencyAdvisorIntelligence.unassignedClients.length} aktif müşteri henüz bir danışmana bağlı değil. Atama yaparken danışmanların açık görev ve gecikme sayılarını dikkate alın.</span>
+                </div> : null}
+              </article>
+
+              <article style={{ ...qualityRuleStyle, padding: 20, marginTop: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ ...eyebrow, color: "#0b6f9c" }}>EMLAK OFİSİ TAKVİMİ · AYLIK AJANDA</div>
+                    <h3 style={{ margin: "6px 0 3px", color: "#153a65", fontSize: 23 }}>Arama, ziyaret ve tekliflerinizi takvim üzerinde yönetin.</h3>
+                    <p style={{ margin: 0, color: "#74899e", fontSize: 12 }}>CRM görevleriniz otomatik olarak ilgili güne yerleşir. Bir güne dokunarak o günün planını görün.</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                    <button type="button" onClick={() => setAgencyCalendarDate((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))} style={{ width: 36, height: 36, borderRadius: 11, border: "1px solid #d9e5ed", background: "#fff", color: "#315b76", fontWeight: 950, cursor: "pointer" }}>‹</button>
+                    <strong style={{ minWidth: 126, textAlign: "center", color: "#21445e", fontSize: 12, textTransform: "capitalize" }}>{agencyCalendarIntelligence.monthLabel}</strong>
+                    <button type="button" onClick={() => setAgencyCalendarDate((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))} style={{ width: 36, height: 36, borderRadius: 11, border: "1px solid #d9e5ed", background: "#fff", color: "#315b76", fontWeight: 950, cursor: "pointer" }}>›</button>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 12, marginTop: 13 }}>
+                  <div style={{ padding: 12, borderRadius: 17, background: "linear-gradient(145deg,#f8fbfd,#fff)", border: "1px solid #dce7ef" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 5, marginBottom: 5 }}>
+                      {['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'].map((day) => <div key={day} style={{ textAlign: "center", color: "#7b91a2", fontSize: 9, fontWeight: 950, padding: "6px 0" }}>{day}</div>)}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 5 }}>
+                      {agencyCalendarIntelligence.days.map((day) => {
+                        const selected = agencyCalendarSelectedDay === day.key;
+                        const today = agencyCalendarIntelligence.todayKey === day.key;
+                        const urgent = day.tasks.some((task) => task.priority === 'urgent');
+                        const visits = day.tasks.filter((task) => task.task_type === 'visit').length;
+                        return <button key={day.key} type="button" onClick={() => setAgencyCalendarSelectedDay(day.key)} style={{ minHeight: 72, padding: 7, borderRadius: 12, border: selected ? "1px solid #0b78aa" : today ? "1px solid #9fcfe2" : "1px solid #e1e9ef", background: selected ? "#eaf7fc" : day.inMonth ? "#fff" : "#f6f8fa", textAlign: "left", cursor: "pointer", opacity: day.inMonth ? 1 : .55, position: "relative" }}>
+                          <strong style={{ color: selected ? "#0b6f9c" : "#36576e", fontSize: 10 }}>{day.date.getDate()}</strong>
+                          {day.tasks.length ? <span style={{ display: "block", marginTop: 5, color: urgent ? "#b23f34" : "#537083", fontSize: 8.5, fontWeight: 900 }}>{day.tasks.length} görev</span> : <span style={{ display: "block", marginTop: 5, color: "#b2bec7", fontSize: 8 }}>—</span>}
+                          {visits ? <span style={{ display: "block", marginTop: 3, color: "#9a6700", fontSize: 7.5 }}>🏠 {visits} ziyaret</span> : null}
+                          {today ? <span style={{ position: "absolute", top: 6, right: 6, width: 6, height: 6, borderRadius: 999, background: "#0aa37a" }} /> : null}
+                        </button>
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 9, alignContent: "start" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+                      {[['ARAMA',agencyCalendarIntelligence.calls],['ZİYARET',agencyCalendarIntelligence.visits],['TEKLİF',agencyCalendarIntelligence.offers]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 13, background: "#fff", border: "1px solid #e0e9ef" }}><span style={{ color: "#889aa8", fontSize: 8, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 5, color: "#153a65", fontSize: 20 }}>{String(value)}</strong></div>)}
+                    </div>
+                    <div style={{ padding: 13, borderRadius: 16, background: "#fff", border: "1px solid #dde8ef" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: "#24445f", fontSize: 11 }}>Seçili gün planı</strong><span style={{ color: "#7f92a0", fontSize: 9 }}>{new Date(`${agencyCalendarSelectedDay}T12:00:00`).toLocaleDateString('tr-TR',{day:'numeric',month:'long'})}</span></div>
+                      <div style={{ display: "grid", gap: 7, marginTop: 9, maxHeight: 290, overflowY: "auto" }}>
+                        {agencyCalendarIntelligence.selectedTasks.length ? agencyCalendarIntelligence.selectedTasks.map((task) => {
+                          const client = agencyClients.find((item) => item.id === task.client_id);
+                          const listing = agencyCenter.published.find((item) => item.id === task.listing_id);
+                          const due = new Date(task.due_at);
+                          return <div key={task.id} style={{ padding: 10, borderRadius: 12, background: "#f8fbfd", border: "1px solid #e3eaf0" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 9.5 }}>{task.title}</strong><span style={{ color: task.priority === 'urgent' ? "#b23f34" : "#6b8190", fontSize: 8, fontWeight: 900 }}>{due.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})}</span></div>{client ? <span style={{ display: "block", marginTop: 4, color: "#768b9a", fontSize: 8.5 }}>👤 {client.name}</span> : null}{listing ? <span style={{ display: "block", marginTop: 2, color: "#768b9a", fontSize: 8.5 }}>🏠 {listing.title}</span> : null}</div>
+                        }) : <div style={{ padding: 16, borderRadius: 12, background: "#f8fbfd", color: "#8396a5", fontSize: 9.5 }}>Bu gün için açık görev veya randevu yok.</div>}
+                      </div>
+                    </div>
+                    <div style={{ padding: 13, borderRadius: 16, color: "#fff", background: "linear-gradient(135deg,#0c2940,#0b7f74)" }}>
+                      <div style={{ fontSize: 8, fontWeight: 950, color: "#bdebdc", letterSpacing: 1 }}>AI GÜNLÜK PLAN</div>
+                      <strong style={{ display: "block", marginTop: 5, fontSize: 12 }}>{agencyTaskIntelligence.nextBest ? 'Sıradaki en önemli işinizi kaçırmayın.' : 'Bugün için açık takip görünmüyor.'}</strong>
+                      <span style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,.74)", fontSize: 9.5, lineHeight: 1.45 }}>{agencyTaskIntelligence.nextBest ? `${agencyTaskIntelligence.nextBest.title} · ${new Date(agencyTaskIntelligence.nextBest.due_at).toLocaleDateString('tr-TR')} ${new Date(agencyTaskIntelligence.nextBest.due_at).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})}` : 'Yeni müşteri takibi veya ziyaret eklediğinizde burada öncelik önerisi oluşur.'}</span>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.18fr) minmax(320px,.82fr)", gap: 13, marginTop: 13 }}>
+                <article style={{ ...qualityRuleStyle, padding: 20 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}><div><div style={{ ...eyebrow, color: "#b7660c" }}>SATIŞ BORU HATTI</div><h3 style={{ margin: "6px 0 3px", color: "#153a65" }}>Müşteriler hangi aşamada?</h3><p style={{ margin: 0, color: "#74899e", fontSize: 11.5 }}>Gerçek CRM taleplerinin satış aşamalarına göre dağılımı.</p></div><button type="button" onClick={() => { setSection("listings"); setListingCrmOpen(true); void loadListingInbox(); }} style={{ padding: "9px 11px", borderRadius: 10, border: "1px solid #d8e6ef", background: "#f8fbfd", color: "#315b76", fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>CRM'yi Yönet</button></div><div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 7, marginTop: 14 }}>{[["Yeni",agencyCenter.pipeline.new,"#1b8bc0"],["İletişim",agencyCenter.pipeline.contacted,"#61758a"],["Nitelikli",agencyCenter.pipeline.qualified,"#a16a12"],["Ziyaret",agencyCenter.pipeline.visit,"#8a5ba9"],["Teklif",agencyCenter.pipeline.offer,"#d06422"],["Kazanıldı",agencyCenter.pipeline.won,"#13845d"]].map(([label,value,color]) => <div key={String(label)} style={{ padding: 11, borderRadius: 14, background: "#fff", border: "1px solid #e0e9f0", textAlign: "center" }}><strong style={{ display: "block", color: String(color), fontSize: 20 }}>{String(value)}</strong><span style={{ display: "block", marginTop: 4, color: "#8192a2", fontSize: 10, fontWeight: 850 }}>{label}</span></div>)}</div></article>
+                <article style={{ padding: 20, borderRadius: 22, color: "#fff", background: "linear-gradient(150deg,#0a654e,#0d9770)", boxShadow: "0 16px 36px rgba(10,120,88,.17)" }}><div style={{ color: "#bff7e4", fontSize: 10.5, fontWeight: 950, letterSpacing: 1.2 }}>AI SATIŞ KO-PİLOTU</div><h3 style={{ margin: "7px 0 4px", fontSize: 20 }}>Bugün hangi satışı öne almalıyız?</h3><p style={{ margin: 0, color: "rgba(255,255,255,.68)", fontSize: 11, lineHeight: 1.5 }}>Ko-pilot yalnızca mevcut portföy ve CRM sinyallerini kullanır.</p><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, marginTop: 11 }}>{["Bugünün satış önceliğini çıkar","Sıcak alıcıları sırala","Zayıf ilanları bul","Takip planı oluştur"].map((prompt) => <button key={prompt} type="button" onClick={() => void runAgencySalesAi(prompt)} style={{ padding: "8px 9px", borderRadius: 10, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.07)", color: "#fff", fontSize: 10, fontWeight: 850, cursor: "pointer", textAlign: "left" }}>{prompt}</button>)}</div><div style={{ display: "flex", gap: 6, marginTop: 8 }}><input value={agencyAiQuestion} onChange={(event) => setAgencyAiQuestion(event.target.value)} placeholder="Hangi müşteriyle bugün görüşmeliyim?" style={{ minWidth: 0, flex: 1, padding: "10px 11px", borderRadius: 10, border: "1px solid rgba(255,255,255,.15)", background: "rgba(255,255,255,.09)", color: "#fff", outline: "none", fontSize: 10.5 }} /><button type="button" disabled={agencyAiLoading} onClick={() => void runAgencySalesAi()} style={{ padding: "9px 12px", borderRadius: 10, border: 0, background: "#fff", color: "#08775a", fontWeight: 950, cursor: "pointer", fontSize: 10.5 }}>{agencyAiLoading?"…":"Sor"}</button></div>{agencyAiAnswer ? <div style={{ marginTop: 10, padding: 11, maxHeight: 190, overflowY: "auto", borderRadius: 12, background: "rgba(2,48,38,.35)", whiteSpace: "pre-wrap", color: "rgba(255,255,255,.88)", fontSize: 10.5, lineHeight: 1.55 }}>{agencyAiAnswer}</div> : null}</article>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.06fr) minmax(340px,.94fr)", gap: 13, marginTop: 13 }}>
+                <article style={{ ...qualityRuleStyle, padding: 20 }}><div style={eyebrow}>PORTFÖY PERFORMANSI</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Hangi ilan önce iyileştirilmeli?</h3><div style={{ display: "grid", gap: 8, marginTop: 12 }}>{agencyCenter.portfolio.length ? agencyCenter.portfolio.slice(0,6).map(({listing,quality,leads}) => { const cover=listingImageUrl((listing.media||[])[0]); return <button key={listing.id} type="button" onClick={() => { setSection("listings"); setSelectedListingId(listing.id); setSelectedListingImageIndex(0); }} style={{ width: "100%", display: "grid", gridTemplateColumns: "58px minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 9, borderRadius: 14, border: "1px solid #e0e9f0", background: "#fff", textAlign: "left", cursor: "pointer" }}><div style={{ width:58,height:48,borderRadius:10,background:cover?`url(${cover}) center/cover`:"linear-gradient(135deg,#e7f3f8,#d7e9f0)",display:"grid",placeItems:"center",color:"#6c8799" }}>{cover?null:"⌂"}</div><div><strong style={{ display:"block",color:"#24445f",fontSize: 11 }}>{listing.title}</strong><span style={{ display:"block",marginTop:3,color:"#8294a5",fontSize: 10 }}>{[listing.city,listing.district].filter(Boolean).join(" / ")} · {Math.round(Number(listing.price||0)).toLocaleString("tr-TR")} TL</span><div style={{ display:"flex",gap:5,marginTop:5 }}><span style={{ padding:"3px 6px",borderRadius:999,background:quality>=75?"#eaf8f2":quality>=55?"#fff6e6":"#fff0ed",color:quality>=75?"#087b5e":quality>=55?"#9a6700":"#b24d34",fontSize: 9,fontWeight:900 }}>KALİTE {quality}</span><span style={{ padding:"3px 6px",borderRadius:999,background:"#eef6fb",color:"#42667e",fontSize: 9,fontWeight:900 }}>{leads} TALEP</span></div></div><span style={{ color: listing.status==="published"?"#087b5e":"#8a6a35",fontSize: 9,fontWeight:950 }}>{listing.status.toLocaleUpperCase("tr-TR")}</span></button>}) : <div style={{ padding:18,borderRadius:14,background:"#f8fbfd",color:"#72879a",fontSize: 10.5 }}>Henüz ofise ait ilan yok.</div>}</div></article>
+                <article style={{ ...qualityRuleStyle, padding: 20 }}><div style={eyebrow}>SICAK ALICILAR</div><h3 style={{ margin: "6px 0 3px", color: "#153a65" }}>Bugün geri dönüş bekleyen fırsatlar</h3><div style={{ display:"grid",gap:8,marginTop:12 }}>{agencyCenter.hotLeads.length ? agencyCenter.hotLeads.slice(0,5).map((lead) => { const listing=agencyCenter.ownListings.find((item)=>item.id===lead.listing_id); return <button key={lead.id} type="button" onClick={() => { setSection("listings"); setListingCrmOpen(true); setSelectedInquiryId(lead.id); void openListingInquiry(lead); }} style={{ width:"100%",padding:11,borderRadius:14,border:"1px solid #e0e9f0",background:"#fff",textAlign:"left",cursor:"pointer" }}><div style={{ display:"flex",justifyContent:"space-between",gap:8 }}><strong style={{ color:"#24445f",fontSize: 10.5 }}>Alıcı · {lead.sender_user_id.slice(0,6).toUpperCase()}</strong><span style={{ color:lead.priority==="urgent"||lead.priority==="high"?"#c45e25":"#718699",fontSize: 9,fontWeight:950 }}>{lead.priority.toLocaleUpperCase("tr-TR")}</span></div><span style={{ display:"block",marginTop:4,color:"#6e8394",fontSize: 10 }}>{listing?.title||"İlan"}</span><span style={{ display:"block",marginTop:5,color:"#445f74",fontSize: 10,lineHeight:1.4 }}>{lead.message.slice(0,105)}{lead.message.length>105?"…":""}</span></button>}) : <div style={{ padding:16,borderRadius:14,background:"#f8fbfd",color:"#72879a",fontSize: 10.5 }}>Şu anda sıcak alıcı sinyali yok.</div>}</div></article>
+              </div>
+
+              <article style={{ ...qualityRuleStyle, padding: 20, marginTop: 13 }}><div style={{ ...eyebrow, color: "#9a6700" }}>AI MÜŞTERİ ↔ PORTFÖY EŞLEŞTİRME</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Mevcut talebe alternatif portföy göster.</h3><div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(250px,1fr))",gap:9,marginTop:12 }}>{agencyCenter.matching.length ? agencyCenter.matching.map(({lead,target,alternatives}) => <div key={lead.id} style={{ padding:13,borderRadius:16,background:"#fff",border:"1px solid #dfe9f0" }}><strong style={{ color:"#24445f",fontSize: 10.5 }}>Alıcı · {lead.sender_user_id.slice(0,6).toUpperCase()}</strong><span style={{ display:"block",marginTop:6,color:"#73889a",fontSize: 9 }}>İLGİLENDİĞİ</span><strong style={{ display:"block",marginTop:2,color:"#34556c",fontSize: 10.5 }}>{target?.title||"İlan bilgisi yok"}</strong><div style={{ marginTop:8,paddingTop:8,borderTop:"1px solid #edf1f4" }}>{alternatives.length ? alternatives.map(({listing,score}) => <button key={listing.id} type="button" onClick={() => { setSection("listings"); setSelectedListingId(listing.id); }} style={{ width:"100%",marginTop:5,padding:7,borderRadius:9,border:"1px solid #e3ebf0",background:"#fff",display:"flex",justifyContent:"space-between",gap:8,cursor:"pointer",textAlign:"left" }}><span style={{ color:"#365a72",fontSize: 10,fontWeight:800 }}>{listing.title}</span><strong style={{ color:score>=70?"#087b5e":"#9a6700",fontSize: 9 }}>{Math.round(score)}%</strong></button>) : <span style={{ color:"#9aabb7",fontSize: 10 }}>Mevcut portföyde yeterli alternatif yok.</span>}</div></div>) : <div style={{ padding:17,borderRadius:14,background:"#f8fbfd",color:"#72879a",fontSize: 10.5 }}>Eşleştirme için sıcak/nitelikli talep ve alternatif ilan gerekir.</div>}</div></article>
+              <article id="faz3-final" style={{ marginTop: 14, padding: 22, borderRadius: 22, border: "1px solid #d7e4ee", background: "linear-gradient(145deg,#ffffff,#f7fbff)", boxShadow: "0 16px 42px rgba(25,61,92,.08)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 14, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ ...eyebrow, color: "#c56b12" }}>FAZ 3 FINAL · EMLAK OFİSİ YÖNETİCİ KOKPİTİ</div>
+                    <h3 style={{ margin: "7px 0 4px", color: "#153a65", fontSize: 24 }}>CRM’den satışa kadar tüm Emlak Ofisi operasyonu tek ekranda.</h3>
+                    <p style={{ margin: 0, color: "#74899e", fontSize: 12.5, lineHeight: 1.5 }}>Müşteri, eşleştirme, görev, takvim, danışman ve portföy verilerinden hesaplanan canlı operasyon özeti.</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" onClick={() => void copyAgencyPhase3Report()} style={{ padding: "10px 12px", borderRadius: 11, border: "1px solid #d6e4ed", background: "#fff", color: "#315b76", fontSize: 10.5, fontWeight: 950, cursor: "pointer" }}>Yönetici Özetini Kopyala</button>
+                    <button type="button" onClick={printAgencyPhase3Report} style={{ padding: "10px 13px", borderRadius: 11, border: 0, background: "linear-gradient(135deg,#0b6f9c,#0f8065)", color: "#fff", fontSize: 10.5, fontWeight: 950, cursor: "pointer" }}>Yazdır / PDF</button>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))", gap: 8, marginTop: 14 }}>
+                  {[
+                    ["OFİS SKORU", `${agencyPhase3Final.officeScore}/100`, "operasyon sağlığı"],
+                    ["YAYINDA", agencyPhase3Final.published, "aktif ilan"],
+                    ["AKTİF MÜŞTERİ", agencyPhase3Final.activeClients, "CRM takibi"],
+                    ["GÜÇLÜ EŞLEŞME", agencyPhase3Final.strongMatches, "%75+ uyum"],
+                    ["AÇIK GÖREV", agencyPhase3Final.openTasks, `${agencyPhase3Final.overdueTasks} geciken`],
+                    ["TAMAMLAMA", `%${agencyPhase3Final.taskCompletion}`, "görev başarısı"],
+                  ].map(([label,value,note]) => (
+                    <div key={String(label)} style={{ padding: 12, borderRadius: 15, background: "#fff", border: "1px solid #e0e9f0" }}>
+                      <span style={{ color: "#8496a4", fontSize: 9.5, fontWeight: 950 }}>{String(label)}</span>
+                      <strong style={{ display: "block", marginTop: 5, color: "#153a65", fontSize: 21 }}>{String(value)}</strong>
+                      <span style={{ display: "block", marginTop: 2, color: "#9aa8b3", fontSize: 9 }}>{String(note)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ ...eyebrow, color: "#0f8065" }}>SATIŞ DÖNÜŞÜM HUNİSİ</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 7, marginTop: 8 }}>
+                    {agencyPhase3Final.funnel.map((step, index) => {
+                      const prev = index > 0 ? agencyPhase3Final.funnel[index - 1].value : step.value;
+                      const rate = index === 0 ? 100 : Math.round((step.value / Math.max(1, prev)) * 100);
+                      return <div key={step.label} style={{ padding: 12, borderRadius: 14, background: index === 5 ? "#eff9f5" : "#f9fbfd", border: index === 5 ? "1px solid #bfe3d4" : "1px solid #e1e9ef" }}>
+                        <span style={{ color: "#8798a5", fontSize: 9, fontWeight: 950 }}>{index + 1}. {step.label}</span>
+                        <strong style={{ display: "block", marginTop: 5, color: index === 5 ? "#087b5e" : "#294c66", fontSize: 20 }}>{step.value}</strong>
+                        <span style={{ display: "block", marginTop: 2, color: "#9aa8b3", fontSize: 8.5 }}>{step.note}</span>
+                        {index > 0 ? <span style={{ display: "inline-block", marginTop: 6, padding: "3px 6px", borderRadius: 999, background: rate >= 60 ? "#eaf8f2" : rate >= 30 ? "#fff8e8" : "#fff0ed", color: rate >= 60 ? "#087b5e" : rate >= 30 ? "#9a6700" : "#b24d34", fontSize: 8.5, fontWeight: 950 }}>%{rate}</span> : null}
+                      </div>;
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(300px,.85fr)", gap: 12, marginTop: 14 }}>
+                  <div style={{ padding: 15, borderRadius: 17, background: "#fff", border: "1px solid #dde8ef" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                      <strong style={{ color: "#24445f", fontSize: 12.5 }}>Danışman Liderlik Tablosu</strong>
+                      <span style={{ color: "#8193a1", fontSize: 9.5 }}>{agencyPhase3Final.leaderboard.length} danışman</span>
+                    </div>
+                    <div style={{ display: "grid", gap: 7, marginTop: 9 }}>
+                      {agencyPhase3Final.leaderboard.length ? agencyPhase3Final.leaderboard.map((row, index) => (
+                        <div key={row.advisor.id} style={{ display: "grid", gridTemplateColumns: "36px minmax(0,1fr) repeat(4,70px)", gap: 7, alignItems: "center", padding: 10, borderRadius: 12, background: index === 0 ? "#f0faf6" : "#f8fbfd", border: index === 0 ? "1px solid #c0e4d5" : "1px solid #e2e9ef" }}>
+                          <span style={{ display: "grid", placeItems: "center", width: 31, height: 31, borderRadius: 10, background: index === 0 ? "#dff4ea" : "#edf3f7", color: index === 0 ? "#087b5e" : "#60798a", fontSize: 10.5, fontWeight: 950 }}>#{index + 1}</span>
+                          <div><strong style={{ color: "#34556c", fontSize: 10.5 }}>{row.advisor.name}</strong><span style={{ display: "block", marginTop: 2, color: "#8b9aa6", fontSize: 8.5 }}>{row.advisor.role === "manager" ? "Ofis Müdürü" : row.advisor.role === "owner" ? "Ofis Sahibi" : "Danışman"}</span></div>
+                          <div style={{ textAlign: "center" }}><small style={{ color: "#91a1ad", fontSize: 8 }}>İLAN</small><strong style={{ display: "block", color: "#35576e", fontSize: 10.5 }}>{row.listingCount}</strong></div>
+                          <div style={{ textAlign: "center" }}><small style={{ color: "#91a1ad", fontSize: 8 }}>MÜŞTERİ</small><strong style={{ display: "block", color: "#35576e", fontSize: 10.5 }}>{row.clientCount}</strong></div>
+                          <div style={{ textAlign: "center" }}><small style={{ color: "#91a1ad", fontSize: 8 }}>TAMAM</small><strong style={{ display: "block", color: "#087b5e", fontSize: 10.5 }}>{row.completed}</strong></div>
+                          <div style={{ textAlign: "center" }}><small style={{ color: "#91a1ad", fontSize: 8 }}>SKOR</small><strong style={{ display: "block", color: row.performance >= 75 ? "#087b5e" : row.performance >= 55 ? "#9a6700" : "#b24d34", fontSize: 11.5 }}>{row.performance}</strong></div>
+                        </div>
+                      )) : <div style={{ padding: 16, borderRadius: 12, background: "#f8fbfd", color: "#8395a3", fontSize: 10.5 }}>Danışman eklediğinizde liderlik tablosu burada otomatik oluşur.</div>}
+                    </div>
+                  </div>
+
+                  <div style={{ padding: 16, borderRadius: 18, color: "#fff", background: "linear-gradient(145deg,#0c2940,#0f8065 58%,#b7660c)" }}>
+                    <div style={{ fontSize: 9.5, fontWeight: 950, color: "#d8f4e9", letterSpacing: 1 }}>AI YÖNETİCİ AKSİYONLARI</div>
+                    <strong style={{ display: "block", marginTop: 7, fontSize: 14.5 }}>Bugün ofiste neye odaklanmalısınız?</strong>
+                    <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
+                      {agencyPhase3Final.alerts.slice(0,4).map((item, index) => <div key={`${item}-${index}`} style={{ padding: 10, borderRadius: 11, background: "rgba(255,255,255,.09)", fontSize: 10.5, lineHeight: 1.45 }}><strong>{index + 1}.</strong> {item}</div>)}
+                    </div>
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.16)", color: "rgba(255,255,255,.76)", fontSize: 9.5, lineHeight: 1.5 }}>Skorlar sistemdeki mevcut gerçek CRM, ilan, görev ve danışman kayıtlarından hesaplanır. Satış garantisi değildir.</div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 14, padding: 15, borderRadius: 17, background: "linear-gradient(135deg,#fff8e9,#ffffff)", border: "1px solid #ead8ad" }}>
+                  <div style={{ ...eyebrow, color: "#a56609" }}>FAZ 3 KAPANIŞ KONTROLÜ</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 8, marginTop: 9 }}>
+                    {[
+                      ["CRM & Müşteri Profili", agencyClientsReady === true],
+                      ["AI Müşteri ↔ İlan Eşleştirme", true],
+                      ["Görev / Randevu / Takvim", agencyTasksReady === true],
+                      ["Ekip & Danışman Yönetimi", agencyAdvisorsReady === true],
+                      ["Portföy Performansı", true],
+                      ["Satış Hunisi & Yönetici Raporu", true],
+                    ].map(([label,ready]) => <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", padding: 10, borderRadius: 12, background: "#fff", border: "1px solid #eee3c7" }}><span style={{ color: "#5e7180", fontSize: 10.5, fontWeight: 850 }}>{String(label)}</span><strong style={{ color: ready ? "#087b5e" : "#b7660c", fontSize: 10 }}>{ready ? "✓ HAZIR" : "KURULUM"}</strong></div>)}
+                  </div>
+                  <strong style={{ display: "block", marginTop: 12, color: "#6f4b11", fontSize: 12.5 }}>Bu bölüm görünüyorsa FAZ 3 final dosyası doğru yerde ve doğru Emlak Ofisi ekranında çalışıyor.</strong>
+                </div>
+              </article>
+
+            </section>
+          ) : null}
+
           {enterpriseRole === "bank" ? (
             <section style={{ marginTop: 16 }}>
               <article style={{ padding: 22, borderRadius: 24, background: "linear-gradient(145deg,#071d34,#0a4678)", color: "#fff", boxShadow: "0 22px 52px rgba(7,39,69,.22)", overflow: "hidden", position: "relative" }}>
                 <div style={{ position: "absolute", width: 260, height: 260, borderRadius: "50%", right: -105, top: -120, border: "1px solid rgba(255,255,255,.10)" }} />
                 <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "start", gap: 18, flexWrap: "wrap" }}>
-                  <div><div style={{ color: "#93d8ff", fontSize: 10, fontWeight: 950, letterSpacing: 1.6 }}>BANKA OPERASYON VE KREDİ KARAR MERKEZİ</div><h3 style={{ margin: "8px 0 5px", fontSize: 27 }}>Teminat, risk ve kredi kararını tek ekranda yönetin.</h3><p style={{ margin: 0, maxWidth: 760, color: "rgba(255,255,255,.72)", fontSize: 12, lineHeight: 1.65 }}>Bu ekran, karar destek prototipidir. Nihai kredi kararı kurum politikaları, yetkili ekspertiz, mevzuat ve insan onayıyla verilmelidir.</p></div>
+                  <div><div style={{ color: "#93d8ff", fontSize: 11, fontWeight: 950, letterSpacing: 1.6 }}>BANKA OPERASYON VE KREDİ KARAR MERKEZİ</div><h3 style={{ margin: "8px 0 5px", fontSize: 27 }}>Teminat, risk ve kredi kararını tek ekranda yönetin.</h3><p style={{ margin: 0, maxWidth: 760, color: "rgba(255,255,255,.72)", fontSize: 12, lineHeight: 1.65 }}>Bu ekran, karar destek prototipidir. Nihai kredi kararı kurum politikaları, yetkili ekspertiz, mevzuat ve insan onayıyla verilmelidir.</p></div>
                   <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{([['balanced','Dengeli'],['conservative','Temkinli'],['growth','Büyüme']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setBankScenario(id)} style={{ padding: "9px 12px", borderRadius: 11, border: bankScenario === id ? "1px solid #8ed8ff" : "1px solid rgba(255,255,255,.15)", background: bankScenario === id ? "rgba(36,169,245,.22)" : "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>{label}</button>)}</div>
                 </div>
               </article>
@@ -5868,13 +7184,13 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                   ["Teminat güveni", bankScenario === "growth" ? "82/100" : "89/100", "Veri ve likidite bileşimi", "Güçlü"],
                   ["Kritik dosya", bankScenario === "conservative" ? "2" : "3", "Yönetici kontrolü bekliyor", "Öncelikli"],
                   ["Karar süresi", "2,1 dk", "AI destekli ön değerlendirme", "-%21"],
-                ].map(([title,value,text,badge],i) => <article key={title} className="enterprise-kpi" style={{ padding: 16, borderRadius: 18, border: i === 3 ? "1px solid #f3c9c9" : "1px solid #dce8f3", background: i === 3 ? "linear-gradient(145deg,#fff8f8,#fff)" : "linear-gradient(145deg,#fff,#f6fbff)", boxShadow: "0 9px 24px rgba(31,64,97,.06)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: "#74899e", fontSize: 9, fontWeight: 950 }}>{title.toUpperCase()}</span><span style={{ padding: "4px 7px", borderRadius: 999, background: i === 3 ? "#fff0f0" : "#e9f5ff", color: i === 3 ? "#b42318" : "#0876c9", fontSize: 9, fontWeight: 950 }}>{badge}</span></div><strong style={{ display: "block", marginTop: 7, color: i === 3 ? "#b42318" : "#153a65", fontSize: 23 }}>{value}</strong><span style={{ display: "block", marginTop: 4, color: "#91a2b2", fontSize: 10 }}>{text}</span></article>)}
+                ].map(([title,value,text,badge],i) => <article key={title} className="enterprise-kpi" style={{ padding: 16, borderRadius: 18, border: i === 3 ? "1px solid #f3c9c9" : "1px solid #dce8f3", background: i === 3 ? "linear-gradient(145deg,#fff8f8,#fff)" : "linear-gradient(145deg,#fff,#f6fbff)", boxShadow: "0 9px 24px rgba(31,64,97,.06)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: "#74899e", fontSize: 10.5, fontWeight: 950 }}>{title.toUpperCase()}</span><span style={{ padding: "4px 7px", borderRadius: 999, background: i === 3 ? "#fff0f0" : "#e9f5ff", color: i === 3 ? "#b42318" : "#0876c9", fontSize: 10.5, fontWeight: 950 }}>{badge}</span></div><strong style={{ display: "block", marginTop: 7, color: i === 3 ? "#b42318" : "#153a65", fontSize: 23 }}>{value}</strong><span style={{ display: "block", marginTop: 4, color: "#91a2b2", fontSize: 11 }}>{text}</span></article>)}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(300px,.85fr)", gap: 13, marginTop: 13 }}>
                 <article style={{ ...qualityRuleStyle, padding: 20 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}><div><div style={eyebrow}>AI KREDİ KARAR MOTORU</div><h3 style={{ margin: "6px 0 3px", color: "#153a65" }}>Örnek dosya · Adana / Ceyhan</h3><p style={{ margin: 0, color: "#74899e", fontSize: 11 }}>Konut teminatı · Doğrulanabilir karar bileşenleri</p></div><span style={{ padding: "7px 10px", borderRadius: 999, background: "#eaf8f1", color: "#087b55", fontSize: 10, fontWeight: 950 }}>ÖN ONAY ADAYI</span></div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))", gap: 9, marginTop: 15 }}>{[["Kredi uygunluğu",bankScenario === "growth" ? "84/100" : "91/100"],["Likidite","88/100"],["Bölgesel risk","Düşük-Orta"],["Önerilen LTV",bankScenario === "conservative" ? "%45" : bankScenario === "growth" ? "%65" : "%55"]].map(([a,b]) => <div key={a} style={{ padding: 12, borderRadius: 14, background: "#f7fbff", border: "1px solid #dce8f3" }}><span style={{ display: "block", color: "#74899e", fontSize: 9, fontWeight: 850 }}>{a.toUpperCase()}</span><strong style={{ display: "block", marginTop: 5, color: "#0876c9", fontSize: 18 }}>{b}</strong></div>)}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}><div><div style={eyebrow}>AI KREDİ KARAR MOTORU</div><h3 style={{ margin: "6px 0 3px", color: "#153a65" }}>Örnek dosya · Adana / Ceyhan</h3><p style={{ margin: 0, color: "#74899e", fontSize: 11 }}>Konut teminatı · Doğrulanabilir karar bileşenleri</p></div><span style={{ padding: "7px 10px", borderRadius: 999, background: "#eaf8f1", color: "#087b55", fontSize: 11, fontWeight: 950 }}>ÖN ONAY ADAYI</span></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))", gap: 9, marginTop: 15 }}>{[["Kredi uygunluğu",bankScenario === "growth" ? "84/100" : "91/100"],["Likidite","88/100"],["Bölgesel risk","Düşük-Orta"],["Önerilen LTV",bankScenario === "conservative" ? "%45" : bankScenario === "growth" ? "%65" : "%55"]].map(([a,b]) => <div key={a} style={{ padding: 12, borderRadius: 14, background: "#f7fbff", border: "1px solid #dce8f3" }}><span style={{ display: "block", color: "#74899e", fontSize: 10.5, fontWeight: 850 }}>{a.toUpperCase()}</span><strong style={{ display: "block", marginTop: 5, color: "#0876c9", fontSize: 18 }}>{b}</strong></div>)}</div>
                   <div style={{ marginTop: 13, padding: 14, borderRadius: 15, background: "linear-gradient(90deg,#f5fbff,#eef8ff)", border: "1px solid #cbe5f8", color: "#35536e", fontSize: 11, lineHeight: 1.65 }}><strong style={{ color: "#153a65" }}>Açıklanabilir karar:</strong> Teminat değeri, bölgesel satış hızı ve veri güveni olumlu. Kredi oranı belirlenirken gelir doğrulaması, hukuki takyidat ve yetkili ekspertiz sonucu ayrıca kontrol edilmelidir.</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}><button type="button" onClick={() => setEnterpriseNotice("Banka yönetici özeti hazırlandı. Canlı PDF bağlantısı sonraki entegrasyon katmanında açılacaktır.")} style={{ padding: "10px 13px", borderRadius: 11, border: 0, background: "#0876c9", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Yönetici Özeti</button><button type="button" onClick={() => setEnterpriseNotice("Dosya insan onayı kuyruğuna alındı. Bu prototip herhangi bir gerçek kredi kararı vermez.")} style={{ padding: "10px 13px", borderRadius: 11, border: "1px solid #cbdbe9", background: "#fff", color: "#35536e", fontWeight: 900, cursor: "pointer" }}>İnsan Onayına Gönder</button></div>
                 </article>
@@ -5883,13 +7199,13 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                   <div style={eyebrow}>RİSK DAĞILIMI</div><h3 style={{ margin: "6px 0 3px", color: "#153a65" }}>Teminat portföyü görünümü</h3>
                   <div style={{ height: 16, display: "flex", overflow: "hidden", borderRadius: 999, marginTop: 18, background: "#edf2f7" }}><div style={{ width: "56%", background: "#2bb673" }} /><div style={{ width: "31%", background: "#f4b740" }} /><div style={{ width: "13%", background: "#dd5b5b" }} /></div>
                   <div style={{ display: "grid", gap: 8, marginTop: 14 }}>{[["Düşük risk","%56","#2bb673"],["Orta risk","%31","#d89614"],["Yüksek risk","%13","#c94242"]].map(([a,b,c]) => <div key={a} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: 10, borderRadius: 12, background: "#f8fbfe" }}><span style={{ color: "#607890", fontSize: 11 }}><i style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: c, marginRight: 7 }} />{a}</span><strong style={{ color: c, fontSize: 12 }}>{b}</strong></div>)}</div>
-                  <div style={{ marginTop: 14, padding: 12, borderRadius: 14, background: "#fff8e8", border: "1px solid #f3d28f", color: "#7b5a14", fontSize: 10, lineHeight: 1.5 }}>⚠ Üç dosyada belge eksikliği veya likidite sapması nedeniyle ikinci kontrol öneriliyor.</div>
+                  <div style={{ marginTop: 14, padding: 12, borderRadius: 14, background: "#fff8e8", border: "1px solid #f3d28f", color: "#7b5a14", fontSize: 11, lineHeight: 1.5 }}>⚠ Üç dosyada belge eksikliği veya likidite sapması nedeniyle ikinci kontrol öneriliyor.</div>
                 </article>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(300px,.85fr)", gap: 13, marginTop: 13 }}>
                 <article style={{ ...qualityRuleStyle, padding: 20 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}><div><div style={eyebrow}>KREDİ DOSYASI KUYRUĞU</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Öncelikli değerlendirme listesi</h3></div><div style={{ display: "flex", gap: 6 }}>{([['all','Tümü'],['urgent','Kritik'],['review','Kontrol']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setBankQueueFilter(id)} style={{ padding: "7px 9px", borderRadius: 9, border: bankQueueFilter === id ? "1px solid #0876c9" : "1px solid #dce8f3", background: bankQueueFilter === id ? "#eaf6ff" : "#fff", color: bankQueueFilter === id ? "#0876c9" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 10 }}>{label}</button>)}</div></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}><div><div style={eyebrow}>KREDİ DOSYASI KUYRUĞU</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Öncelikli değerlendirme listesi</h3></div><div style={{ display: "flex", gap: 6 }}>{([['all','Tümü'],['urgent','Kritik'],['review','Kontrol']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setBankQueueFilter(id)} style={{ padding: "7px 9px", borderRadius: 9, border: bankQueueFilter === id ? "1px solid #0876c9" : "1px solid #dce8f3", background: bankQueueFilter === id ? "#eaf6ff" : "#fff", color: bankQueueFilter === id ? "#0876c9" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 11 }}>{label}</button>)}</div></div>
                   <div style={{ overflowX: "auto", marginTop: 13 }}><table style={tableStyle}><thead><tr><th style={thStyle}>Dosya</th><th style={thStyle}>Teminat</th><th style={thStyle}>LTV</th><th style={thStyle}>Risk</th><th style={thStyle}>Durum</th></tr></thead><tbody>{[
                     ["BK-2026-1842","₺8.450.000","%54","Düşük","Ön onay"],
                     ["BK-2026-1837","₺5.280.000","%63","Orta","İkinci kontrol"],
@@ -5900,7 +7216,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
 
                 <article style={{ padding: 20, borderRadius: 22, background: "linear-gradient(145deg,#fff,#f6fbff)", border: "1px solid #dce8f3", boxShadow: "0 10px 28px rgba(31,64,97,.06)" }}>
                   <div style={eyebrow}>AI UYARI MERKEZİ</div><h3 style={{ margin: "6px 0 12px", color: "#153a65" }}>Bugünün kritik sinyalleri</h3>
-                  <div style={{ display: "grid", gap: 9 }}>{[["Likidite sapması","Adana portföyünde iki teminatın satış süresi yükseldi.","Orta"],["Belge kontrolü","Bir dosyada güncel takyidat belgesi bekleniyor.","Yüksek"],["Değer güncellemesi","Üç teminat için 90 günlük yeniden değerleme zamanı geldi.","Planlı"]].map(([title,text,level],i) => <div key={title} style={{ padding: 12, borderRadius: 14, border: i === 1 ? "1px solid #f1c6c6" : "1px solid #dce8f3", background: i === 1 ? "#fff8f8" : "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#153a65", fontSize: 11 }}>{title}</strong><span style={{ color: i === 1 ? "#b42318" : "#0876c9", fontSize: 9, fontWeight: 950 }}>{level}</span></div><p style={{ margin: "5px 0 0", color: "#74899e", fontSize: 10, lineHeight: 1.45 }}>{text}</p></div>)}</div>
+                  <div style={{ display: "grid", gap: 9 }}>{[["Likidite sapması","Adana portföyünde iki teminatın satış süresi yükseldi.","Orta"],["Belge kontrolü","Bir dosyada güncel takyidat belgesi bekleniyor.","Yüksek"],["Değer güncellemesi","Üç teminat için 90 günlük yeniden değerleme zamanı geldi.","Planlı"]].map(([title,text,level],i) => <div key={title} style={{ padding: 12, borderRadius: 14, border: i === 1 ? "1px solid #f1c6c6" : "1px solid #dce8f3", background: i === 1 ? "#fff8f8" : "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#153a65", fontSize: 11 }}>{title}</strong><span style={{ color: i === 1 ? "#b42318" : "#0876c9", fontSize: 10.5, fontWeight: 950 }}>{level}</span></div><p style={{ margin: "5px 0 0", color: "#74899e", fontSize: 11, lineHeight: 1.45 }}>{text}</p></div>)}</div>
                 </article>
               </div>
             </section>
@@ -5913,7 +7229,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
               <article style={{ padding: 23, borderRadius: 25, color: "#fff", background: "radial-gradient(circle at 88% 12%,rgba(255,197,91,.22),transparent 29%),linear-gradient(150deg,#162b3f,#684615)", boxShadow: "0 24px 58px rgba(65,44,18,.22)", overflow: "hidden", position: "relative" }}>
                 <div style={{ position: "absolute", width: 300, height: 300, borderRadius: "50%", right: -120, top: -150, border: "1px solid rgba(255,255,255,.12)" }} />
                 <div style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: 18, alignItems: "start", flexWrap: "wrap" }}>
-                  <div><div style={{ color: "#ffd98b", fontSize: 10, fontWeight: 950, letterSpacing: 1.55 }}>MÜTEAHHİT VE PROJE YÖNETİM MERKEZİ</div><h3 style={{ margin: "8px 0 5px", fontSize: 28 }}>Arsadan teslime tüm projeyi tek merkezden yönetin.</h3><p style={{ margin: 0, maxWidth: 760, color: "rgba(255,255,255,.74)", fontSize: 12, lineHeight: 1.68 }}>Fizibilite, bütçe, saha ilerlemesi, satış, ekip ve doküman akışlarını açıklanabilir AI karar desteğiyle birlikte izleyin.</p></div>
+                  <div><div style={{ color: "#ffd98b", fontSize: 11, fontWeight: 950, letterSpacing: 1.55 }}>MÜTEAHHİT VE PROJE YÖNETİM MERKEZİ</div><h3 style={{ margin: "8px 0 5px", fontSize: 28 }}>Arsadan teslime tüm projeyi tek merkezden yönetin.</h3><p style={{ margin: 0, maxWidth: 760, color: "rgba(255,255,255,.74)", fontSize: 12, lineHeight: 1.68 }}>Fizibilite, bütçe, saha ilerlemesi, satış, ekip ve doküman akışlarını açıklanabilir AI karar desteğiyle birlikte izleyin.</p></div>
                   <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{([['elysium','Elysium Loft'],['nova','Nova Loft'],['vera','Vera Loft']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setDeveloperProject(id)} style={{ padding: "9px 12px", borderRadius: 11, border: developerProject === id ? "1px solid #ffd98b" : "1px solid rgba(255,255,255,.16)", background: developerProject === id ? "rgba(255,194,74,.18)" : "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>{label}</button>)}</div>
                 </div>
               </article>
@@ -5921,16 +7237,16 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginTop: 12 }}>
                 {(() => {
                   const project = developerProject === "elysium" ? { progress:"%64", value:"₺51,5 Mn", budget:"₺12,5 Mn", sales:"9 / 12", margin:"%34" } : developerProject === "nova" ? { progress:"%58", value:"₺22,5 Mn", budget:"₺9,8 Mn", sales:"5,5 / 8", margin:"%29" } : { progress:"%12", value:"₺46,0 Mn", budget:"₺3,2 Mn", sales:"0 / 15", margin:"%31" };
-                  return [["Proje ilerlemesi",project.progress,"Plan / gerçekleşen","Takvimde"],["Tahmini proje değeri",project.value,"Satış değeri görünümü","Güncel"],["Gerçekleşen harcama",project.budget,"Onaylı maliyet kayıtları","Kontrollü"],["Satılabilir stok",project.sales,"Bağımsız bölüm görünümü","Canlı"],["Brüt marj",project.margin,"Senaryo bazlı tahmin","Güçlü"]].map(([title,value,text,badge],i) => <article key={title} style={{ padding: 16, borderRadius: 18, border: i === 4 ? "1px solid #cce5d8" : "1px solid #eadfca", background: i === 4 ? "linear-gradient(145deg,#effbf5,#fff)" : "linear-gradient(145deg,#fff,#fffbf3)", boxShadow: "0 9px 24px rgba(86,62,24,.06)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: "#85765d", fontSize: 9, fontWeight: 950 }}>{title.toUpperCase()}</span><span style={{ padding: "4px 7px", borderRadius: 999, background: i === 4 ? "#def7e9" : "#fff1d6", color: i === 4 ? "#047857" : "#9a6700", fontSize: 9, fontWeight: 950 }}>{badge}</span></div><strong style={{ display: "block", marginTop: 7, color: i === 4 ? "#047857" : "#5c4217", fontSize: 23 }}>{value}</strong><span style={{ display: "block", marginTop: 4, color: "#9a8d78", fontSize: 10 }}>{text}</span></article>);
+                  return [["Proje ilerlemesi",project.progress,"Plan / gerçekleşen","Takvimde"],["Tahmini proje değeri",project.value,"Satış değeri görünümü","Güncel"],["Gerçekleşen harcama",project.budget,"Onaylı maliyet kayıtları","Kontrollü"],["Satılabilir stok",project.sales,"Bağımsız bölüm görünümü","Canlı"],["Brüt marj",project.margin,"Senaryo bazlı tahmin","Güçlü"]].map(([title,value,text,badge],i) => <article key={title} style={{ padding: 16, borderRadius: 18, border: i === 4 ? "1px solid #cce5d8" : "1px solid #eadfca", background: i === 4 ? "linear-gradient(145deg,#effbf5,#fff)" : "linear-gradient(145deg,#fff,#fffbf3)", boxShadow: "0 9px 24px rgba(86,62,24,.06)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: "#85765d", fontSize: 10.5, fontWeight: 950 }}>{title.toUpperCase()}</span><span style={{ padding: "4px 7px", borderRadius: 999, background: i === 4 ? "#def7e9" : "#fff1d6", color: i === 4 ? "#047857" : "#9a6700", fontSize: 10.5, fontWeight: 950 }}>{badge}</span></div><strong style={{ display: "block", marginTop: 7, color: i === 4 ? "#047857" : "#5c4217", fontSize: 23 }}>{value}</strong><span style={{ display: "block", marginTop: 4, color: "#9a8d78", fontSize: 11 }}>{text}</span></article>);
                 })()}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(310px,.8fr)", gap: 13, marginTop: 13 }}>
                 <article style={{ ...qualityRuleStyle, padding: 20 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrow, color: "#a66a0a" }}>AI FİZİBİLİTE VE SENARYO MOTORU</div><h3 style={{ margin: "6px 0 3px", color: "#153a65" }}>Arsa, maliyet ve satış dengesi</h3><p style={{ margin: 0, color: "#74899e", fontSize: 11 }}>Karar destek modeli · Resmî proje ve mali müşavir kontrolü gerektirir</p></div><div style={{ display: "flex", gap: 6 }}>{([['base','Baz'],['cost','Maliyet +%12'],['sales','Satış -%8']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setDeveloperScenario(id)} style={{ padding: "7px 9px", borderRadius: 9, border: developerScenario === id ? "1px solid #b7791f" : "1px solid #e5dccd", background: developerScenario === id ? "#fff5df" : "#fff", color: developerScenario === id ? "#9a6700" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 10 }}>{label}</button>)}</div></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrow, color: "#a66a0a" }}>AI FİZİBİLİTE VE SENARYO MOTORU</div><h3 style={{ margin: "6px 0 3px", color: "#153a65" }}>Arsa, maliyet ve satış dengesi</h3><p style={{ margin: 0, color: "#74899e", fontSize: 11 }}>Karar destek modeli · Resmî proje ve mali müşavir kontrolü gerektirir</p></div><div style={{ display: "flex", gap: 6 }}>{([['base','Baz'],['cost','Maliyet +%12'],['sales','Satış -%8']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setDeveloperScenario(id)} style={{ padding: "7px 9px", borderRadius: 9, border: developerScenario === id ? "1px solid #b7791f" : "1px solid #e5dccd", background: developerScenario === id ? "#fff5df" : "#fff", color: developerScenario === id ? "#9a6700" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 11 }}>{label}</button>)}</div></div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))", gap: 9, marginTop: 15 }}>{[
                     ["Satılabilir alan","1.845 m²"],["Toplam maliyet",developerScenario === "cost" ? "₺40,3 Mn" : "₺36,0 Mn"],["Tahmini ciro",developerScenario === "sales" ? "₺50,2 Mn" : "₺54,6 Mn"],["Brüt kâr",developerScenario === "cost" ? "₺14,3 Mn" : developerScenario === "sales" ? "₺14,2 Mn" : "₺18,6 Mn"],["Geri dönüş",developerScenario === "base" ? "18 ay" : "22 ay"]
-                  ].map(([a,b]) => <div key={a} style={{ padding: 12, borderRadius: 14, background: "#fffbf3", border: "1px solid #eadfca" }}><span style={{ display: "block", color: "#85765d", fontSize: 9, fontWeight: 850 }}>{a.toUpperCase()}</span><strong style={{ display: "block", marginTop: 5, color: "#9a6700", fontSize: 18 }}>{b}</strong></div>)}</div>
+                  ].map(([a,b]) => <div key={a} style={{ padding: 12, borderRadius: 14, background: "#fffbf3", border: "1px solid #eadfca" }}><span style={{ display: "block", color: "#85765d", fontSize: 10.5, fontWeight: 850 }}>{a.toUpperCase()}</span><strong style={{ display: "block", marginTop: 5, color: "#9a6700", fontSize: 18 }}>{b}</strong></div>)}</div>
                   <div style={{ marginTop: 13, padding: 14, borderRadius: 15, background: "linear-gradient(90deg,#fffaf0,#fff5df)", border: "1px solid #efd59d", color: "#6d582e", fontSize: 11, lineHeight: 1.65 }}><strong style={{ color: "#5c4217" }}>AI yorumu:</strong> Baz senaryoda proje güçlü aday görünümünde. Maliyet artışı ve satış yavaşlaması birlikte gerçekleşirse nakit tamponu artırılmalı, kritik satın almalar sabit fiyatlı sözleşmelerle korunmalıdır.</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}><button type="button" onClick={() => setEnterpriseNotice("Proje fizibilite yönetici özeti hazırlandı. Profesyonel PDF entegrasyonunda rapora dönüştürülecektir.")} style={{ padding: "10px 13px", borderRadius: 11, border: 0, background: "#a66a0a", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Fizibilite Özeti</button><button type="button" onClick={() => setEnterpriseNotice("Seçili senaryo yönetici karar kuyruğuna eklendi.")} style={{ padding: "10px 13px", borderRadius: 11, border: "1px solid #dfcfb3", background: "#fff", color: "#6d582e", fontWeight: 900, cursor: "pointer" }}>Karar Kuyruğuna Ekle</button></div>
                 </article>
@@ -5946,12 +7262,12 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrow}>İNŞAAT TAKVİMİ VE SAHA İLERLEMESİ</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Kritik yol görünümü</h3></div><span style={{ ...secureBadge, background: "#fff7e7", borderColor: "#efd59d", color: "#9a6700" }}>Haftalık saha özeti</span></div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 9, marginTop: 14 }}>{[
                   ["Hafriyat & temel",100,"Tamamlandı","#10b981"],["Taşıyıcı sistem",100,"Tamamlandı","#10b981"],["Duvar & kaba sıva",72,"Devam ediyor","#d89614"],["Elektrik & mekanik",46,"Sahada","#0876c9"],["Cephe",18,"Hazırlık","#7c3aed"],["Teslim",4,"Planlı","#74899e"]
-                ].map(([title,value,status,color]) => <div key={String(title)} style={{ padding: 14, borderRadius: 15, border: "1px solid #dce8f3", background: "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#153a65", fontSize: 11 }}>{title}</strong><span style={{ color: String(color), fontSize: 9, fontWeight: 950 }}>{status}</span></div><div style={{ height: 7, borderRadius: 999, background: "#edf2f7", overflow: "hidden", marginTop: 11 }}><div style={{ width: `${value}%`, height: "100%", borderRadius: 999, background: String(color) }} /></div><span style={{ display: "block", marginTop: 7, color: "#74899e", fontSize: 10 }}>%{value} ilerleme</span></div>)}</div>
+                ].map(([title,value,status,color]) => <div key={String(title)} style={{ padding: 14, borderRadius: 15, border: "1px solid #dce8f3", background: "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#153a65", fontSize: 11 }}>{title}</strong><span style={{ color: String(color), fontSize: 10.5, fontWeight: 950 }}>{status}</span></div><div style={{ height: 7, borderRadius: 999, background: "#edf2f7", overflow: "hidden", marginTop: 11 }}><div style={{ width: `${value}%`, height: "100%", borderRadius: 999, background: String(color) }} /></div><span style={{ display: "block", marginTop: 7, color: "#74899e", fontSize: 11 }}>%{value} ilerleme</span></div>)}</div>
               </article>
 
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(300px,.8fr)", gap: 13, marginTop: 13 }}>
                 <article style={{ ...qualityRuleStyle, padding: 20 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrow}>GÖREV VE EKİP MERKEZİ</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Öncelikli operasyon listesi</h3></div><div style={{ display: "flex", gap: 6 }}>{([['all','Tümü'],['critical','Kritik'],['week','Bu hafta']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setDeveloperTaskFilter(id)} style={{ padding: "7px 9px", borderRadius: 9, border: developerTaskFilter === id ? "1px solid #b7791f" : "1px solid #dce8f3", background: developerTaskFilter === id ? "#fff5df" : "#fff", color: developerTaskFilter === id ? "#9a6700" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 10 }}>{label}</button>)}</div></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrow}>GÖREV VE EKİP MERKEZİ</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Öncelikli operasyon listesi</h3></div><div style={{ display: "flex", gap: 6 }}>{([['all','Tümü'],['critical','Kritik'],['week','Bu hafta']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setDeveloperTaskFilter(id)} style={{ padding: "7px 9px", borderRadius: 9, border: developerTaskFilter === id ? "1px solid #b7791f" : "1px solid #dce8f3", background: developerTaskFilter === id ? "#fff5df" : "#fff", color: developerTaskFilter === id ? "#9a6700" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 11 }}>{label}</button>)}</div></div>
                   <div style={{ overflowX: "auto", marginTop: 13 }}><table style={tableStyle}><thead><tr><th style={thStyle}>İş kalemi</th><th style={thStyle}>Sorumlu</th><th style={thStyle}>Termin</th><th style={thStyle}>Öncelik</th><th style={thStyle}>Durum</th></tr></thead><tbody>{[
                     ["Dış cephe alt konstrüksiyon","Şantiye Şefi","31 Tem","Yüksek","Malzeme bekliyor"],["Elektrik kolon kontrolü","Elektrik Ekibi","30 Tem","Orta","Sahada"],["Asansör kuyu ölçümü","Teknik Ofis","02 Ağu","Yüksek","Kontrol"],["3+1 daire satış dosyası","Satış Ekibi","05 Ağu","Orta","Hazırlanıyor"],["Kaba sıva hakedişi","Finans","29 Tem","Düşük","Onay bekliyor"]
                   ].filter(row => developerTaskFilter === "all" || (developerTaskFilter === "critical" ? row[3] === "Yüksek" : ["31 Tem","30 Tem","02 Ağu"].includes(row[2]))).map(row => <tr key={row[0]}>{row.map((cell,i) => <td key={cell} style={{ ...tdStyle, color: i === 3 ? (cell === "Yüksek" ? "#b42318" : cell === "Orta" ? "#9a6700" : "#087b55") : tdStyle.color, fontWeight: i === 0 || i === 3 ? 850 : 650 }}>{cell}</td>)}</tr>)}</tbody></table></div>
@@ -5959,13 +7275,14 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
 
                 <article style={{ padding: 20, borderRadius: 22, background: "linear-gradient(145deg,#fff,#fffbf3)", border: "1px solid #eadfca", boxShadow: "0 10px 28px rgba(86,62,24,.07)" }}>
                   <div style={eyebrow}>AI RİSK MERKEZİ</div><h3 style={{ margin: "6px 0 12px", color: "#153a65" }}>Bugünün proje sinyalleri</h3>
-                  <div style={{ display: "grid", gap: 9 }}>{[["Maliyet riski","Cephe kaleminde tedarik fiyatı yükseldi.","Yüksek"],["Takvim riski","Asansör ölçümü iki kritik işi etkileyebilir.","Orta"],["Satış fırsatı","Orta kat 3+1 talebi son 14 günde güçlendi.","Fırsat"],["Nakit akışı","Mevcut tahsilat planı 4,2 aylık tampon sağlıyor.","Dengeli"]].map(([title,text,level],i) => <div key={title} style={{ padding: 12, borderRadius: 14, border: i === 0 ? "1px solid #f1c6c6" : "1px solid #eadfca", background: i === 0 ? "#fff8f8" : "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#153a65", fontSize: 11 }}>{title}</strong><span style={{ color: i === 0 ? "#b42318" : i === 2 ? "#047857" : "#9a6700", fontSize: 9, fontWeight: 950 }}>{level}</span></div><p style={{ margin: "5px 0 0", color: "#74899e", fontSize: 10, lineHeight: 1.45 }}>{text}</p></div>)}</div>
+                  <div style={{ display: "grid", gap: 9 }}>{[["Maliyet riski","Cephe kaleminde tedarik fiyatı yükseldi.","Yüksek"],["Takvim riski","Asansör ölçümü iki kritik işi etkileyebilir.","Orta"],["Satış fırsatı","Orta kat 3+1 talebi son 14 günde güçlendi.","Fırsat"],["Nakit akışı","Mevcut tahsilat planı 4,2 aylık tampon sağlıyor.","Dengeli"]].map(([title,text,level],i) => <div key={title} style={{ padding: 12, borderRadius: 14, border: i === 0 ? "1px solid #f1c6c6" : "1px solid #eadfca", background: i === 0 ? "#fff8f8" : "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#153a65", fontSize: 11 }}>{title}</strong><span style={{ color: i === 0 ? "#b42318" : i === 2 ? "#047857" : "#9a6700", fontSize: 10.5, fontWeight: 950 }}>{level}</span></div><p style={{ margin: "5px 0 0", color: "#74899e", fontSize: 11, lineHeight: 1.45 }}>{text}</p></div>)}</div>
                 </article>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(205px,1fr))", gap: 10, marginTop: 13 }}>
-                {[["🏠","Satış Merkezi","Satışta 6 · Rezerve 1 · Satıldı 5"],["📁","Doküman Merkezi","Ruhsat, proje, hakediş ve sözleşmeler"],["👷","Ekip Yönetimi","6 ekip · 28 aktif görev"],["📄","Haftalık Rapor","İlerleme, finans, risk ve fotoğraf özeti"]].map(([icon,title,text]) => <button type="button" key={title} onClick={() => setEnterpriseNotice(`${title} çalışma alanı seçildi. proje veri tabloları ve dosya depolama katmanıyla bağlanacaktır.`)} style={{ padding: 16, borderRadius: 17, border: "1px solid #eadfca", background: "linear-gradient(145deg,#fff,#fffbf5)", textAlign: "left", cursor: "pointer" }}><span style={{ fontSize: 22 }}>{icon}</span><strong style={{ display: "block", marginTop: 8, color: "#5c4217", fontSize: 12 }}>{title}</strong><span style={{ display: "block", marginTop: 4, color: "#85765d", fontSize: 10, lineHeight: 1.45 }}>{text}</span><span style={{ display: "block", marginTop: 8, color: "#a66a0a", fontSize: 10, fontWeight: 900 }}>Çalışma alanını aç →</span></button>)}
+                {[["🏠","Satış Merkezi","Satışta 6 · Rezerve 1 · Satıldı 5"],["📁","Doküman Merkezi","Ruhsat, proje, hakediş ve sözleşmeler"],["👷","Ekip Yönetimi","6 ekip · 28 aktif görev"],["📄","Haftalık Rapor","İlerleme, finans, risk ve fotoğraf özeti"]].map(([icon,title,text]) => <button type="button" key={title} onClick={() => setEnterpriseNotice(`${title} çalışma alanı seçildi. proje veri tabloları ve dosya depolama katmanıyla bağlanacaktır.`)} style={{ padding: 16, borderRadius: 17, border: "1px solid #eadfca", background: "linear-gradient(145deg,#fff,#fffbf5)", textAlign: "left", cursor: "pointer" }}><span style={{ fontSize: 22 }}>{icon}</span><strong style={{ display: "block", marginTop: 8, color: "#5c4217", fontSize: 12 }}>{title}</strong><span style={{ display: "block", marginTop: 4, color: "#85765d", fontSize: 11, lineHeight: 1.45 }}>{text}</span><span style={{ display: "block", marginTop: 8, color: "#a66a0a", fontSize: 11, fontWeight: 900 }}>Çalışma alanını aç →</span></button>)}
               </div>
+
             </section>
           ) : null}
 
@@ -5976,7 +7293,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                 <div style={{ position: "absolute", width: 280, height: 280, borderRadius: "50%", right: -110, top: -140, border: "1px solid rgba(255,255,255,.11)" }} />
                 <div style={{ position: "relative", display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(260px,.65fr)", gap: 20, alignItems: "center" }}>
                   <div>
-                    <div style={{ color: "#a7f3d0", fontSize: 10, fontWeight: 950, letterSpacing: 1.7 }}>PREMIUM YATIRIMCI VE PORTFÖY MERKEZİ</div>
+                    <div style={{ color: "#a7f3d0", fontSize: 11, fontWeight: 950, letterSpacing: 1.7 }}>PREMIUM YATIRIMCI VE PORTFÖY MERKEZİ</div>
                     <h3 style={{ margin: "9px 0 8px", fontSize: "clamp(27px,4vw,42px)", lineHeight: 1.08, letterSpacing: "-1.1px" }}>Varlıklarınızı değil, gelecekteki kararlarınızı yönetin.</h3>
                     <p style={{ margin: 0, maxWidth: 760, color: "rgba(255,255,255,.76)", fontSize: 13, lineHeight: 1.72 }}>Portföy değeri, nakit akışı, risk, likidite ve fırsat sinyallerini tek sade yönetici görünümünde birleştirin.</p>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 18 }}>
@@ -5985,59 +7302,59 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                     </div>
                   </div>
                   <div style={{ padding: 18, borderRadius: 21, background: "rgba(2,30,24,.42)", border: "1px solid rgba(255,255,255,.13)", backdropFilter: "blur(16px)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><span style={{ color: "rgba(255,255,255,.66)", fontSize: 10, fontWeight: 900 }}>AI PORTFÖY KARAR SKORU</span><span style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(52,211,153,.15)", color: "#a7f3d0", fontSize: 9, fontWeight: 950 }}>DENGELİ</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><span style={{ color: "rgba(255,255,255,.66)", fontSize: 11, fontWeight: 900 }}>AI PORTFÖY KARAR SKORU</span><span style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(52,211,153,.15)", color: "#a7f3d0", fontSize: 10.5, fontWeight: 950 }}>DENGELİ</span></div>
                     <div style={{ display: "flex", alignItems: "end", gap: 9, marginTop: 10 }}><strong style={{ fontSize: 47, lineHeight: 1 }}>88</strong><span style={{ color: "rgba(255,255,255,.55)", fontWeight: 850, paddingBottom: 5 }}>/100</span></div>
                     <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.10)", overflow: "hidden", marginTop: 13 }}><div style={{ width: "88%", height: "100%", borderRadius: 999, background: "linear-gradient(90deg,#34d399,#a7f3d0)" }} /></div>
-                    <p style={{ margin: "11px 0 0", color: "rgba(255,255,255,.67)", fontSize: 10, lineHeight: 1.5 }}>Getiri güçlü, risk dengeli. Likidite ve bölgesel çeşitlilik geliştirilirse skor yükselebilir.</p>
+                    <p style={{ margin: "11px 0 0", color: "rgba(255,255,255,.67)", fontSize: 11, lineHeight: 1.5 }}>Getiri güçlü, risk dengeli. Likidite ve bölgesel çeşitlilik geliştirilirse skor yükselebilir.</p>
                   </div>
                 </div>
               </article>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(165px,1fr))", gap: 10, marginTop: 12 }}>
-                {[["Toplam portföy","₺84,0 Mn","+%18,6"],["Öz sermaye","₺57,4 Mn","%68 pay"],["Aylık nakit akışı","₺286 Bin","+%7,2"],["Yıllık beklenen getiri","%21,8","Dengeli"],["Likidite tamponu","₺6,8 Mn","8,4 ay"],["Aktif varlık","17","4 şehir"]].map(([title,value,badge],i) => <article key={title} style={{ padding: 16, borderRadius: 18, background: i === 4 ? "linear-gradient(145deg,#effcf6,#fbfffd)" : "linear-gradient(145deg,#fff,#f7fcfa)", border: i === 4 ? "1px solid #b7ead2" : "1px solid #dcebe5", boxShadow: "0 9px 24px rgba(24,86,68,.06)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: "#74899e", fontSize: 9, fontWeight: 950, letterSpacing: .5 }}>{title.toUpperCase()}</span><span style={{ color: i === 4 ? "#047857" : "#0f8065", fontSize: 9, fontWeight: 950 }}>{badge}</span></div><strong style={{ display: "block", marginTop: 7, color: i === 4 ? "#047857" : "#153a65", fontSize: 22 }}>{value}</strong></article>)}
+                {[["Toplam portföy","₺84,0 Mn","+%18,6"],["Öz sermaye","₺57,4 Mn","%68 pay"],["Aylık nakit akışı","₺286 Bin","+%7,2"],["Yıllık beklenen getiri","%21,8","Dengeli"],["Likidite tamponu","₺6,8 Mn","8,4 ay"],["Aktif varlık","17","4 şehir"]].map(([title,value,badge],i) => <article key={title} style={{ padding: 16, borderRadius: 18, background: i === 4 ? "linear-gradient(145deg,#effcf6,#fbfffd)" : "linear-gradient(145deg,#fff,#f7fcfa)", border: i === 4 ? "1px solid #b7ead2" : "1px solid #dcebe5", boxShadow: "0 9px 24px rgba(24,86,68,.06)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: "#74899e", fontSize: 10.5, fontWeight: 950, letterSpacing: .5 }}>{title.toUpperCase()}</span><span style={{ color: i === 4 ? "#047857" : "#0f8065", fontSize: 10.5, fontWeight: 950 }}>{badge}</span></div><strong style={{ display: "block", marginTop: 7, color: i === 4 ? "#047857" : "#153a65", fontSize: 22 }}>{value}</strong></article>)}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(300px,.8fr)", gap: 13, marginTop: 13 }}>
                 <article style={{ ...qualityRuleStyle, padding: 20 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}><div><div style={eyebrow}>PORTFÖY PERFORMANSI</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Değer ve gelir eğilimi</h3></div><div style={{ display: "flex", gap: 6 }}>{([['1y','1 Yıl'],['3y','3 Yıl'],['5y','5 Yıl']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setInvestorHorizon(id)} style={{ padding: "7px 10px", borderRadius: 9, border: investorHorizon === id ? "1px solid #0f8065" : "1px solid #dce8f3", background: investorHorizon === id ? "#eafaf4" : "#fff", color: investorHorizon === id ? "#0f8065" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 10 }}>{label}</button>)}</div></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}><div><div style={eyebrow}>PORTFÖY PERFORMANSI</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Değer ve gelir eğilimi</h3></div><div style={{ display: "flex", gap: 6 }}>{([['1y','1 Yıl'],['3y','3 Yıl'],['5y','5 Yıl']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setInvestorHorizon(id)} style={{ padding: "7px 10px", borderRadius: 9, border: investorHorizon === id ? "1px solid #0f8065" : "1px solid #dce8f3", background: investorHorizon === id ? "#eafaf4" : "#fff", color: investorHorizon === id ? "#0f8065" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 11 }}>{label}</button>)}</div></div>
                   <div style={{ height: 164, display: "flex", alignItems: "end", gap: 8, marginTop: 17 }}>{(investorHorizon === "1y" ? [52,58,56,63,68,71,75,79,83,87,91,96] : investorHorizon === "3y" ? [31,38,43,48,54,58,63,69,75,82,89,98] : [22,28,35,41,49,56,64,71,79,87,94,100]).map((h,i) => <div key={i} style={{ flex: 1, height: `${h}%`, borderRadius: "7px 7px 3px 3px", background: i > 8 ? "linear-gradient(180deg,#34d399,#0f8065)" : "linear-gradient(180deg,#b8edd9,#5fc9a7)" }} />)}</div>
-                  <div style={{ display: "flex", justifyContent: "space-between", color: "#91a2b2", fontSize: 9, marginTop: 8 }}><span>Dönem başlangıcı</span><span>Bugün · {investorHorizon === "1y" ? "+%18,6" : investorHorizon === "3y" ? "+%51,4" : "+%86,2"}</span></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "#91a2b2", fontSize: 10.5, marginTop: 8 }}><span>Dönem başlangıcı</span><span>Bugün · {investorHorizon === "1y" ? "+%18,6" : investorHorizon === "3y" ? "+%51,4" : "+%86,2"}</span></div>
                 </article>
 
                 <article style={{ ...qualityRuleStyle, padding: 20 }}>
                   <div style={eyebrow}>VARLIK DAĞILIMI</div><h3 style={{ margin: "6px 0 12px", color: "#153a65" }}>Yoğunluk ve çeşitlilik</h3>
-                  <div style={{ display: "grid", gap: 11 }}>{[["Konut",34,"#0f8065","₺28,6 Mn"],["Ticari",21,"#0876c9","₺17,6 Mn"],["Arsa",18,"#b7791f","₺15,1 Mn"],["Projeler",19,"#7c3aed","₺16,0 Mn"],["Nakit",8,"#74899e","₺6,7 Mn"]].map(([label,value,color,amount]) => <div key={String(label)}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#607890", fontSize: 10 }}><span>{label} · {amount}</span><strong style={{ color: String(color) }}>%{value}</strong></div><div style={{ height: 7, borderRadius: 999, background: "#edf2f7", overflow: "hidden", marginTop: 5 }}><div style={{ width: `${value}%`, height: "100%", borderRadius: 999, background: String(color) }} /></div></div>)}</div>
+                  <div style={{ display: "grid", gap: 11 }}>{[["Konut",34,"#0f8065","₺28,6 Mn"],["Ticari",21,"#0876c9","₺17,6 Mn"],["Arsa",18,"#b7791f","₺15,1 Mn"],["Projeler",19,"#7c3aed","₺16,0 Mn"],["Nakit",8,"#74899e","₺6,7 Mn"]].map(([label,value,color,amount]) => <div key={String(label)}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#607890", fontSize: 11 }}><span>{label} · {amount}</span><strong style={{ color: String(color) }}>%{value}</strong></div><div style={{ height: 7, borderRadius: 999, background: "#edf2f7", overflow: "hidden", marginTop: 5 }}><div style={{ width: `${value}%`, height: "100%", borderRadius: 999, background: String(color) }} /></div></div>)}</div>
                 </article>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.05fr) minmax(310px,.95fr)", gap: 13, marginTop: 13 }}>
                 <article style={{ ...qualityRuleStyle, padding: 20 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}><div><div style={eyebrow}>SENARYO LABORATUVARI</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Portföy stres testi</h3></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{([['base','Baz'],['rateUp','Faiz +2'],['rateDown','Faiz -2'],['rentUp','Kira +10']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setInvestorScenario(id)} style={{ padding: "7px 9px", borderRadius: 9, border: investorScenario === id ? "1px solid #0f8065" : "1px solid #dce8f3", background: investorScenario === id ? "#eafaf4" : "#fff", color: investorScenario === id ? "#0f8065" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 10 }}>{label}</button>)}</div></div>
-                  {(() => { const scenario = investorScenario === "base" ? {value:"₺84,0 Mn",gain:"%21,8",cash:"₺286 Bin",risk:"Dengeli",note:"Mevcut dağılım kontrollü büyümeyi destekliyor."} : investorScenario === "rateUp" ? {value:"₺78,9 Mn",gain:"%14,2",cash:"₺248 Bin",risk:"Orta-Yüksek",note:"Finansman maliyeti ve satış süresi artabilir; nakit oranı korunmalı."} : investorScenario === "rateDown" ? {value:"₺91,6 Mn",gain:"%29,4",cash:"₺303 Bin",risk:"Düşük-Orta",note:"Talep ve değer artışı güçlenebilir; seçici büyüme fırsatı oluşur."} : {value:"₺86,2 Mn",gain:"%24,6",cash:"₺315 Bin",risk:"Dengeli",note:"Kira bazlı nakit akışı güçlenir ve borç servis kapasitesi artar."}; return <><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 14 }}>{[["Tahmini değer",scenario.value],["Yıllık getiri",scenario.gain],["Aylık nakit",scenario.cash],["Risk görünümü",scenario.risk]].map(([a,b]) => <div key={a} style={{ padding: 12, borderRadius: 14, background: "#f3fbf8", border: "1px solid #d4eee4" }}><span style={{ display: "block", color: "#74899e", fontSize: 9, fontWeight: 850 }}>{a.toUpperCase()}</span><strong style={{ display: "block", marginTop: 5, color: "#0f8065", fontSize: 17 }}>{b}</strong></div>)}</div><div style={{ marginTop: 11, padding: 13, borderRadius: 14, background: "#ecfaf5", color: "#436c60", fontSize: 10, lineHeight: 1.6 }}><strong style={{ color: "#08604c" }}>AI senaryo yorumu:</strong> {scenario.note}</div></> })()}
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}><div><div style={eyebrow}>SENARYO LABORATUVARI</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Portföy stres testi</h3></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{([['base','Baz'],['rateUp','Faiz +2'],['rateDown','Faiz -2'],['rentUp','Kira +10']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setInvestorScenario(id)} style={{ padding: "7px 9px", borderRadius: 9, border: investorScenario === id ? "1px solid #0f8065" : "1px solid #dce8f3", background: investorScenario === id ? "#eafaf4" : "#fff", color: investorScenario === id ? "#0f8065" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 11 }}>{label}</button>)}</div></div>
+                  {(() => { const scenario = investorScenario === "base" ? {value:"₺84,0 Mn",gain:"%21,8",cash:"₺286 Bin",risk:"Dengeli",note:"Mevcut dağılım kontrollü büyümeyi destekliyor."} : investorScenario === "rateUp" ? {value:"₺78,9 Mn",gain:"%14,2",cash:"₺248 Bin",risk:"Orta-Yüksek",note:"Finansman maliyeti ve satış süresi artabilir; nakit oranı korunmalı."} : investorScenario === "rateDown" ? {value:"₺91,6 Mn",gain:"%29,4",cash:"₺303 Bin",risk:"Düşük-Orta",note:"Talep ve değer artışı güçlenebilir; seçici büyüme fırsatı oluşur."} : {value:"₺86,2 Mn",gain:"%24,6",cash:"₺315 Bin",risk:"Dengeli",note:"Kira bazlı nakit akışı güçlenir ve borç servis kapasitesi artar."}; return <><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 14 }}>{[["Tahmini değer",scenario.value],["Yıllık getiri",scenario.gain],["Aylık nakit",scenario.cash],["Risk görünümü",scenario.risk]].map(([a,b]) => <div key={a} style={{ padding: 12, borderRadius: 14, background: "#f3fbf8", border: "1px solid #d4eee4" }}><span style={{ display: "block", color: "#74899e", fontSize: 10.5, fontWeight: 850 }}>{a.toUpperCase()}</span><strong style={{ display: "block", marginTop: 5, color: "#0f8065", fontSize: 17 }}>{b}</strong></div>)}</div><div style={{ marginTop: 11, padding: 13, borderRadius: 14, background: "#ecfaf5", color: "#436c60", fontSize: 11, lineHeight: 1.6 }}><strong style={{ color: "#08604c" }}>AI senaryo yorumu:</strong> {scenario.note}</div></> })()}
                 </article>
 
                 <article style={{ padding: 20, borderRadius: 22, color: "#fff", background: "linear-gradient(145deg,#062820,#0a5b49)", boxShadow: "0 18px 42px rgba(5,73,58,.17)" }}>
-                  <div style={{ color: "#a7f3d0", fontSize: 10, fontWeight: 950, letterSpacing: 1.2 }}>YAŞAM AI PORTFÖY DANIŞMANI</div><h3 style={{ margin: "7px 0 6px", fontSize: 20 }}>Bugün hangi kararı inceleyelim?</h3><p style={{ margin: 0, color: "rgba(255,255,255,.68)", fontSize: 10, lineHeight: 1.5 }}>Sorunuzu sade biçimde yazın. Sistem portföy, risk ve likidite bağlamında karar desteği üretir.</p>
-                  <div style={{ marginTop: 12, padding: 12, borderRadius: 14, background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.11)", color: "#d7fff0", fontSize: 10, lineHeight: 1.58 }}>{investorAiAnswer}</div>
-                  <div style={{ display: "flex", gap: 7, marginTop: 10 }}><input value={investorAiPrompt} onChange={(e) => setInvestorAiPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && investorAiPrompt.trim()) { setInvestorAiAnswer(`“${investorAiPrompt.trim()}” talebi değerlendirildi. Canlı veri bağlantısı açıldığında varlık bazlı etkiler, kaynaklar ve önerilen aksiyonlar ayrıntılı gösterilecektir.`); setInvestorAiPrompt(""); } }} placeholder="Örn. Riski azaltmak için ne yapmalıyım?" style={{ flex: 1, minWidth: 0, padding: "10px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.08)", color: "#fff", outline: "none", fontSize: 10 }} /><button type="button" onClick={() => { if (!investorAiPrompt.trim()) return; setInvestorAiAnswer(`“${investorAiPrompt.trim()}” talebi değerlendirildi. Canlı veri bağlantısı açıldığında varlık bazlı etkiler, kaynaklar ve önerilen aksiyonlar ayrıntılı gösterilecektir.`); setInvestorAiPrompt(""); }} style={{ padding: "10px 12px", borderRadius: 11, border: 0, background: "#34d399", color: "#063b30", fontWeight: 950, cursor: "pointer" }}>Analiz Et</button></div>
+                  <div style={{ color: "#a7f3d0", fontSize: 11, fontWeight: 950, letterSpacing: 1.2 }}>YAŞAM AI PORTFÖY DANIŞMANI</div><h3 style={{ margin: "7px 0 6px", fontSize: 20 }}>Bugün hangi kararı inceleyelim?</h3><p style={{ margin: 0, color: "rgba(255,255,255,.68)", fontSize: 11, lineHeight: 1.5 }}>Sorunuzu sade biçimde yazın. Sistem portföy, risk ve likidite bağlamında karar desteği üretir.</p>
+                  <div style={{ marginTop: 12, padding: 12, borderRadius: 14, background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.11)", color: "#d7fff0", fontSize: 11, lineHeight: 1.58 }}>{investorAiAnswer}</div>
+                  <div style={{ display: "flex", gap: 7, marginTop: 10 }}><input value={investorAiPrompt} onChange={(e) => setInvestorAiPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && investorAiPrompt.trim()) { setInvestorAiAnswer(`“${investorAiPrompt.trim()}” talebi değerlendirildi. Canlı veri bağlantısı açıldığında varlık bazlı etkiler, kaynaklar ve önerilen aksiyonlar ayrıntılı gösterilecektir.`); setInvestorAiPrompt(""); } }} placeholder="Örn. Riski azaltmak için ne yapmalıyım?" style={{ flex: 1, minWidth: 0, padding: "10px 11px", borderRadius: 11, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.08)", color: "#fff", outline: "none", fontSize: 11 }} /><button type="button" onClick={() => { if (!investorAiPrompt.trim()) return; setInvestorAiAnswer(`“${investorAiPrompt.trim()}” talebi değerlendirildi. Canlı veri bağlantısı açıldığında varlık bazlı etkiler, kaynaklar ve önerilen aksiyonlar ayrıntılı gösterilecektir.`); setInvestorAiPrompt(""); }} style={{ padding: "10px 12px", borderRadius: 11, border: 0, background: "#34d399", color: "#063b30", fontWeight: 950, cursor: "pointer" }}>Analiz Et</button></div>
                 </article>
               </div>
 
               <article style={{ ...qualityRuleStyle, padding: 20, marginTop: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}><div><div style={eyebrow}>VARLIK PERFORMANS LİSTESİ</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Getiri, risk ve likidite karşılaştırması</h3></div><div style={{ display: "flex", gap: 6 }}>{([['all','Tümü'],['low','Düşük risk'],['balanced','Dengeli'],['high','Yüksek risk']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setInvestorRiskFilter(id)} style={{ padding: "7px 9px", borderRadius: 9, border: investorRiskFilter === id ? "1px solid #0f8065" : "1px solid #dce8f3", background: investorRiskFilter === id ? "#eafaf4" : "#fff", color: investorRiskFilter === id ? "#0f8065" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 10 }}>{label}</button>)}</div></div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}><div><div style={eyebrow}>VARLIK PERFORMANS LİSTESİ</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Getiri, risk ve likidite karşılaştırması</h3></div><div style={{ display: "flex", gap: 6 }}>{([['all','Tümü'],['low','Düşük risk'],['balanced','Dengeli'],['high','Yüksek risk']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setInvestorRiskFilter(id)} style={{ padding: "7px 9px", borderRadius: 9, border: investorRiskFilter === id ? "1px solid #0f8065" : "1px solid #dce8f3", background: investorRiskFilter === id ? "#eafaf4" : "#fff", color: investorRiskFilter === id ? "#0f8065" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 11 }}>{label}</button>)}</div></div>
                 <div style={{ overflowX: "auto", marginTop: 13 }}><table style={tableStyle}><thead><tr><th style={thStyle}>Varlık</th><th style={thStyle}>Tür</th><th style={thStyle}>Güncel değer</th><th style={thStyle}>Getiri</th><th style={thStyle}>Risk</th><th style={thStyle}>Likidite</th></tr></thead><tbody>{[["Elysium Loft","Proje","₺31,0 Mn","%28,4","Dengeli","Orta"],["Nova Loft","Proje","₺18,6 Mn","%24,1","Dengeli","Orta"],["Ceyhan Ticari","Ticari","₺11,5 Mn","%19,2","Düşük","Yüksek"],["Mersin Arsa","Arsa","₺8,9 Mn","%31,8","Yüksek","Düşük"],["Adana Konut Sepeti","Konut","₺7,2 Mn","%16,7","Düşük","Yüksek"],["Nakit Rezervi","Nakit","₺6,8 Mn","%—","Düşük","Çok yüksek"]].filter(row => investorRiskFilter === "all" || (investorRiskFilter === "low" ? row[4] === "Düşük" : investorRiskFilter === "balanced" ? row[4] === "Dengeli" : row[4] === "Yüksek")).map(row => <tr key={row[0]}>{row.map((cell,i) => <td key={cell} style={{ ...tdStyle, color: i === 4 ? (cell === "Yüksek" ? "#b42318" : cell === "Dengeli" ? "#9a6700" : "#087b55") : tdStyle.color, fontWeight: i === 0 || i === 4 ? 850 : 650 }}>{cell}</td>)}</tr>)}</tbody></table></div>
               </article>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(205px,1fr))", gap: 10, marginTop: 13 }}>
-                {[["🔔","Akıllı Uyarılar","2 dikkat · 3 fırsat sinyali"],["🗺️","Portföy Haritası","4 şehir · 17 aktif varlık"],["📄","Yönetici Raporu","Getiri, risk ve nakit akışı"],["🎯","Fırsat Radarı","Bölgesel adayları karşılaştır"]].map(([icon,title,text]) => <button type="button" key={title} onClick={() => setEnterpriseNotice(`${title} çalışma alanı seçildi. canlı veri ve raporlama katmanıyla bağlanacaktır.`)} style={{ padding: 16, borderRadius: 17, border: "1px solid #d7ebe3", background: "linear-gradient(145deg,#fff,#f5fcf9)", textAlign: "left", cursor: "pointer" }}><span style={{ fontSize: 22 }}>{icon}</span><strong style={{ display: "block", marginTop: 8, color: "#0b5e4b", fontSize: 12 }}>{title}</strong><span style={{ display: "block", marginTop: 4, color: "#74899e", fontSize: 10, lineHeight: 1.45 }}>{text}</span><span style={{ display: "block", marginTop: 8, color: "#0f8065", fontSize: 10, fontWeight: 900 }}>Çalışma alanını aç →</span></button>)}
+                {[["🔔","Akıllı Uyarılar","2 dikkat · 3 fırsat sinyali"],["🗺️","Portföy Haritası","4 şehir · 17 aktif varlık"],["📄","Yönetici Raporu","Getiri, risk ve nakit akışı"],["🎯","Fırsat Radarı","Bölgesel adayları karşılaştır"]].map(([icon,title,text]) => <button type="button" key={title} onClick={() => setEnterpriseNotice(`${title} çalışma alanı seçildi. canlı veri ve raporlama katmanıyla bağlanacaktır.`)} style={{ padding: 16, borderRadius: 17, border: "1px solid #d7ebe3", background: "linear-gradient(145deg,#fff,#f5fcf9)", textAlign: "left", cursor: "pointer" }}><span style={{ fontSize: 22 }}>{icon}</span><strong style={{ display: "block", marginTop: 8, color: "#0b5e4b", fontSize: 12 }}>{title}</strong><span style={{ display: "block", marginTop: 4, color: "#74899e", fontSize: 11, lineHeight: 1.45 }}>{text}</span><span style={{ display: "block", marginTop: 8, color: "#0f8065", fontSize: 11, fontWeight: 900 }}>Çalışma alanını aç →</span></button>)}
               </div>
 
-              <div style={{ marginTop: 12, padding: 13, borderRadius: 15, border: "1px solid #d7ebe3", background: "#f5fcf9", color: "#607890", fontSize: 10, lineHeight: 1.55 }}><strong style={{ color: "#0b5e4b" }}>Karar desteği açıklaması:</strong> Bu ekran örnek portföy verileriyle çalışan ön yüz prototipidir. Sunulan skorlar ve senaryolar yatırım danışmanlığı değildir; gerçek kullanımda doğrulanmış veriler, kullanıcı yetkileri ve uzman kontrolüyle desteklenecektir.</div>
+              <div style={{ marginTop: 12, padding: 13, borderRadius: 15, border: "1px solid #d7ebe3", background: "#f5fcf9", color: "#607890", fontSize: 11, lineHeight: 1.55 }}><strong style={{ color: "#0b5e4b" }}>Karar desteği açıklaması:</strong> Bu ekran örnek portföy verileriyle çalışan ön yüz prototipidir. Sunulan skorlar ve senaryolar yatırım danışmanlığı değildir; gerçek kullanımda doğrulanmış veriler, kullanıcı yetkileri ve uzman kontrolüyle desteklenecektir.</div>
             </section>
           ) : null}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginTop: 14 }}>
-            {[["🔒","Kontrollü Erişim","Rol ve yetkiye göre görünürlük"],["🧠","Açıklanabilir AI","Kararın nedenleri izlenebilir"],["🇹🇷","Türkiye Veri Motoru","Bölgesel karar altyapısı"],["📄","Kurumsal PDF","Standart ve doğrulanabilir rapor"],["🛡️","KVKK Yaklaşımı","Veri minimizasyonu ve kayıt disiplini"]].map(([icon,title,text]) => <article key={title} style={{ padding: 15, borderRadius: 16, border: "1px solid #dce8f3", background: "linear-gradient(145deg,#fff,#f8fbfe)" }}><span style={{ fontSize: 21 }}>{icon}</span><strong style={{ display: "block", color: "#153a65", marginTop: 7, fontSize: 12 }}>{title}</strong><span style={{ display: "block", color: "#74899e", marginTop: 3, fontSize: 10, lineHeight: 1.4 }}>{text}</span></article>)}
+            {[["🔒","Kontrollü Erişim","Rol ve yetkiye göre görünürlük"],["🧠","Açıklanabilir AI","Kararın nedenleri izlenebilir"],["🇹🇷","Türkiye Veri Motoru","Bölgesel karar altyapısı"],["📄","Kurumsal PDF","Standart ve doğrulanabilir rapor"],["🛡️","KVKK Yaklaşımı","Veri minimizasyonu ve kayıt disiplini"]].map(([icon,title,text]) => <article key={title} style={{ padding: 15, borderRadius: 16, border: "1px solid #dce8f3", background: "linear-gradient(145deg,#fff,#f8fbfe)" }}><span style={{ fontSize: 21 }}>{icon}</span><strong style={{ display: "block", color: "#153a65", marginTop: 7, fontSize: 12 }}>{title}</strong><span style={{ display: "block", color: "#74899e", marginTop: 3, fontSize: 11, lineHeight: 1.4 }}>{text}</span></article>)}
           </div>
         </>
       ) : null}
