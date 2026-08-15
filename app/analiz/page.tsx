@@ -3173,6 +3173,119 @@ type AgencyAdvisor = {
   updated_at: string;
 };
 
+
+type DeveloperProject = {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  city: string | null;
+  district: string | null;
+  neighborhood: string | null;
+  parcel_info: string | null;
+  project_type: string | null;
+  status: "planning" | "construction" | "sales" | "completed" | "paused";
+  total_units: number;
+  total_area_m2: number;
+  start_date: string | null;
+  target_end_date: string | null;
+  budget_total: number;
+  spent_total: number;
+  expected_revenue: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type DeveloperUnit = {
+  id: string;
+  project_id: string;
+  owner_user_id: string;
+  unit_code: string;
+  unit_type: string | null;
+  floor_label: string | null;
+  net_area_m2: number;
+  gross_area_m2: number;
+  status: "available" | "reserved" | "sold" | "owner_share";
+  list_price: number;
+  sold_price: number;
+  buyer_name: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type DeveloperCost = {
+  id: string;
+  project_id: string;
+  owner_user_id: string;
+  cost_type: "expense" | "income";
+  category: string;
+  description: string | null;
+  amount: number;
+  transaction_date: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type DeveloperMilestone = {
+  id: string;
+  project_id: string;
+  owner_user_id: string;
+  title: string;
+  stage: string | null;
+  due_date: string | null;
+  progress: number;
+  status: "pending" | "active" | "done" | "delayed";
+  planned_cost: number;
+  actual_cost: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+
+type DeveloperFeasibilityRun = {
+  id: string;
+  owner_user_id: string;
+  project_id: string | null;
+  city: string | null;
+  district: string | null;
+  neighborhood: string | null;
+  title: string;
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  ai_summary: string | null;
+  created_at: string;
+};
+
+
+type DeveloperRisk = {
+  id: string;
+  owner_user_id: string;
+  project_id: string;
+  category: string;
+  title: string;
+  probability: number;
+  impact: number;
+  status: "open" | "mitigating" | "closed";
+  owner_name: string | null;
+  due_date: string | null;
+  mitigation: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type DeveloperCashflowPlan = {
+  id: string;
+  owner_user_id: string;
+  project_id: string;
+  month_key: string;
+  planned_expense: number;
+  planned_income: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 function StrategicExpansionCenter({
   records,
   regionalData,
@@ -3333,6 +3446,127 @@ function StrategicExpansionCenter({
     targetMonthly: "5",
   });
 
+  const [developerProjectsReady, setDeveloperProjectsReady] = useState<boolean | null>(null);
+  const [developerProjectsLoading, setDeveloperProjectsLoading] = useState(false);
+  const [developerProjects, setDeveloperProjects] = useState<DeveloperProject[]>([]);
+  const [developerUnits, setDeveloperUnits] = useState<DeveloperUnit[]>([]);
+  const [developerCosts, setDeveloperCosts] = useState<DeveloperCost[]>([]);
+  const [developerMilestones, setDeveloperMilestones] = useState<DeveloperMilestone[]>([]);
+  const [developerNotice, setDeveloperNotice] = useState("");
+  const [developerSaving, setDeveloperSaving] = useState(false);
+  const [selectedDeveloperProjectId, setSelectedDeveloperProjectId] = useState("");
+  const [developerProjectForm, setDeveloperProjectForm] = useState({
+    name: "",
+    city: "",
+    district: "",
+    neighborhood: "",
+    parcelInfo: "",
+    projectType: "Konut",
+    status: "construction" as DeveloperProject["status"],
+    totalUnits: "",
+    totalArea: "",
+    startDate: "",
+    targetEndDate: "",
+    budgetTotal: "",
+    expectedRevenue: "",
+    notes: "",
+  });
+  const [developerUnitForm, setDeveloperUnitForm] = useState({
+    unitCode: "",
+    unitType: "2+1",
+    floorLabel: "",
+    netArea: "",
+    grossArea: "",
+    status: "available" as DeveloperUnit["status"],
+    listPrice: "",
+  });
+  const [developerCostForm, setDeveloperCostForm] = useState({
+    costType: "expense" as DeveloperCost["cost_type"],
+    category: "İnşaat",
+    description: "",
+    amount: "",
+    transactionDate: "",
+  });
+  const [developerMilestoneForm, setDeveloperMilestoneForm] = useState({
+    title: "",
+    stage: "",
+    dueDate: "",
+    progress: "0",
+    status: "pending" as DeveloperMilestone["status"],
+    plannedCost: "",
+    actualCost: "",
+    note: "",
+  });
+
+  const [developerFeasibilityReady, setDeveloperFeasibilityReady] = useState<boolean | null>(null);
+  const [developerFeasibilityRuns, setDeveloperFeasibilityRuns] = useState<DeveloperFeasibilityRun[]>([]);
+  const [developerFeasibilitySaving, setDeveloperFeasibilitySaving] = useState(false);
+  const [developerFeasAiLoading, setDeveloperFeasAiLoading] = useState(false);
+  const [developerFeasAiResult, setDeveloperFeasAiResult] = useState("");
+  const [developerFeasAiSuggestedM2, setDeveloperFeasAiSuggestedM2] = useState<number | null>(null);
+  const [developerFeasProvinces, setDeveloperFeasProvinces] = useState<TurkiyeLocationOption[]>([]);
+  const [developerFeasDistricts, setDeveloperFeasDistricts] = useState<TurkiyeLocationOption[]>([]);
+  const [developerFeasNeighborhoods, setDeveloperFeasNeighborhoods] = useState<TurkiyeLocationOption[]>([]);
+  const [developerFeasProvinceId, setDeveloperFeasProvinceId] = useState(0);
+  const [developerFeasDistrictId, setDeveloperFeasDistrictId] = useState(0);
+  const [developerFeasNeighborhoodId, setDeveloperFeasNeighborhoodId] = useState(0);
+  const [developerFeasLocationLoading, setDeveloperFeasLocationLoading] = useState(false);
+  const [developerFeasForm, setDeveloperFeasForm] = useState({
+    title: "Yeni Müteahhit Fizibilitesi",
+    grossArea: "2500",
+    sellableRatio: "78",
+    baseM2Cost: "22000",
+    quality: "standard" as "economic" | "standard" | "premium" | "luxury",
+    floors: "5",
+    basementFloors: "1",
+    elevators: "1",
+    parking: "open" as "none" | "open" | "closed",
+    facade: "standard" as "standard" | "premium" | "curtain",
+    heating: "floor" as "radiator" | "floor" | "central",
+    soilComplexity: "normal" as "easy" | "normal" | "hard",
+    logistics: "normal" as "easy" | "normal" | "hard",
+    landscaping: "standard" as "none" | "standard" | "premium",
+    durationMonths: "18",
+    landCost: "0",
+    saleM2: "0",
+    contingency: "8",
+    softCostRatio: "7",
+    financeCostRatio: "5",
+    targetMargin: "25",
+  });
+
+  const [developerRisksReady, setDeveloperRisksReady] = useState<boolean | null>(null);
+  const [developerCashflowReady, setDeveloperCashflowReady] = useState<boolean | null>(null);
+  const [developerRisks, setDeveloperRisks] = useState<DeveloperRisk[]>([]);
+  const [developerCashflowPlans, setDeveloperCashflowPlans] = useState<DeveloperCashflowPlan[]>([]);
+  const [developerRiskSaving, setDeveloperRiskSaving] = useState(false);
+  const [developerCashflowSaving, setDeveloperCashflowSaving] = useState(false);
+  const [developerRiskForm, setDeveloperRiskForm] = useState({
+    category: "Maliyet",
+    title: "",
+    probability: "3",
+    impact: "3",
+    status: "open" as DeveloperRisk["status"],
+    ownerName: "",
+    dueDate: "",
+    mitigation: "",
+  });
+  const [developerCashflowForm, setDeveloperCashflowForm] = useState({
+    monthKey: "",
+    plannedExpense: "",
+    plannedIncome: "",
+    note: "",
+  });
+  const [developerScenario, setDeveloperScenario] = useState({
+    costChange: "0",
+    salesChange: "0",
+    delayMonths: "0",
+    financeMonthlyRate: "2.5",
+    sellableRatioChange: "0",
+  });
+  const [developerAdvancedMode, setDeveloperAdvancedMode] = useState<"executive" | "scenario" | "risk" | "cashflow">("executive");
+
+
 
 
 
@@ -3398,6 +3632,73 @@ function StrategicExpansionCenter({
     // Ofis danışmanları oturum değiştiğinde RLS üzerinden yeniden okunur.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+
+  useEffect(() => {
+    void loadDeveloperCenter();
+    // Müteahhit Merkezi verileri oturum değiştiğinde RLS üzerinden yeniden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDeveloperFeasProvinces() {
+      setDeveloperFeasLocationLoading(true);
+      try {
+        const response = await fetch("https://api.turkiyeapi.dev/v2/provinces?limit=1000&fields=id,name&sort=name", { cache: "no-store" });
+        const payload: any = await response.json();
+        const rows = Array.isArray(payload?.data) ? payload.data : [];
+        if (!cancelled) setDeveloperFeasProvinces(rows.map((row: any) => ({ id: Number(row.id), name: String(row.name || "") })));
+      } catch {
+        if (!cancelled) setDeveloperNotice("Müteahhit fizibilite konum listesi alınamadı; konum seçimi olmadan da hesap yapılabilir.");
+      } finally {
+        if (!cancelled) setDeveloperFeasLocationLoading(false);
+      }
+    }
+    void loadDeveloperFeasProvinces();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDeveloperFeasDistricts() {
+      setDeveloperFeasDistricts([]);
+      setDeveloperFeasNeighborhoods([]);
+      setDeveloperFeasDistrictId(0);
+      setDeveloperFeasNeighborhoodId(0);
+      if (!developerFeasProvinceId) return;
+      try {
+        const response = await fetch(`https://api.turkiyeapi.dev/v2/districts?provinceId=${developerFeasProvinceId}&limit=1000&fields=id,name,provinceId&sort=name`, { cache: "no-store" });
+        const payload: any = await response.json();
+        const rows = Array.isArray(payload?.data) ? payload.data : [];
+        if (!cancelled) setDeveloperFeasDistricts(rows.map((row: any) => ({ id: Number(row.id), name: String(row.name || "") })));
+      } catch {
+        if (!cancelled) setDeveloperNotice("İlçe listesi yüklenemedi.");
+      }
+    }
+    void loadDeveloperFeasDistricts();
+    return () => { cancelled = true; };
+  }, [developerFeasProvinceId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDeveloperFeasNeighborhoods() {
+      setDeveloperFeasNeighborhoods([]);
+      setDeveloperFeasNeighborhoodId(0);
+      if (!developerFeasDistrictId) return;
+      try {
+        const response = await fetch(`https://api.turkiyeapi.dev/v2/neighborhoods?districtId=${developerFeasDistrictId}&limit=1000&fields=id,name,districtId&sort=name`, { cache: "no-store" });
+        const payload: any = await response.json();
+        const rows = Array.isArray(payload?.data) ? payload.data : [];
+        if (!cancelled) setDeveloperFeasNeighborhoods(rows.map((row: any) => ({ id: Number(row.id), name: String(row.name || "") })));
+      } catch {
+        if (!cancelled) setDeveloperNotice("Mahalle listesi yüklenemedi.");
+      }
+    }
+    void loadDeveloperFeasNeighborhoods();
+    return () => { cancelled = true; };
+  }, [developerFeasDistrictId]);
 
 
   useEffect(() => {
@@ -4073,6 +4374,422 @@ function StrategicExpansionCenter({
     window.setTimeout(() => popup.print(), 250);
   }
 
+
+  async function loadDeveloperCenter() {
+    if (!user) {
+      setDeveloperProjects([]);
+      setDeveloperUnits([]);
+      setDeveloperCosts([]);
+      setDeveloperMilestones([]);
+      setDeveloperProjectsReady(null);
+      return;
+    }
+    setDeveloperProjectsLoading(true);
+    const [projectsRes, unitsRes, costsRes, milestonesRes, feasibilityRes, risksRes, cashflowRes] = await Promise.all([
+      supabase.from("developer_projects").select("*").eq("owner_user_id", user.id).order("updated_at", { ascending: false }),
+      supabase.from("developer_units").select("*").eq("owner_user_id", user.id).order("updated_at", { ascending: false }),
+      supabase.from("developer_costs").select("*").eq("owner_user_id", user.id).order("transaction_date", { ascending: false }),
+      supabase.from("developer_milestones").select("*").eq("owner_user_id", user.id).order("due_date", { ascending: true }),
+      supabase.from("developer_feasibility_runs").select("*").eq("owner_user_id", user.id).order("created_at", { ascending: false }).limit(30),
+      supabase.from("developer_risks").select("*").eq("owner_user_id", user.id).order("updated_at", { ascending: false }).limit(500),
+      supabase.from("developer_cashflow_plans").select("*").eq("owner_user_id", user.id).order("month_key", { ascending: true }).limit(500),
+    ]);
+    const error = projectsRes.error || unitsRes.error || costsRes.error || milestonesRes.error;
+    if (error) {
+      const missing = /developer_projects|developer_units|developer_costs|developer_milestones|relation .* does not exist|schema cache/i.test(error.message);
+      setDeveloperProjectsReady(missing ? false : null);
+      if (!missing) setDeveloperNotice(`Müteahhit Merkezi okunamadı: ${error.message}`);
+      setDeveloperProjects([]);
+      setDeveloperUnits([]);
+      setDeveloperCosts([]);
+      setDeveloperMilestones([]);
+    } else {
+      setDeveloperProjectsReady(true);
+      setDeveloperProjects((projectsRes.data ?? []) as DeveloperProject[]);
+      setDeveloperUnits((unitsRes.data ?? []) as DeveloperUnit[]);
+      setDeveloperCosts((costsRes.data ?? []) as DeveloperCost[]);
+      setDeveloperMilestones((milestonesRes.data ?? []) as DeveloperMilestone[]);
+      if (feasibilityRes.error) {
+        const missingFeasibility = /developer_feasibility_runs|relation .* does not exist|schema cache/i.test(feasibilityRes.error.message);
+        setDeveloperFeasibilityReady(missingFeasibility ? false : null);
+        setDeveloperFeasibilityRuns([]);
+      } else {
+        setDeveloperFeasibilityReady(true);
+        setDeveloperFeasibilityRuns((feasibilityRes.data ?? []) as DeveloperFeasibilityRun[]);
+      }
+
+      if (risksRes.error) {
+        const missingRisks = /developer_risks|relation .* does not exist|schema cache/i.test(risksRes.error.message);
+        setDeveloperRisksReady(missingRisks ? false : null);
+        setDeveloperRisks([]);
+      } else {
+        setDeveloperRisksReady(true);
+        setDeveloperRisks((risksRes.data ?? []) as DeveloperRisk[]);
+      }
+      if (cashflowRes.error) {
+        const missingCashflow = /developer_cashflow_plans|relation .* does not exist|schema cache/i.test(cashflowRes.error.message);
+        setDeveloperCashflowReady(missingCashflow ? false : null);
+        setDeveloperCashflowPlans([]);
+      } else {
+        setDeveloperCashflowReady(true);
+        setDeveloperCashflowPlans((cashflowRes.data ?? []) as DeveloperCashflowPlan[]);
+      }
+    }
+    setDeveloperProjectsLoading(false);
+  }
+
+  async function saveDeveloperProject() {
+    if (!user) return;
+    const name = developerProjectForm.name.trim();
+    if (name.length < 2) {
+      setDeveloperNotice("Proje adı en az 2 karakter olmalıdır.");
+      return;
+    }
+    setDeveloperSaving(true);
+    const payload = {
+      owner_user_id: user.id,
+      name,
+      city: developerProjectForm.city.trim() || null,
+      district: developerProjectForm.district.trim() || null,
+      neighborhood: developerProjectForm.neighborhood.trim() || null,
+      parcel_info: developerProjectForm.parcelInfo.trim() || null,
+      project_type: developerProjectForm.projectType.trim() || null,
+      status: developerProjectForm.status,
+      total_units: Math.max(0, Math.round(Number(developerProjectForm.totalUnits) || 0)),
+      total_area_m2: Math.max(0, Number(developerProjectForm.totalArea) || 0),
+      start_date: developerProjectForm.startDate || null,
+      target_end_date: developerProjectForm.targetEndDate || null,
+      budget_total: Math.max(0, Number(developerProjectForm.budgetTotal) || 0),
+      expected_revenue: Math.max(0, Number(developerProjectForm.expectedRevenue) || 0),
+      notes: developerProjectForm.notes.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase.from("developer_projects").insert(payload).select("id").single();
+    if (error) setDeveloperNotice(`Proje kaydedilemedi: ${error.message}`);
+    else {
+      setSelectedDeveloperProjectId(data.id);
+      setDeveloperNotice("Proje Müteahhit Merkezi'ne eklendi.");
+      setDeveloperProjectForm({
+        name: "", city: "", district: "", neighborhood: "", parcelInfo: "", projectType: "Konut",
+        status: "construction", totalUnits: "", totalArea: "", startDate: "", targetEndDate: "",
+        budgetTotal: "", expectedRevenue: "", notes: "",
+      });
+      await loadDeveloperCenter();
+    }
+    setDeveloperSaving(false);
+  }
+
+  async function saveDeveloperUnit() {
+    if (!user || !selectedDeveloperProjectId) {
+      setDeveloperNotice("Önce proje seçin.");
+      return;
+    }
+    if (!developerUnitForm.unitCode.trim()) {
+      setDeveloperNotice("Bağımsız bölüm kodu girin.");
+      return;
+    }
+    setDeveloperSaving(true);
+    const { error } = await supabase.from("developer_units").insert({
+      owner_user_id: user.id,
+      project_id: selectedDeveloperProjectId,
+      unit_code: developerUnitForm.unitCode.trim(),
+      unit_type: developerUnitForm.unitType.trim() || null,
+      floor_label: developerUnitForm.floorLabel.trim() || null,
+      net_area_m2: Math.max(0, Number(developerUnitForm.netArea) || 0),
+      gross_area_m2: Math.max(0, Number(developerUnitForm.grossArea) || 0),
+      status: developerUnitForm.status,
+      list_price: Math.max(0, Number(developerUnitForm.listPrice) || 0),
+      sold_price: 0,
+    });
+    if (error) setDeveloperNotice(`Bağımsız bölüm eklenemedi: ${error.message}`);
+    else {
+      setDeveloperUnitForm({ unitCode: "", unitType: "2+1", floorLabel: "", netArea: "", grossArea: "", status: "available", listPrice: "" });
+      setDeveloperNotice("Bağımsız bölüm stok listesine eklendi.");
+      await loadDeveloperCenter();
+    }
+    setDeveloperSaving(false);
+  }
+
+  async function updateDeveloperUnitStatus(unit: DeveloperUnit, status: DeveloperUnit["status"]) {
+    if (!user) return;
+    const { error } = await supabase.from("developer_units").update({ status, updated_at: new Date().toISOString() }).eq("id", unit.id).eq("owner_user_id", user.id);
+    if (error) setDeveloperNotice(`Stok durumu güncellenemedi: ${error.message}`);
+    else {
+      setDeveloperUnits((current) => current.map((item) => item.id === unit.id ? { ...item, status } : item));
+      setDeveloperNotice(`${unit.unit_code} durumu güncellendi.`);
+    }
+  }
+
+  async function saveDeveloperCost() {
+    if (!user || !selectedDeveloperProjectId) {
+      setDeveloperNotice("Önce proje seçin.");
+      return;
+    }
+    const amount = Number(developerCostForm.amount) || 0;
+    if (amount <= 0 || !developerCostForm.transactionDate) {
+      setDeveloperNotice("Tutar ve işlem tarihi zorunludur.");
+      return;
+    }
+    setDeveloperSaving(true);
+    const { error } = await supabase.from("developer_costs").insert({
+      owner_user_id: user.id,
+      project_id: selectedDeveloperProjectId,
+      cost_type: developerCostForm.costType,
+      category: developerCostForm.category.trim() || "Diğer",
+      description: developerCostForm.description.trim() || null,
+      amount,
+      transaction_date: developerCostForm.transactionDate,
+    });
+    if (error) setDeveloperNotice(`Finans kaydı eklenemedi: ${error.message}`);
+    else {
+      setDeveloperCostForm({ costType: "expense", category: "İnşaat", description: "", amount: "", transactionDate: "" });
+      setDeveloperNotice("Finans hareketi projeye işlendi.");
+      await loadDeveloperCenter();
+    }
+    setDeveloperSaving(false);
+  }
+
+  async function saveDeveloperMilestone() {
+    if (!user || !selectedDeveloperProjectId) {
+      setDeveloperNotice("Önce proje seçin.");
+      return;
+    }
+    if (!developerMilestoneForm.title.trim()) {
+      setDeveloperNotice("İş programı başlığı zorunludur.");
+      return;
+    }
+    setDeveloperSaving(true);
+    const { error } = await supabase.from("developer_milestones").insert({
+      owner_user_id: user.id,
+      project_id: selectedDeveloperProjectId,
+      title: developerMilestoneForm.title.trim(),
+      stage: developerMilestoneForm.stage.trim() || null,
+      due_date: developerMilestoneForm.dueDate || null,
+      progress: Math.max(0, Math.min(100, Math.round(Number(developerMilestoneForm.progress) || 0))),
+      status: developerMilestoneForm.status,
+      planned_cost: Math.max(0, Number(developerMilestoneForm.plannedCost) || 0),
+      actual_cost: Math.max(0, Number(developerMilestoneForm.actualCost) || 0),
+      note: developerMilestoneForm.note.trim() || null,
+    });
+    if (error) setDeveloperNotice(`İş programı kaydı eklenemedi: ${error.message}`);
+    else {
+      setDeveloperMilestoneForm({ title: "", stage: "", dueDate: "", progress: "0", status: "pending", plannedCost: "", actualCost: "", note: "" });
+      setDeveloperNotice("İş programı adımı projeye eklendi.");
+      await loadDeveloperCenter();
+    }
+    setDeveloperSaving(false);
+  }
+
+
+  async function runDeveloperFeasibilityAi() {
+    setDeveloperFeasAiLoading(true);
+    setDeveloperFeasAiResult("");
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `Sen Yaşam AI Müteahhit Maliyet ve Fizibilite Asistanısın.
+
+Amaç: Kullanıcının verdiği proje girdilerinden açıklanabilir bir İNŞAAT MALİYETİ m² öneri aralığı oluşturmak.
+
+KONUM
+${developerFeasLocation.text || "Konum seçilmedi"}
+
+PROJE
+Brüt inşaat alanı: ${developerFeasForm.grossArea} m²
+Satılabilir oran: %${developerFeasForm.sellableRatio}
+Kalite sınıfı: ${developerFeasForm.quality}
+Kat: ${developerFeasForm.floors}
+Bodrum kat: ${developerFeasForm.basementFloors}
+Asansör: ${developerFeasForm.elevators}
+Otopark: ${developerFeasForm.parking}
+Cephe: ${developerFeasForm.facade}
+Isıtma: ${developerFeasForm.heating}
+Zemin/temel karmaşıklığı: ${developerFeasForm.soilComplexity}
+Lojistik erişim: ${developerFeasForm.logistics}
+Peyzaj: ${developerFeasForm.landscaping}
+Süre: ${developerFeasForm.durationMonths} ay
+Kullanıcının baz referansı: ${developerFeasForm.baseM2Cost} TL/m²
+
+KURALLAR
+- Gerçek zamanlı resmî inşaat maliyet veri tabanına erişimin varmış gibi davranma.
+- İl/ilçe/mahalle bilgisini yalnızca işçilik, lojistik, tedarik ve erişim risklerinin açıklanması için kullan; doğrulanmamış yerel fiyat uydurma.
+- Kullanıcının baz m² referansını ve teknik karmaşıklıkları esas al.
+- Kesin keşif değildir; uygulama projesi, metraj ve en az 3 tedarikçi/taşeron teklifi gerektiğini belirt.
+
+ÇIKTIYI TAM OLARAK BU FORMATTA VER:
+ÖNERİLEN_M2: sadece tam sayı
+ALT_M2: sadece tam sayı
+ÜST_M2: sadece tam sayı
+GÜVEN: 0-100
+KONUM_ETKİSİ: tek kısa cümle
+MALİYETİ_ARTIRANLAR: en fazla 5 kısa madde
+MALİYETİ_DÜŞÜRENLER: en fazla 3 kısa madde
+MÜTEAHHİT_NOTU: en fazla 4 cümle`,
+        }),
+      });
+
+      const data: unknown = await response.json();
+      if (!response.ok) throw new Error(extractText(data) || "AI maliyet analizi üretilemedi.");
+      const result = extractText(data).trim();
+      setDeveloperFeasAiResult(result);
+      const match = result.match(/ÖNERİLEN_M2:\s*([0-9.,]+)/i);
+      if (match) {
+        const parsed = Number(match[1].replace(/\./g, "").replace(",", "."));
+        if (Number.isFinite(parsed) && parsed > 0) setDeveloperFeasAiSuggestedM2(Math.round(parsed));
+      }
+    } catch (error) {
+      setDeveloperNotice(error instanceof Error ? error.message : "AI maliyet analizi çalıştırılamadı.");
+    } finally {
+      setDeveloperFeasAiLoading(false);
+    }
+  }
+
+  async function saveDeveloperFeasibilityRun() {
+    if (!user) return;
+    if (developerFeasibilityReady === false) {
+      setDeveloperNotice("Fizibilite geçmişi için FAZ 4 fizibilite SQL migration'ını çalıştırın.");
+      return;
+    }
+    setDeveloperFeasibilitySaving(true);
+    const { error } = await supabase.from("developer_feasibility_runs").insert({
+      owner_user_id: user.id,
+      project_id: developerCenterIntelligence.selected?.id || null,
+      city: developerFeasLocation.province || null,
+      district: developerFeasLocation.district || null,
+      neighborhood: developerFeasLocation.neighborhood || null,
+      title: developerFeasForm.title.trim() || "Müteahhit Fizibilitesi",
+      inputs: {
+        ...developerFeasForm,
+        ai_suggested_m2: developerFeasAiSuggestedM2,
+      },
+      outputs: developerFeasibility,
+      ai_summary: developerFeasAiResult || null,
+    });
+    if (error) setDeveloperNotice(`Fizibilite kaydedilemedi: ${error.message}`);
+    else {
+      setDeveloperNotice("Fizibilite senaryosu geçmişe kaydedildi.");
+      await loadDeveloperCenter();
+    }
+    setDeveloperFeasibilitySaving(false);
+  }
+
+
+  async function saveDeveloperRisk() {
+    if (!user || !developerCenterIntelligence.selected?.id) {
+      setDeveloperNotice("Risk eklemek için önce proje seçin.");
+      return;
+    }
+    if (developerRiskForm.title.trim().length < 2) {
+      setDeveloperNotice("Risk başlığı girin.");
+      return;
+    }
+    setDeveloperRiskSaving(true);
+    const { error } = await supabase.from("developer_risks").insert({
+      owner_user_id: user.id,
+      project_id: developerCenterIntelligence.selected.id,
+      category: developerRiskForm.category.trim() || "Diğer",
+      title: developerRiskForm.title.trim(),
+      probability: Math.max(1, Math.min(5, Math.round(Number(developerRiskForm.probability) || 1))),
+      impact: Math.max(1, Math.min(5, Math.round(Number(developerRiskForm.impact) || 1))),
+      status: developerRiskForm.status,
+      owner_name: developerRiskForm.ownerName.trim() || null,
+      due_date: developerRiskForm.dueDate || null,
+      mitigation: developerRiskForm.mitigation.trim() || null,
+    });
+    if (error) setDeveloperNotice(`Risk kaydedilemedi: ${error.message}`);
+    else {
+      setDeveloperRiskForm({ category: "Maliyet", title: "", probability: "3", impact: "3", status: "open", ownerName: "", dueDate: "", mitigation: "" });
+      setDeveloperNotice("Risk kaydı projeye eklendi.");
+      await loadDeveloperCenter();
+    }
+    setDeveloperRiskSaving(false);
+  }
+
+  async function updateDeveloperRiskStatus(risk: DeveloperRisk, status: DeveloperRisk["status"]) {
+    if (!user) return;
+    const { error } = await supabase.from("developer_risks").update({ status, updated_at: new Date().toISOString() }).eq("id", risk.id).eq("owner_user_id", user.id);
+    if (error) setDeveloperNotice(`Risk durumu güncellenemedi: ${error.message}`);
+    else {
+      setDeveloperRisks((current) => current.map((item) => item.id === risk.id ? { ...item, status } : item));
+      setDeveloperNotice("Risk durumu güncellendi.");
+    }
+  }
+
+  async function saveDeveloperCashflowPlan() {
+    if (!user || !developerCenterIntelligence.selected?.id) {
+      setDeveloperNotice("Nakit akışı planlamak için önce proje seçin.");
+      return;
+    }
+    if (!developerCashflowForm.monthKey) {
+      setDeveloperNotice("Nakit akışı için ay seçin.");
+      return;
+    }
+    setDeveloperCashflowSaving(true);
+    const { error } = await supabase.from("developer_cashflow_plans").insert({
+      owner_user_id: user.id,
+      project_id: developerCenterIntelligence.selected.id,
+      month_key: `${developerCashflowForm.monthKey}-01`,
+      planned_expense: Math.max(0, Number(developerCashflowForm.plannedExpense) || 0),
+      planned_income: Math.max(0, Number(developerCashflowForm.plannedIncome) || 0),
+      note: developerCashflowForm.note.trim() || null,
+    });
+    if (error) setDeveloperNotice(`Nakit akışı planı kaydedilemedi: ${error.message}`);
+    else {
+      setDeveloperCashflowForm({ monthKey: "", plannedExpense: "", plannedIncome: "", note: "" });
+      setDeveloperNotice("Aylık nakit akışı planı kaydedildi.");
+      await loadDeveloperCenter();
+    }
+    setDeveloperCashflowSaving(false);
+  }
+
+  async function copyDeveloperWeeklyReport() {
+    const project = developerCenterIntelligence.selected;
+    const report = [
+      `YAŞAM AI · MÜTEAHHİT HAFTALIK YÖNETİCİ ÖZETİ`,
+      `Proje: ${project?.name || "Seçilmedi"}`,
+      `Proje sağlığı: ${developerCenterIntelligence.projectHealth}/100`,
+      `Karar skoru: ${developerExecutiveDecision.score}/100 · ${developerExecutiveDecision.decision}`,
+      `Bütçe kullanımı: %${developerCenterIntelligence.budgetUsage}`,
+      `Gerçek harcama: ${developerCenterIntelligence.expenses.toLocaleString("tr-TR")} ₺`,
+      `Satış oranı: %${developerCenterIntelligence.salesRate}`,
+      `Şantiye ilerleme: %${developerCenterIntelligence.avgProgress}`,
+      `Geciken iş: ${developerCenterIntelligence.delayed}`,
+      `Yüksek risk: ${developerRiskIntelligence.high}`,
+      `Finansman açığı: ${developerCashflowIntelligence.fundingGap.toLocaleString("tr-TR")} ₺`,
+      `Baz fizibilite marjı: %${developerFeasibility.margin.toFixed(1)}`,
+      `Stres marjı: %${developerScenarioLab.scenarioMargin.toFixed(1)}`,
+      "",
+      "ÖNCELİKLİ AKSİYONLAR",
+      ...developerExecutiveDecision.reasons.map((item, index) => `${index + 1}. ${item}`),
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(report);
+      setDeveloperNotice("Haftalık yönetici özeti panoya kopyalandı.");
+    } catch {
+      setDeveloperNotice("Rapor panoya kopyalanamadı.");
+    }
+  }
+
+
+  function applySelectedProjectToFeasibility() {
+    const project = developerCenterIntelligence.selected;
+    if (!project) {
+      setDeveloperNotice("Önce bir proje seçin.");
+      return;
+    }
+    setDeveloperFeasForm((current) => ({
+      ...current,
+      title: `${project.name} Fizibilitesi`,
+      grossArea: String(Number(project.total_area_m2 || 0) || current.grossArea),
+      landCost: current.landCost,
+    }));
+    const province = developerFeasProvinces.find((item) => item.name.toLocaleLowerCase("tr-TR") === String(project.city || "").toLocaleLowerCase("tr-TR"));
+    if (province) setDeveloperFeasProvinceId(province.id);
+    setDeveloperNotice("Seçili proje bilgileri fizibilite formuna aktarıldı.");
+  }
+
   async function openListingInquiry(inquiry: ListingInquiry) {
     setSelectedInquiryId(inquiry.id);
     setListingLeadAiResult("");
@@ -4717,6 +5434,271 @@ ${currentText}`
   }, [agencyAdvisors, agencyCenter.published, agencyClients, agencyTasks]);
 
 
+
+
+  const developerFeasibility = useMemo(() => {
+    const num = (value: string) => Number(String(value || "").replace(/\./g, "").replace(",", ".")) || 0;
+    const grossArea = num(developerFeasForm.grossArea);
+    const sellableRatio = Math.max(0, Math.min(100, num(developerFeasForm.sellableRatio))) / 100;
+    const baseM2 = developerFeasAiSuggestedM2 || num(developerFeasForm.baseM2Cost);
+
+    const qualityFactor = developerFeasForm.quality === "economic" ? .88 : developerFeasForm.quality === "premium" ? 1.20 : developerFeasForm.quality === "luxury" ? 1.42 : 1;
+    const floorFactor = num(developerFeasForm.floors) >= 10 ? 1.08 : num(developerFeasForm.floors) >= 7 ? 1.04 : 1;
+    const basementFactor = 1 + Math.max(0, num(developerFeasForm.basementFloors)) * .035;
+    const elevatorFactor = 1 + Math.max(0, num(developerFeasForm.elevators) - 1) * .018;
+    const parkingFactor = developerFeasForm.parking === "closed" ? 1.10 : developerFeasForm.parking === "open" ? 1.025 : 1;
+    const facadeFactor = developerFeasForm.facade === "curtain" ? 1.13 : developerFeasForm.facade === "premium" ? 1.07 : 1;
+    const heatingFactor = developerFeasForm.heating === "floor" ? 1.045 : developerFeasForm.heating === "central" ? 1.035 : 1;
+    const soilFactor = developerFeasForm.soilComplexity === "hard" ? 1.12 : developerFeasForm.soilComplexity === "easy" ? .97 : 1;
+    const logisticsFactor = developerFeasForm.logistics === "hard" ? 1.07 : developerFeasForm.logistics === "easy" ? .985 : 1;
+    const landscapeFactor = developerFeasForm.landscaping === "premium" ? 1.055 : developerFeasForm.landscaping === "standard" ? 1.02 : 1;
+
+    const modeledM2 = Math.round(baseM2 * qualityFactor * floorFactor * basementFactor * elevatorFactor * parkingFactor * facadeFactor * heatingFactor * soilFactor * logisticsFactor * landscapeFactor);
+    const lowM2 = Math.round(modeledM2 * .92);
+    const highM2 = Math.round(modeledM2 * 1.10);
+    const constructionCost = modeledM2 * grossArea;
+    const softCost = constructionCost * (num(developerFeasForm.softCostRatio) / 100);
+    const contingencyCost = constructionCost * (num(developerFeasForm.contingency) / 100);
+    const financeCost = (constructionCost + softCost + contingencyCost) * (num(developerFeasForm.financeCostRatio) / 100);
+    const landCost = num(developerFeasForm.landCost);
+    const totalCost = constructionCost + softCost + contingencyCost + financeCost + landCost;
+    const sellableArea = grossArea * sellableRatio;
+    const saleM2 = num(developerFeasForm.saleM2);
+    const revenue = sellableArea * saleM2;
+    const profit = revenue - totalCost;
+    const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+    const breakEvenSaleM2 = sellableArea > 0 ? totalCost / sellableArea : 0;
+    const targetMargin = Math.max(0, Math.min(80, num(developerFeasForm.targetMargin))) / 100;
+    const targetRevenue = targetMargin < 1 ? totalCost / Math.max(.05, 1 - targetMargin) : 0;
+    const targetSaleM2 = sellableArea > 0 ? targetRevenue / sellableArea : 0;
+
+    const costUp10 = (constructionCost * 1.10) + softCost + contingencyCost + financeCost + landCost;
+    const salesDown10 = revenue * .90;
+    const combinedProfit = salesDown10 - costUp10;
+    const combinedMargin = salesDown10 > 0 ? combinedProfit / salesDown10 * 100 : 0;
+
+    const confidence = developerFeasAiSuggestedM2 ? 72 : 58;
+    const decision = saleM2 <= 0 ? "SATIŞ FİYATI BEKLENİYOR" : margin >= 25 ? "GÜÇLÜ FİZİBİLİTE" : margin >= 15 ? "DETAYLI İNCELE" : "RİSKLİ";
+
+    return {
+      grossArea, sellableArea, baseM2, modeledM2, lowM2, highM2, constructionCost, softCost,
+      contingencyCost, financeCost, landCost, totalCost, saleM2, revenue, profit, margin,
+      breakEvenSaleM2, targetSaleM2, combinedProfit, combinedMargin, confidence, decision
+    };
+  }, [developerFeasAiSuggestedM2, developerFeasForm]);
+
+
+
+
+  const developerFeasLocation = useMemo(() => {
+    const province = developerFeasProvinces.find((item) => item.id === developerFeasProvinceId)?.name || "";
+    const district = developerFeasDistricts.find((item) => item.id === developerFeasDistrictId)?.name || "";
+    const neighborhood = developerFeasNeighborhoods.find((item) => item.id === developerFeasNeighborhoodId)?.name || "";
+    return { province, district, neighborhood, text: [province,district,neighborhood].filter(Boolean).join(" / ") };
+  }, [developerFeasDistrictId, developerFeasDistricts, developerFeasNeighborhoodId, developerFeasNeighborhoods, developerFeasProvinceId, developerFeasProvinces]);
+
+  const developerFeasCompleteness = useMemo(() => {
+    const checks = [
+      { key: "location", label: "Konum", ok: Boolean(developerFeasLocation.province && developerFeasLocation.district) },
+      { key: "area", label: "Brüt alan", ok: Number(developerFeasForm.grossArea) > 0 },
+      { key: "base_cost", label: "Baz m² maliyeti", ok: Number(developerFeasForm.baseM2Cost) > 0 || Boolean(developerFeasAiSuggestedM2) },
+      { key: "sale_price", label: "Satış m² fiyatı", ok: Number(developerFeasForm.saleM2) > 0 },
+      { key: "land_cost", label: "Arsa maliyeti", ok: Number(developerFeasForm.landCost) >= 0 },
+      { key: "sellable", label: "Satılabilir oran", ok: Number(developerFeasForm.sellableRatio) > 0 },
+      { key: "duration", label: "Proje süresi", ok: Number(developerFeasForm.durationMonths) > 0 },
+      { key: "finance", label: "Finansman oranı", ok: Number(developerFeasForm.financeCostRatio) >= 0 },
+      { key: "margin", label: "Hedef marj", ok: Number(developerFeasForm.targetMargin) > 0 },
+    ];
+    const completed = checks.filter((item) => item.ok).length;
+    const score = Math.round((completed / checks.length) * 100);
+    const criticalReady =
+      Boolean(developerFeasLocation.province && developerFeasLocation.district) &&
+      Number(developerFeasForm.grossArea) > 0 &&
+      (Number(developerFeasForm.baseM2Cost) > 0 || Boolean(developerFeasAiSuggestedM2)) &&
+      Number(developerFeasForm.saleM2) > 0;
+    return {
+      checks,
+      completed,
+      score,
+      criticalReady,
+      missing: checks.filter((item) => !item.ok).map((item) => item.label),
+    };
+  }, [developerFeasAiSuggestedM2, developerFeasForm, developerFeasLocation.district, developerFeasLocation.province]);
+
+
+  const developerCenterIntelligence = useMemo(() => {
+    const selected = developerProjects.find((project) => project.id === selectedDeveloperProjectId) ?? developerProjects[0] ?? null;
+    const projectId = selected?.id ?? "";
+    const units = developerUnits.filter((unit) => unit.project_id === projectId);
+    const costs = developerCosts.filter((item) => item.project_id === projectId);
+    const milestones = developerMilestones.filter((item) => item.project_id === projectId);
+
+    const expenses = costs.filter((item) => item.cost_type === "expense").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const incomes = costs.filter((item) => item.cost_type === "income").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const available = units.filter((unit) => unit.status === "available").length;
+    const reserved = units.filter((unit) => unit.status === "reserved").length;
+    const sold = units.filter((unit) => unit.status === "sold").length;
+    const ownerShare = units.filter((unit) => unit.status === "owner_share").length;
+    const inventoryValue = units.filter((unit) => unit.status === "available" || unit.status === "reserved").reduce((sum, unit) => sum + Number(unit.list_price || 0), 0);
+    const soldValue = units.filter((unit) => unit.status === "sold").reduce((sum, unit) => sum + Number(unit.sold_price || unit.list_price || 0), 0);
+    const avgProgress = milestones.length ? Math.round(milestones.reduce((sum, item) => sum + Number(item.progress || 0), 0) / milestones.length) : 0;
+    const delayed = milestones.filter((item) => item.status === "delayed" || (item.status !== "done" && item.due_date && new Date(item.due_date).getTime() < Date.now())).length;
+    const budget = Number(selected?.budget_total || 0);
+    const expectedRevenue = Number(selected?.expected_revenue || 0);
+    const remainingBudget = Math.max(0, budget - expenses);
+    const budgetUsage = Math.round((expenses / Math.max(1, budget)) * 100);
+    const potentialProfit = expectedRevenue - expenses;
+    const salesRate = Math.round((sold / Math.max(1, units.length)) * 100);
+
+    const alerts: string[] = [];
+    if (budgetUsage >= 90) alerts.push(`Bütçenin %${budgetUsage}'ı kullanılmış durumda.`);
+    if (delayed > 0) alerts.push(`${delayed} iş programı adımı gecikmiş görünüyor.`);
+    if (available > 0 && salesRate < 35) alerts.push(`Satış oranı %${salesRate}; stok hızlandırma planı gerekebilir.`);
+    if (selected && units.length === 0) alerts.push("Proje stok/bölüm listesi henüz oluşturulmamış.");
+    if (!alerts.length && selected) alerts.push("Projede kritik operasyon uyarısı görünmüyor.");
+
+    const totalArea = Number(selected?.total_area_m2 || 0);
+    const costPerM2 = Math.round(expenses / Math.max(1, totalArea));
+    const expectedMargin = Math.round((potentialProfit / Math.max(1, expectedRevenue)) * 100);
+    const plannedDurationDays = selected?.start_date && selected?.target_end_date
+      ? Math.max(0, Math.round((new Date(selected.target_end_date).getTime() - new Date(selected.start_date).getTime()) / 86400000))
+      : 0;
+    const daysRemaining = selected?.target_end_date
+      ? Math.round((new Date(selected.target_end_date).getTime() - Date.now()) / 86400000)
+      : 0;
+    const scheduleHealth = !selected?.target_end_date ? 100 : daysRemaining < 0 ? 25 : delayed > 0 ? 55 : avgProgress >= 60 ? 85 : 72;
+    const financeHealth = budgetUsage > 100 ? 25 : budgetUsage >= 90 ? 50 : expectedMargin >= 25 ? 90 : expectedMargin >= 15 ? 75 : 60;
+    const salesHealth = units.length === 0 ? 65 : salesRate >= 60 ? 90 : salesRate >= 35 ? 75 : salesRate >= 15 ? 60 : 45;
+    const projectHealth = Math.max(0, Math.min(100, Math.round(
+      scheduleHealth * .35 + financeHealth * .35 + salesHealth * .30
+    )));
+
+    return {
+      selected, units, costs, milestones, expenses, incomes, available, reserved, sold, ownerShare,
+      inventoryValue, soldValue, avgProgress, delayed, budget, expectedRevenue, remainingBudget,
+      budgetUsage, potentialProfit, salesRate, alerts, totalArea, costPerM2, expectedMargin,
+      plannedDurationDays, daysRemaining, scheduleHealth, financeHealth, salesHealth, projectHealth
+    };
+  }, [developerProjects, selectedDeveloperProjectId, developerUnits, developerCosts, developerMilestones]);
+
+  const developerScenarioLab = useMemo(() => {
+    const num = (value: string) => Number(String(value || "").replace(/\./g, "").replace(",", ".")) || 0;
+    const baseCost = developerFeasibility.totalCost;
+    const baseRevenue = developerFeasibility.revenue;
+    const costChange = num(developerScenario.costChange) / 100;
+    const salesChange = num(developerScenario.salesChange) / 100;
+    const delayMonths = Math.max(0, num(developerScenario.delayMonths));
+    const monthlyFinance = Math.max(0, num(developerScenario.financeMonthlyRate)) / 100;
+    const sellableRatioChange = num(developerScenario.sellableRatioChange) / 100;
+
+    const delayedFinanceCost = baseCost * monthlyFinance * delayMonths;
+    const scenarioCost = baseCost * (1 + costChange) + delayedFinanceCost;
+    const adjustedSellableArea = developerFeasibility.sellableArea * Math.max(.1, 1 + sellableRatioChange);
+    const scenarioRevenue = adjustedSellableArea * developerFeasibility.saleM2 * (1 + salesChange);
+    const scenarioProfit = scenarioRevenue - scenarioCost;
+    const scenarioMargin = scenarioRevenue > 0 ? scenarioProfit / scenarioRevenue * 100 : 0;
+    const breakEvenM2 = adjustedSellableArea > 0 ? scenarioCost / adjustedSellableArea : 0;
+    const deltaProfit = scenarioProfit - developerFeasibility.profit;
+
+    const scenarios = [
+      { name: "Baz", cost: baseCost, revenue: baseRevenue, profit: developerFeasibility.profit, margin: developerFeasibility.margin },
+      { name: "Maliyet +10%", cost: baseCost * 1.10, revenue: baseRevenue, profit: baseRevenue - baseCost * 1.10, margin: baseRevenue > 0 ? (baseRevenue - baseCost * 1.10) / baseRevenue * 100 : 0 },
+      { name: "Satış -10%", cost: baseCost, revenue: baseRevenue * .90, profit: baseRevenue * .90 - baseCost, margin: baseRevenue > 0 ? (baseRevenue * .90 - baseCost) / (baseRevenue * .90 || 1) * 100 : 0 },
+      { name: "Birleşik stres", cost: baseCost * 1.10, revenue: baseRevenue * .90, profit: baseRevenue * .90 - baseCost * 1.10, margin: baseRevenue > 0 ? (baseRevenue * .90 - baseCost * 1.10) / (baseRevenue * .90 || 1) * 100 : 0 },
+    ];
+
+    return {
+      costChange, salesChange, delayMonths, delayedFinanceCost, scenarioCost, scenarioRevenue,
+      scenarioProfit, scenarioMargin, breakEvenM2, deltaProfit, adjustedSellableArea, scenarios
+    };
+  }, [developerFeasibility, developerScenario]);
+
+  const developerRiskIntelligence = useMemo(() => {
+    const selectedId = developerCenterIntelligence.selected?.id || "";
+    const rows = developerRisks.filter((risk) => risk.project_id === selectedId);
+    const open = rows.filter((risk) => risk.status !== "closed");
+    const scored = open.map((risk) => ({ ...risk, score: Number(risk.probability || 0) * Number(risk.impact || 0) }))
+      .sort((a, b) => b.score - a.score);
+    const totalScore = scored.reduce((sum, risk) => sum + risk.score, 0);
+    const maxScore = Math.max(1, scored.length * 25);
+    const riskIndex = Math.round(totalScore / maxScore * 100);
+    const high = scored.filter((risk) => risk.score >= 15).length;
+    const medium = scored.filter((risk) => risk.score >= 8 && risk.score < 15).length;
+    return { rows, open, scored, totalScore, riskIndex, high, medium };
+  }, [developerCenterIntelligence.selected?.id, developerRisks]);
+
+  const developerCashflowIntelligence = useMemo(() => {
+    const selectedId = developerCenterIntelligence.selected?.id || "";
+    const planRows = developerCashflowPlans.filter((row) => row.project_id === selectedId);
+    const actualRows = developerCenterIntelligence.costs;
+
+    const monthMap = new Map<string, { month: string; plannedExpense: number; plannedIncome: number; actualExpense: number; actualIncome: number }>();
+    for (const row of planRows) {
+      const key = row.month_key.slice(0, 7);
+      const item = monthMap.get(key) || { month: key, plannedExpense: 0, plannedIncome: 0, actualExpense: 0, actualIncome: 0 };
+      item.plannedExpense += Number(row.planned_expense || 0);
+      item.plannedIncome += Number(row.planned_income || 0);
+      monthMap.set(key, item);
+    }
+    for (const row of actualRows) {
+      const key = String(row.transaction_date || "").slice(0, 7);
+      if (!key) continue;
+      const item = monthMap.get(key) || { month: key, plannedExpense: 0, plannedIncome: 0, actualExpense: 0, actualIncome: 0 };
+      if (row.cost_type === "expense") item.actualExpense += Number(row.amount || 0);
+      else item.actualIncome += Number(row.amount || 0);
+      monthMap.set(key, item);
+    }
+
+    const rows = [...monthMap.values()].sort((a, b) => a.month.localeCompare(b.month));
+    let cumulative = 0;
+    let minCumulative = 0;
+    const series = rows.map((row) => {
+      cumulative += row.actualIncome - row.actualExpense;
+      minCumulative = Math.min(minCumulative, cumulative);
+      return { ...row, cumulative };
+    });
+    const plannedExpense = rows.reduce((sum, row) => sum + row.plannedExpense, 0);
+    const plannedIncome = rows.reduce((sum, row) => sum + row.plannedIncome, 0);
+    const actualExpense = rows.reduce((sum, row) => sum + row.actualExpense, 0);
+    const actualIncome = rows.reduce((sum, row) => sum + row.actualIncome, 0);
+    const fundingGap = Math.abs(Math.min(0, minCumulative));
+    return { rows: series, plannedExpense, plannedIncome, actualExpense, actualIncome, fundingGap, cumulative };
+  }, [developerCashflowPlans, developerCenterIntelligence.costs, developerCenterIntelligence.selected?.id]);
+
+  const developerExecutiveDecision = useMemo(() => {
+    const feasibilityMargin = developerFeasibility.margin;
+    const projectHealth = developerCenterIntelligence.projectHealth;
+    const riskPenalty = Math.min(35, developerRiskIntelligence.riskIndex * .35);
+    const cashPenalty = developerCashflowIntelligence.fundingGap > 0 ? 10 : 0;
+    const scenarioPenalty = developerScenarioLab.scenarioMargin < 10 ? 18 : developerScenarioLab.scenarioMargin < 18 ? 8 : 0;
+    const score = Math.max(0, Math.min(100, Math.round(
+      projectHealth * .42 +
+      Math.max(0, Math.min(100, feasibilityMargin * 3)) * .28 +
+      Math.max(0, 100 - riskPenalty * 2) * .18 +
+      Math.max(0, 100 - cashPenalty * 5 - scenarioPenalty * 2) * .12
+    )));
+
+    const decision =
+      !developerFeasCompleteness.criticalReady ? "VERİ TAMAMLA" :
+      score >= 78 && feasibilityMargin >= 22 ? "GİR" :
+      score >= 62 && feasibilityMargin >= 15 ? "PAZARLIK ET" :
+      score >= 48 ? "BEKLE / REVİZE ET" :
+      "GİRME";
+
+    const reasons: string[] = [];
+    if (feasibilityMargin >= 25) reasons.push(`Marj güçlü: %${feasibilityMargin.toFixed(1)}.`);
+    else if (feasibilityMargin < 15) reasons.push(`Marj düşük: %${feasibilityMargin.toFixed(1)}.`);
+    if (developerRiskIntelligence.high > 0) reasons.push(`${developerRiskIntelligence.high} yüksek risk açık.`);
+    if (developerCashflowIntelligence.fundingGap > 0) reasons.push(`Finansman açığı ${developerCashflowIntelligence.fundingGap.toLocaleString("tr-TR")} ₺.`);
+    if (developerScenarioLab.scenarioMargin < 10) reasons.push(`Stres senaryosunda marj %${developerScenarioLab.scenarioMargin.toFixed(1)} seviyesine düşüyor.`);
+    if (developerCenterIntelligence.delayed > 0) reasons.push(`${developerCenterIntelligence.delayed} geciken iş kalemi var.`);
+    if (!reasons.length) reasons.push("Kritik olumsuz sinyal görünmüyor.");
+
+    return { score, decision, reasons };
+  }, [developerCashflowIntelligence.fundingGap, developerCenterIntelligence.delayed, developerCenterIntelligence.projectHealth, developerFeasCompleteness.criticalReady, developerFeasibility.margin, developerRiskIntelligence.high, developerRiskIntelligence.riskIndex, developerScenarioLab.scenarioMargin]);
+
+
+
   const agencyPhase3Final = useMemo(() => {
     const activeClients = agencyClients.filter((client) => client.status === "active").length;
     const wonClients = agencyClients.filter((client) => client.status === "won").length;
@@ -4807,7 +5789,6 @@ ${currentText}`
   const [bankScenario, setBankScenario] = useState<"balanced" | "conservative" | "growth">("balanced");
   const [bankQueueFilter, setBankQueueFilter] = useState<"all" | "urgent" | "review">("all");
   const [developerProject, setDeveloperProject] = useState<"elysium" | "nova" | "vera">("elysium");
-  const [developerScenario, setDeveloperScenario] = useState<"base" | "cost" | "sales">("base");
   const [developerTaskFilter, setDeveloperTaskFilter] = useState<"all" | "critical" | "week">("all");
   const [investorHorizon, setInvestorHorizon] = useState<"1y" | "3y" | "5y">("3y");
   const [investorScenario, setInvestorScenario] = useState<"base" | "rateUp" | "rateDown" | "rentUp">("base");
@@ -6692,7 +7673,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {([['bank','Banka'],['developer','Müteahhit'],['investor','Yatırımcı'],['valuation','Değerleme'],['agency','Emlak Ofisi'],['technical','Mimar & Mühendis']] as const).map(([id,label]) => {
                   const active = enterpriseRole === id;
-                  const accent = id === "bank" ? "#0b5fa5" : id === "developer" ? "#a56609" : id === "agency" ? "#c56b12" : id === "investor" ? "#0f8065" : id === "valuation" ? "#6b46c1" : "#285c86";
+                  const accent = id === "bank" ? "#0b5fa5" : id === "developer" ? "#0f8065" : id === "agency" ? "#c56b12" : id === "investor" ? "#0f8065" : id === "valuation" ? "#6b46c1" : "#285c86";
                   return <button key={id} type="button" onClick={() => { setEnterpriseRole(id); setEnterpriseNotice(""); }} style={{ padding: "10px 13px", borderRadius: 12, border: active ? `1px solid ${accent}` : "1px solid #d7e4f0", background: active ? `${accent}12` : "#fff", color: active ? accent : "#607890", fontSize: 10, fontWeight: 950, cursor: "pointer", boxShadow: active ? `0 8px 18px ${accent}18` : "none", transition: "all .2s ease" }}>{label}</button>
                 })}
               </div>
@@ -6700,28 +7681,14 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
           </article>
           {enterpriseNotice ? <div style={{ ...locationInfoBox, marginTop: 12 }}>{enterpriseNotice}</div> : null}
 
-          {(["bank", "developer"] as const).includes(enterpriseRole as "bank" | "developer") ? (() => {
-            const roleDesign = enterpriseRole === "bank" ? {
+          {enterpriseRole === "bank" ? (() => {
+            const roleDesign = {
               eyebrow: "FİNANSAL KURUMLAR İÇİN GÜVENLİ KARAR ALANI",
               title: "Banka Gayrimenkul Karar Merkezi",
               description: "Teminat kalitesi, LTV, likidite, bölgesel risk ve insan onayı akışını sade ve denetlenebilir bir ekranda birleştirir.",
               accent: "#0b5fa5", dark: "#061c31", soft: "#eef7ff", icon: "🏦",
               metrics: [["İnceleme kuyruğu","24 dosya","3 kritik"],["Ortalama karar süresi","2,1 dk","-%21"],["Teminat güveni","89/100","Güçlü"]],
               actions: [["Kredi dosyalarını aç","İnsan onayı bekleyen dosyaları önceliklendir"],["Teminat analizini başlat","Likidite ve bölgesel riski birlikte değerlendir"],["Yönetici raporu oluştur","Kurul sunumuna hazır özet üret"]]
-            } : enterpriseRole === "developer" ? {
-              eyebrow: "MÜTEAHHİTLER İÇİN PROJE KOMUTA MERKEZİ",
-              title: "Müteahhit ve Proje Yönetim Merkezi",
-              description: "Fizibilite, maliyet, saha ilerlemesi, satış, nakit akışı ve kritik görevleri aynı proje dili içinde yönetir.",
-              accent: "#a56609", dark: "#2b1b06", soft: "#fff8eb", icon: "🏗️",
-              metrics: [["Aktif proje","3 proje","1 dikkat"],["Toplam proje değeri","₺84,0 Mn","+%18,6"],["Kritik görev","2 görev","Bugün"]],
-              actions: [["Fizibiliteyi aç","Maliyet, satış ve kârlılık senaryolarını karşılaştır"],["Saha durumunu incele","Geciken işleri ve bağımlılıkları görüntüle"],["Satış planını yönet","Stok, fiyat ve tahsilat akışını takip et"]]
-            } : {
-              eyebrow: "EMLAK OFİSLERİ İÇİN SATIŞ VE PORTFÖY MERKEZİ",
-              title: "Emlak Ofisi Akıllı Operasyon Merkezi",
-              description: "Portföy, müşteri, ilan kalitesi, fiyat doğruluğu ve satış fırsatlarını tek bir modern CRM görünümünde toplar.",
-              accent: "#9b2c67", dark: "#2b0b20", soft: "#fff2f8", icon: "🏠",
-              metrics: [["Aktif portföy","48 ilan","7 yeni"],["Sıcak müşteri","16 kişi","5 öncelikli"],["Fiyat doğruluğu","92/100","Çok iyi"]],
-              actions: [["Portföy merkezini aç","İlanları kalite, fiyat ve talebe göre sırala"],["Müşteri eşleştir","Alıcı ihtiyaçlarıyla en uygun portföyleri eşleştir"],["İlan kalitesini yükselt","Başlık, açıklama ve fiyat önerisi oluştur"]]
             };
             return <section style={{ marginTop: 16 }}>
               <article style={{ position: "relative", overflow: "hidden", padding: 24, borderRadius: 26, background: `radial-gradient(circle at 90% 10%, ${roleDesign.accent}55, transparent 28%), linear-gradient(145deg,${roleDesign.dark},${roleDesign.accent})`, color: "#fff", boxShadow: `0 24px 58px ${roleDesign.accent}33` }}>
@@ -7226,64 +8193,402 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
 
           {enterpriseRole === "developer" ? (
             <section style={{ marginTop: 16 }}>
-              <article style={{ padding: 23, borderRadius: 25, color: "#fff", background: "radial-gradient(circle at 88% 12%,rgba(255,197,91,.22),transparent 29%),linear-gradient(150deg,#162b3f,#684615)", boxShadow: "0 24px 58px rgba(65,44,18,.22)", overflow: "hidden", position: "relative" }}>
-                <div style={{ position: "absolute", width: 300, height: 300, borderRadius: "50%", right: -120, top: -150, border: "1px solid rgba(255,255,255,.12)" }} />
-                <div style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: 18, alignItems: "start", flexWrap: "wrap" }}>
-                  <div><div style={{ color: "#ffd98b", fontSize: 11, fontWeight: 950, letterSpacing: 1.55 }}>MÜTEAHHİT VE PROJE YÖNETİM MERKEZİ</div><h3 style={{ margin: "8px 0 5px", fontSize: 28 }}>Arsadan teslime tüm projeyi tek merkezden yönetin.</h3><p style={{ margin: 0, maxWidth: 760, color: "rgba(255,255,255,.74)", fontSize: 12, lineHeight: 1.68 }}>Fizibilite, bütçe, saha ilerlemesi, satış, ekip ve doküman akışlarını açıklanabilir AI karar desteğiyle birlikte izleyin.</p></div>
-                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{([['elysium','Elysium Loft'],['nova','Nova Loft'],['vera','Vera Loft']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setDeveloperProject(id)} style={{ padding: "9px 12px", borderRadius: 11, border: developerProject === id ? "1px solid #ffd98b" : "1px solid rgba(255,255,255,.16)", background: developerProject === id ? "rgba(255,194,74,.18)" : "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>{label}</button>)}</div>
+<article style={{ marginBottom: 14, padding: 22, borderRadius: 22, border: "1px solid #d7e4ee", background: "linear-gradient(145deg,#ffffff,#f7fbff)", boxShadow: "0 16px 42px rgba(25,61,92,.08)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 14, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ ...eyebrow, color: "#0b6f9c" }}>FAZ 4 · MÜTEAHHİT MERKEZİ · MEGA PAKET</div>
+                    <span style={{ padding: "5px 8px", borderRadius: 999, background: "#eef7fb", border: "1px solid #c8dde8", color: "#315b76", fontSize: 10.5, fontWeight: 950 }}>TEK CANLI MERKEZ</span>
+                  </div>
+                    <h2 style={{ margin: "7px 0 4px", color: "#153a65", fontSize: 27 }}>Projeyi, bütçeyi, satışı ve şantiyeyi tek karar merkezinden yönetin.</h2>
+                    <p style={{ margin: 0, color: "#74899e", fontSize: 12.5 }}>Gerçek Supabase verileriyle proje portföyü, maliyet, bağımsız bölüm stoku, iş programı ve AI proje yönetici kokpiti. Eski demo panel kaldırıldı; bu ekran Müteahhit Merkezi için tek canlı kaynak olarak çalışır.</p>
+                  </div>
+                  <span style={{ padding: "8px 11px", borderRadius: 999, background: developerProjectsReady === true ? "#e9f8f3" : developerProjectsReady === false ? "#fff0ed" : "#eef5f8", color: developerProjectsReady === true ? "#087b5e" : developerProjectsReady === false ? "#b24d34" : "#60788a", fontSize: 10, fontWeight: 950 }}>{developerProjectsReady === true ? "● Müteahhit veritabanı canlı" : developerProjectsReady === false ? "SQL kurulumu gerekli" : "Bağlantı kontrol ediliyor"}</span>
                 </div>
+
+                
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 13 }}>
+                  {[
+                    ["PROJE PORTFÖYÜ","Projeleri seç, ekle ve canlı verilerini yönet."],
+                    ["FİNANS","Bütçe, gider, gelir ve kalan finansmanı izle."],
+                    ["SATIŞ & STOK","Bağımsız bölüm stok ve satış durumlarını yönet."],
+                    ["ŞANTİYE & RİSK","İş programı, gecikme ve AI risk sinyallerini takip et."],
+                  ].map(([title,note]) => <button key={title} type="button" onClick={() => setDeveloperNotice(`${title}: ${note}`)} style={{ padding: 11, borderRadius: 13, background: "#fff", border: "1px solid #e0e9ef", textAlign: "left", cursor: "pointer" }}><strong style={{ display: "block", color: "#34556c", fontSize: 10.5 }}>{title}</strong><span style={{ display: "block", marginTop: 3, color: "#8798a5", fontSize: 10, lineHeight: 1.4 }}>{note}</span></button>)}
+                </div>
+
+{developerNotice ? <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 11, background: "#fff8e8", border: "1px solid #f1d8a8", color: "#7a5a19", fontSize: 10.5, fontWeight: 800 }}>{developerNotice}</div> : null}
+
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(320px,.72fr) minmax(0,1.28fr)", gap: 12, marginTop: 14 }}>
+                  <div style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce7ef" }}>
+                    <strong style={{ color: "#24445f", fontSize: 12.5 }}>Yeni Proje</strong>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+                      <input value={developerProjectForm.name} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, name: e.target.value }))} placeholder="Proje adı *" style={{ ...inputStyle, gridColumn: "1 / -1" }} />
+                      <input value={developerProjectForm.city} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, city: e.target.value }))} placeholder="İl" style={inputStyle} />
+                      <input value={developerProjectForm.district} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, district: e.target.value }))} placeholder="İlçe" style={inputStyle} />
+                      <input value={developerProjectForm.neighborhood} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, neighborhood: e.target.value }))} placeholder="Mahalle" style={inputStyle} />
+                      <input value={developerProjectForm.parcelInfo} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, parcelInfo: e.target.value }))} placeholder="Ada / Parsel" style={inputStyle} />
+                      <input value={developerProjectForm.projectType} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, projectType: e.target.value }))} placeholder="Proje türü" style={inputStyle} />
+                      <select value={developerProjectForm.status} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, status: e.target.value as DeveloperProject["status"] }))} style={inputStyle}>
+                        <option value="planning">Planlama</option><option value="construction">İnşaat</option><option value="sales">Satış</option><option value="completed">Tamamlandı</option><option value="paused">Beklemede</option>
+                      </select>
+                      <input value={developerProjectForm.totalUnits} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, totalUnits: e.target.value }))} placeholder="Toplam bağımsız bölüm" style={inputStyle} />
+                      <input value={developerProjectForm.totalArea} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, totalArea: e.target.value }))} placeholder="Toplam m²" style={inputStyle} />
+                      <input type="date" value={developerProjectForm.startDate} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, startDate: e.target.value }))} style={inputStyle} />
+                      <input type="date" value={developerProjectForm.targetEndDate} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, targetEndDate: e.target.value }))} style={inputStyle} />
+                      <input value={developerProjectForm.budgetTotal} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, budgetTotal: e.target.value }))} placeholder="Toplam bütçe TL" style={inputStyle} />
+                      <input value={developerProjectForm.expectedRevenue} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, expectedRevenue: e.target.value }))} placeholder="Beklenen gelir TL" style={inputStyle} />
+                      <textarea value={developerProjectForm.notes} onChange={(e) => setDeveloperProjectForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Proje notu" style={{ ...inputStyle, gridColumn: "1 / -1", minHeight: 65, resize: "vertical" }} />
+                    </div>
+                    <button type="button" disabled={developerSaving || developerProjectsReady === false} onClick={() => void saveDeveloperProject()} style={{ width: "100%", marginTop: 9, padding: "11px 12px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#0b5f8a,#0f8065)", color: "#fff", fontWeight: 950, cursor: "pointer" }}>{developerSaving ? "Kaydediliyor…" : "+ Projeyi Canlı Merkeze Ekle"}</button>
+                  </div>
+
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+                      {[["PROJE",developerProjects.length],["BÜTÇE KULLANIMI",`${developerCenterIntelligence.budgetUsage}%`],["SATIŞ ORANI",`${developerCenterIntelligence.salesRate}%`],["İLERLEME",`${developerCenterIntelligence.avgProgress}%`]].map(([label,value]) => <div key={String(label)} style={{ padding: 12, borderRadius: 14, background: "#fff", border: "1px solid #e0e9f0" }}><span style={{ color: "#8496a4", fontSize: 10, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 5, color: "#153a65", fontSize: 20 }}>{String(value)}</strong></div>)}
+                    </div>
+                    <div style={{ display: "grid", gap: 8, marginTop: 9, maxHeight: 430, overflowY: "auto" }}>
+                      {developerProjects.length ? developerProjects.map((project) => {
+                        const active = (selectedDeveloperProjectId || developerProjects[0]?.id) === project.id;
+                        return <button key={project.id} type="button" onClick={() => setSelectedDeveloperProjectId(project.id)} style={{ padding: 13, borderRadius: 15, border: active ? "1px solid #0f8065" : "1px solid #dde8ef", background: active ? "#eff9f5" : "#fff", textAlign: "left", cursor: "pointer" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#24445f", fontSize: 11.5 }}>{project.name}</strong><span style={{ color: active ? "#087b5e" : "#8193a1", fontSize: 10, fontWeight: 950 }}>{project.status.toLocaleUpperCase("tr-TR")}</span></div>
+                          <span style={{ display: "block", marginTop: 4, color: "#7b91a1", fontSize: 10.5 }}>{[project.city, project.district, project.neighborhood].filter(Boolean).join(" / ") || "Konum girilmedi"} · {project.total_units} bölüm · {Number(project.total_area_m2 || 0).toLocaleString("tr-TR")} m²</span>
+                        </button>;
+                      }) : <div style={{ padding: 18, borderRadius: 14, background: "#f8fbfd", color: "#72879a", fontSize: 10.5 }}>{developerProjectsReady === false ? "Önce Müteahhit Merkezi SQL migration'ını çalıştırın." : "Henüz proje yok. Soldaki formdan ilk projeyi oluşturun."}</div>}
+                    </div>
+                  </div>
+                </div>
+
+
+                <article style={{ marginTop: 14, padding: 18, borderRadius: 20, background: "linear-gradient(145deg,#f8fbfe,#ffffff)", border: "1px solid #d9e7ef" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ ...eyebrow, color: "#0b6f9c" }}>AI İNŞAAT MALİYETİ & MÜTEAHHİT FİZİBİLİTESİ</div>
+                      <h3 style={{ margin: "6px 0 3px", color: "#153a65", fontSize: 22 }}>İl, ilçe, mahalle ve proje özelliklerinden maliyet–kazanç senaryosu üretin.</h3>
+                      <p style={{ margin: 0, color: "#74899e", fontSize: 11.5, lineHeight: 1.5 }}>AI yerel fiyat uydurmaz. Baz m² referansı + proje karmaşıklığı + konum/lojistik riskleriyle açıklanabilir ön fizibilite oluşturur.</p>
+                    </div>
+                    <span style={{ padding: "7px 10px", borderRadius: 999, background: "#eaf8f3", color: "#087b5e", fontSize: 9, fontWeight: 950 }}>FİZİBİLİTE MOTORU v1</span>
+                  </div>
+
+
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", marginTop: 12, padding: 12, borderRadius: 15, background: developerFeasCompleteness.score >= 80 ? "#eff9f5" : "#fff9ea", border: "1px solid #dfe9ef" }}>
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                        <strong style={{ color: "#34556c", fontSize: 10.5 }}>Veri Tamamlanma Oranı · %{developerFeasCompleteness.score}</strong>
+                        <span style={{ color: developerFeasCompleteness.criticalReady ? "#087b5e" : "#9a6700", fontSize: 9, fontWeight: 900 }}>{developerFeasCompleteness.criticalReady ? "Karar motoru hazır" : "Karar için kritik veri eksik"}</span>
+                      </div>
+                      <div style={{ height: 7, borderRadius: 999, background: "#dfe8ed", marginTop: 6, overflow: "hidden" }}>
+                        <div style={{ width: `${developerFeasCompleteness.score}%`, height: "100%", background: developerFeasCompleteness.score >= 80 ? "#0f8065" : "#c78b28" }} />
+                      </div>
+                      {!developerFeasCompleteness.criticalReady ? <span style={{ display: "block", marginTop: 5, color: "#7b6c48", fontSize: 8.8 }}>Eksik: {developerFeasCompleteness.missing.slice(0,5).join(", ")}</span> : null}
+                    </div>
+                    <button type="button" onClick={applySelectedProjectToFeasibility} style={{ padding: "9px 11px", borderRadius: 10, border: "1px solid #cbdde7", background: "#fff", color: "#315b76", fontSize: 9, fontWeight: 950, cursor: "pointer" }}>Seçili Projeden Doldur</button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(340px,.9fr) minmax(0,1.1fr)", gap: 12, marginTop: 13 }}>
+                    <div style={{ padding: 14, borderRadius: 17, background: "#fff", border: "1px solid #dde8ef" }}>
+                      <strong style={{ color: "#24445f", fontSize: 12 }}>Konum & Proje Girdileri</strong>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+                        <select value={developerFeasProvinceId} onChange={(e) => setDeveloperFeasProvinceId(Number(e.target.value))} style={inputStyle}>
+                          <option value={0}>{developerFeasLocationLoading ? "İller yükleniyor..." : "İl seç"}</option>
+                          {developerFeasProvinces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                        </select>
+                        <select value={developerFeasDistrictId} onChange={(e) => setDeveloperFeasDistrictId(Number(e.target.value))} style={inputStyle}>
+                          <option value={0}>İlçe seç</option>
+                          {developerFeasDistricts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                        </select>
+                        <select value={developerFeasNeighborhoodId} onChange={(e) => setDeveloperFeasNeighborhoodId(Number(e.target.value))} style={inputStyle}>
+                          <option value={0}>Mahalle seç</option>
+                          {developerFeasNeighborhoods.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                        </select>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 8 }}>
+                        <input value={developerFeasForm.title} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, title: e.target.value }))} placeholder="Fizibilite adı" style={{ ...inputStyle, gridColumn: "1 / -1" }} />
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Brüt İnşaat Alanı (m²)</span><input value={developerFeasForm.grossArea} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, grossArea: e.target.value }))} placeholder="Örn. 2500" style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Satılabilir Alan Oranı (%)</span><input value={developerFeasForm.sellableRatio} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, sellableRatio: e.target.value }))} placeholder="Örn. 78" style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Baz Yapım Maliyeti (TL/m²)</span><input value={developerFeasForm.baseM2Cost} onChange={(e) => { setDeveloperFeasAiSuggestedM2(null); setDeveloperFeasForm((c) => ({ ...c, baseM2Cost: e.target.value })); }} placeholder="Örn. 22000" style={inputStyle} /></label>
+                        <select value={developerFeasForm.quality} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, quality: e.target.value as typeof c.quality }))} style={inputStyle}>
+                          <option value="economic">Ekonomik</option><option value="standard">Standart</option><option value="premium">Premium</option><option value="luxury">Lüks</option>
+                        </select>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Kat Sayısı</span><input value={developerFeasForm.floors} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, floors: e.target.value }))} placeholder="Örn. 5" style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Bodrum Kat Sayısı</span><input value={developerFeasForm.basementFloors} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, basementFloors: e.target.value }))} placeholder="Örn. 1" style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Asansör Adedi</span><input value={developerFeasForm.elevators} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, elevators: e.target.value }))} placeholder="Örn. 1" style={inputStyle} /></label>
+                        <select value={developerFeasForm.parking} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, parking: e.target.value as typeof c.parking }))} style={inputStyle}><option value="none">Otopark yok</option><option value="open">Açık otopark</option><option value="closed">Kapalı otopark</option></select>
+                        <select value={developerFeasForm.facade} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, facade: e.target.value as typeof c.facade }))} style={inputStyle}><option value="standard">Standart cephe</option><option value="premium">Premium cephe</option><option value="curtain">Giydirme / curtain</option></select>
+                        <select value={developerFeasForm.heating} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, heating: e.target.value as typeof c.heating }))} style={inputStyle}><option value="radiator">Radyatör</option><option value="floor">Yerden ısıtma</option><option value="central">Merkezi sistem</option></select>
+                        <select value={developerFeasForm.soilComplexity} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, soilComplexity: e.target.value as typeof c.soilComplexity }))} style={inputStyle}><option value="easy">Kolay zemin</option><option value="normal">Normal zemin</option><option value="hard">Zor zemin / temel</option></select>
+                        <select value={developerFeasForm.logistics} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, logistics: e.target.value as typeof c.logistics }))} style={inputStyle}><option value="easy">Kolay lojistik</option><option value="normal">Normal lojistik</option><option value="hard">Zor erişim / lojistik</option></select>
+                        <select value={developerFeasForm.landscaping} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, landscaping: e.target.value as typeof c.landscaping }))} style={inputStyle}><option value="none">Peyzaj yok</option><option value="standard">Standart peyzaj</option><option value="premium">Premium peyzaj</option></select>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Proje Süresi (Ay)</span><input value={developerFeasForm.durationMonths} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, durationMonths: e.target.value }))} placeholder="Örn. 18" style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Arsa Maliyeti / Arsa Payı Karşılığı (TL)</span><input value={developerFeasForm.landCost} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, landCost: e.target.value }))} placeholder="Örn. 12000000" style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Hedef Satış Fiyatı (TL/m²)</span><input value={developerFeasForm.saleM2} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, saleM2: e.target.value }))} placeholder="Örn. 55000" style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Beklenmeyen Gider Payı (%)</span><input value={developerFeasForm.contingency} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, contingency: e.target.value }))} placeholder="Örn. 8" style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Proje + Ruhsat + Genel Gider (%)</span><input value={developerFeasForm.softCostRatio} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, softCostRatio: e.target.value }))} placeholder="Örn. 7" style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Finansman Maliyeti (%)</span><input value={developerFeasForm.financeCostRatio} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, financeCostRatio: e.target.value }))} placeholder="Örn. 5" style={inputStyle} /></label>
+                        <label style={{ display: "grid", gap: 4 }}><span style={{ color: "#60798a", fontSize: 8.8, fontWeight: 900 }}>Hedef Müteahhit Marjı (%)</span><input value={developerFeasForm.targetMargin} onChange={(e) => setDeveloperFeasForm((c) => ({ ...c, targetMargin: e.target.value }))} placeholder="Örn. 25" style={inputStyle} /></label>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
+                        <button type="button" disabled={developerFeasAiLoading} onClick={() => void runDeveloperFeasibilityAi()} style={{ padding: "11px 12px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#0b5f8a,#0f8065)", color: "#fff", fontWeight: 950, cursor: "pointer" }}>{developerFeasAiLoading ? "AI hesaplıyor…" : "AI m² Maliyetini Hazırla"}</button>
+                        <button type="button" disabled={developerFeasibilitySaving || developerFeasibilityReady === false} onClick={() => void saveDeveloperFeasibilityRun()} style={{ padding: "11px 12px", borderRadius: 12, border: "1px solid #cbdde7", background: "#fff", color: "#315b76", fontWeight: 950, cursor: "pointer" }}>{developerFeasibilitySaving ? "Kaydediliyor…" : "Fizibiliteyi Kaydet"}</button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 9, alignContent: "start" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+                        {[["MODEL m² MALİYET",`${developerFeasibility.modeledM2.toLocaleString("tr-TR")} ₺`],["ALT / ÜST",`${developerFeasibility.lowM2.toLocaleString("tr-TR")} – ${developerFeasibility.highM2.toLocaleString("tr-TR")} ₺`],["VERİ GÜVENİ",`${developerFeasibility.confidence}/100`]].map(([label,value]) => <div key={String(label)} style={{ padding: 12, borderRadius: 14, background: "#fff", border: "1px solid #e0e9ef" }}><span style={{ color: "#8294a5", fontSize: 8.5, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 5, color: "#153a65", fontSize: 18 }}>{String(value)}</strong></div>)}
+                      </div>
+
+
+                      <div style={{ marginTop: 7, padding: 9, borderRadius: 11, background: "#f8fbfd", border: "1px solid #e4ebf0", color: "#6f8391", fontSize: 8.8, lineHeight: 1.45 }}>
+                        <strong style={{ color: "#34556c" }}>Veri güveni neden değişir?</strong> Konum seçimi, baz m² maliyeti, AI maliyet önerisi, satış fiyatı ve gerçek proje girdileri tamamlandıkça güven yükselir. Tedarikçi/taşeron teklifleri henüz sisteme bağlı değilse bu skor kesin keşif anlamına gelmez.
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+                        {[["TOPLAM MALİYET",developerFeasibility.totalCost],["TAHMİNİ CİRO",developerFeasibility.revenue],["TAHMİNİ KÂR",developerFeasibility.profit],["MARJ",developerFeasibility.margin]].map(([label,value]) => <div key={String(label)} style={{ padding: 12, borderRadius: 14, background: "#fff", border: "1px solid #e0e9ef" }}><span style={{ color: "#8496a4", fontSize: 8.5, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 5, color: String(label)==="TAHMİNİ KÂR" && Number(value)<0 ? "#b24d34" : "#153a65", fontSize: 17 }}>{String(label)==="MARJ" ? `%${Number(value).toFixed(1)}` : `${Number(value).toLocaleString("tr-TR",{maximumFractionDigits:0})} ₺`}</strong></div>)}
+                      </div>
+
+                      <div style={{ padding: 14, borderRadius: 17, background: developerFeasibility.decision === "GÜÇLÜ FİZİBİLİTE" ? "#eff9f5" : developerFeasibility.decision === "DETAYLI İNCELE" ? "#fff9ea" : "#fff4f1", border: "1px solid #dce7ed" }}>
+                        <span style={{ color: "#7d91a0", fontSize: 8.5, fontWeight: 950 }}>FİZİBİLİTE KARARI</span>
+                        <strong style={{ display: "block", marginTop: 5, color: developerFeasibility.decision === "GÜÇLÜ FİZİBİLİTE" ? "#087b5e" : developerFeasibility.decision === "DETAYLI İNCELE" ? "#9a6700" : "#b24d34", fontSize: 20 }}>{developerFeasibility.decision}</strong>
+                        <span style={{ display: "block", marginTop: 5, color: "#718696", fontSize: 10 }}>Başa baş satış: {developerFeasibility.breakEvenSaleM2.toLocaleString("tr-TR",{maximumFractionDigits:0})} ₺/m² · Hedef %{developerFeasForm.targetMargin} marj için gereken satış: {developerFeasibility.targetSaleM2.toLocaleString("tr-TR",{maximumFractionDigits:0})} ₺/m²</span>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+                        <div style={{ padding: 12, borderRadius: 14, background: "#f8fbfd", border: "1px solid #e0e9ef" }}><span style={{ color: "#8294a5", fontSize: 8.5 }}>SATILABİLİR ALAN</span><strong style={{ display: "block", marginTop: 5, color: "#34556c", fontSize: 16 }}>{developerFeasibility.sellableArea.toLocaleString("tr-TR",{maximumFractionDigits:0})} m²</strong></div>
+                        <div style={{ padding: 12, borderRadius: 14, background: "#f8fbfd", border: "1px solid #e0e9ef" }}><span style={{ color: "#8294a5", fontSize: 8.5 }}>İNŞAAT MALİYETİ</span><strong style={{ display: "block", marginTop: 5, color: "#34556c", fontSize: 16 }}>{developerFeasibility.constructionCost.toLocaleString("tr-TR",{maximumFractionDigits:0})} ₺</strong></div>
+                        <div style={{ padding: 12, borderRadius: 14, background: "#fff4f1", border: "1px solid #edcec6" }}><span style={{ color: "#9a7068", fontSize: 8.5 }}>STRES SENARYOSU</span><strong style={{ display: "block", marginTop: 5, color: developerFeasibility.combinedProfit >= 0 ? "#087b5e" : "#b24d34", fontSize: 16 }}>{developerFeasibility.combinedProfit.toLocaleString("tr-TR",{maximumFractionDigits:0})} ₺</strong><span style={{ display: "block", marginTop: 2, color: "#9a7068", fontSize: 8 }}>maliyet +%10 / satış -%10 · marj %{developerFeasibility.combinedMargin.toFixed(1)}</span></div>
+                      </div>
+
+                      {developerFeasAiResult ? <div style={{ padding: 14, borderRadius: 16, background: "linear-gradient(145deg,#0d2f4a,#0f6f72)", color: "#fff" }}><div style={{ fontSize: 8.5, fontWeight: 950, color: "#cbeaf0", letterSpacing: 1 }}>AI MALİYET NOTU</div><pre style={{ margin: "7px 0 0", whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 10, lineHeight: 1.55, color: "#fff" }}>{developerFeasAiResult}</pre></div> : null}
+
+                      <div style={{ padding: 13, borderRadius: 16, background: "#fff8e8", border: "1px solid #edd9aa" }}>
+                        <strong style={{ display: "block", color: "#7b5a17", fontSize: 10.5 }}>Müteahhit kontrol listesi</strong>
+                        <span style={{ display: "block", marginTop: 5, color: "#846d3d", fontSize: 9.5, lineHeight: 1.55 }}>Kesin karar öncesi: uygulama projesi + metraj, zemin/temel çözümü, mekanik-elektrik keşfi, cephe teklifi ve en az 3 taşeron/tedarikçi fiyatı doğrulanmalı. Bu ekran ön fizibilitedir.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {developerFeasibilityRuns.length ? <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid #e2eaf0" }}>
+                    <strong style={{ color: "#34556c", fontSize: 10.5 }}>Son Fizibiliteler</strong>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 7, marginTop: 7 }}>
+                      {developerFeasibilityRuns.slice(0,4).map((run) => <div key={run.id} style={{ padding: 10, borderRadius: 12, background: "#fff", border: "1px solid #e0e9ef" }}><strong style={{ display: "block", color: "#34556c", fontSize: 9.5 }}>{run.title}</strong><span style={{ display: "block", marginTop: 3, color: "#8798a5", fontSize: 8.5 }}>{[run.city,run.district,run.neighborhood].filter(Boolean).join(" / ") || "Konum yok"} · {new Date(run.created_at).toLocaleDateString("tr-TR")}</span></div>)}
+                    </div>
+                  </div> : null}
+                </article>
+
+
+                <article style={{ marginTop: 14, padding: 18, borderRadius: 20, background: "#fff", border: "1px solid #d9e7ef" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ ...eyebrow, color: "#0f8065" }}>MÜTEAHHİT KARAR MOTORU · YÖNETİCİ KOKPİTİ</div>
+                      <h3 style={{ margin: "6px 0 3px", color: "#153a65", fontSize: 22 }}>Fizibilite, risk, nakit akışı ve şantiye verisini tek kararda birleştirin.</h3>
+                      <p style={{ margin: 0, color: "#74899e", fontSize: 11.5 }}>Karar kartı gerçek proje kayıtları ve girdiğiniz fizibilite varsayımlarından hesaplanır.</p>
+                    </div>
+                    <button type="button" onClick={() => void copyDeveloperWeeklyReport()} style={{ padding: "9px 11px", borderRadius: 11, border: "1px solid #cbdde7", background: "#fff", color: "#315b76", fontSize: 9.5, fontWeight: 950, cursor: "pointer" }}>Haftalık Yönetici Özetini Kopyala</button>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(280px,.72fr) minmax(0,1.28fr)", gap: 12, marginTop: 12 }}>
+                    <div style={{ padding: 16, borderRadius: 18, color: "#fff", background: developerExecutiveDecision.decision === "GİR" ? "linear-gradient(145deg,#0b3d4c,#0f8065)" : developerExecutiveDecision.decision === "GİRME" ? "linear-gradient(145deg,#4d2730,#9d3f46)" : "linear-gradient(145deg,#102f47,#0b6f9c)" }}>
+                      <div style={{ fontSize: 9, fontWeight: 950, color: "rgba(255,255,255,.72)", letterSpacing: 1 }}>MÜTEAHHİT KARARI</div>
+                      <strong style={{ display: "block", marginTop: 6, fontSize: 26 }}>{developerExecutiveDecision.decision}</strong>
+                      <span style={{ display: "block", marginTop: 3, color: "rgba(255,255,255,.78)", fontSize: 10 }}>{developerFeasCompleteness.criticalReady ? `Karar skoru ${developerExecutiveDecision.score}/100` : `Karar skoru kilitli · veri %${developerFeasCompleteness.score}`}</span>
+                      <div style={{ display: "grid", gap: 6, marginTop: 11 }}>
+                        {developerExecutiveDecision.reasons.slice(0,4).map((reason, index) => <div key={`${reason}-${index}`} style={{ padding: 9, borderRadius: 10, background: "rgba(255,255,255,.09)", fontSize: 9.5, lineHeight: 1.4 }}><strong>{index + 1}.</strong> {reason}</div>)}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7 }}>
+                      {[
+                        ["PROJE SAĞLIĞI",`${developerCenterIntelligence.projectHealth}/100`],
+                        ["FİNANS",`${developerCenterIntelligence.financeHealth}/100`],
+                        ["TAKVİM",`${developerCenterIntelligence.scheduleHealth}/100`],
+                        ["RİSK",`${100 - developerRiskIntelligence.riskIndex}/100`],
+                        ["STRES MARJI",`%${developerScenarioLab.scenarioMargin.toFixed(1)}`],
+                      ].map(([label,value]) => <div key={String(label)} style={{ padding: 12, borderRadius: 14, background: "#f8fbfd", border: "1px solid #e0e9ef" }}><span style={{ color: "#8496a4", fontSize: 8.5, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 5, color: "#153a65", fontSize: 16 }}>{String(value)}</strong></div>)}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+                    {([["executive","Yönetici Özeti"],["scenario","Senaryo Laboratuvarı"],["risk","Risk Merkezi"],["cashflow","Nakit Akışı"]] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setDeveloperAdvancedMode(id)} style={{ padding: "7px 10px", borderRadius: 999, border: developerAdvancedMode===id ? "1px solid #0f8065" : "1px solid #dce6ed", background: developerAdvancedMode===id ? "#eaf8f3" : "#fff", color: developerAdvancedMode===id ? "#087b5e" : "#667f90", fontSize: 9, fontWeight: 900, cursor: "pointer" }}>{label}</button>)}
+                  </div>
+
+                  {developerAdvancedMode === "executive" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 11 }}>
+                    {[
+                      ["BAŞA BAŞ SATIŞ",`${developerFeasibility.breakEvenSaleM2.toLocaleString("tr-TR",{maximumFractionDigits:0})} ₺/m²`],
+                      ["HEDEF MARJ SATIŞI",`${developerFeasibility.targetSaleM2.toLocaleString("tr-TR",{maximumFractionDigits:0})} ₺/m²`],
+                      ["FİNANSMAN AÇIĞI",`${developerCashflowIntelligence.fundingGap.toLocaleString("tr-TR")} ₺`],
+                      ["YÜKSEK RİSK",`${developerRiskIntelligence.high}`],
+                    ].map(([label,value]) => <div key={String(label)} style={{ padding: 12, borderRadius: 14, background: "#fff", border: "1px solid #e0e9ef" }}><span style={{ color: "#8496a4", fontSize: 8.5, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 5, color: "#153a65", fontSize: 16 }}>{String(value)}</strong></div>)}
+                  </div> : null}
+
+                  {developerAdvancedMode === "scenario" ? <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "minmax(320px,.75fr) minmax(0,1.25fr)", gap: 12 }}>
+                    <div style={{ padding: 14, borderRadius: 16, background: "#f8fbfd", border: "1px solid #e0e9ef" }}>
+                      <strong style={{ color: "#34556c", fontSize: 11 }}>Senaryo Girdileri</strong>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
+                        <input value={developerScenario.costChange} onChange={(e) => setDeveloperScenario((c) => ({ ...c, costChange: e.target.value }))} placeholder="Maliyet değişimi %" style={inputStyle} />
+                        <input value={developerScenario.salesChange} onChange={(e) => setDeveloperScenario((c) => ({ ...c, salesChange: e.target.value }))} placeholder="Satış fiyatı değişimi %" style={inputStyle} />
+                        <input value={developerScenario.delayMonths} onChange={(e) => setDeveloperScenario((c) => ({ ...c, delayMonths: e.target.value }))} placeholder="Gecikme ay" style={inputStyle} />
+                        <input value={developerScenario.financeMonthlyRate} onChange={(e) => setDeveloperScenario((c) => ({ ...c, financeMonthlyRate: e.target.value }))} placeholder="Aylık finansman %" style={inputStyle} />
+                        <input value={developerScenario.sellableRatioChange} onChange={(e) => setDeveloperScenario((c) => ({ ...c, sellableRatioChange: e.target.value }))} placeholder="Satılabilir alan değişimi %" style={{ ...inputStyle, gridColumn: "1 / -1" }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+                        {[["SENARYO MALİYET",developerScenarioLab.scenarioCost],["SENARYO CİRO",developerScenarioLab.scenarioRevenue],["SENARYO KÂR",developerScenarioLab.scenarioProfit],["SENARYO MARJ",developerScenarioLab.scenarioMargin]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 13, background: "#fff", border: "1px solid #e0e9ef" }}><span style={{ color: "#8496a4", fontSize: 8 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: String(label)==="SENARYO KÂR" && Number(value)<0 ? "#b24d34" : "#153a65", fontSize: 14 }}>{String(label)==="SENARYO MARJ" ? `%${Number(value).toFixed(1)}` : `${Number(value).toLocaleString("tr-TR",{maximumFractionDigits:0})} ₺`}</strong></div>)}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 8 }}>
+                        {developerScenarioLab.scenarios.map((scenario) => <div key={scenario.name} style={{ padding: 10, borderRadius: 12, background: "#f8fbfd", border: "1px solid #e2eaf0" }}><strong style={{ color: "#34556c", fontSize: 9.5 }}>{scenario.name}</strong><span style={{ display: "block", marginTop: 4, color: scenario.profit >= 0 ? "#087b5e" : "#b24d34", fontSize: 10.5, fontWeight: 900 }}>{scenario.profit.toLocaleString("tr-TR",{maximumFractionDigits:0})} ₺</span><span style={{ color: "#8b9aa6", fontSize: 8.5 }}>marj %{scenario.margin.toFixed(1)}</span></div>)}
+                      </div>
+                    </div>
+                  </div> : null}
+
+                  {developerAdvancedMode === "risk" ? <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "minmax(300px,.72fr) minmax(0,1.28fr)", gap: 12 }}>
+                    <div style={{ padding: 14, borderRadius: 16, background: "#f8fbfd", border: "1px solid #e0e9ef" }}>
+                      <strong style={{ color: "#34556c", fontSize: 11 }}>Yeni Risk</strong>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 8 }}>
+                        <input value={developerRiskForm.category} onChange={(e) => setDeveloperRiskForm((c) => ({ ...c, category: e.target.value }))} placeholder="Kategori" style={inputStyle} />
+                        <input value={developerRiskForm.title} onChange={(e) => setDeveloperRiskForm((c) => ({ ...c, title: e.target.value }))} placeholder="Risk başlığı *" style={inputStyle} />
+                        <input value={developerRiskForm.probability} onChange={(e) => setDeveloperRiskForm((c) => ({ ...c, probability: e.target.value }))} placeholder="Olasılık 1-5" style={inputStyle} />
+                        <input value={developerRiskForm.impact} onChange={(e) => setDeveloperRiskForm((c) => ({ ...c, impact: e.target.value }))} placeholder="Etki 1-5" style={inputStyle} />
+                        <input value={developerRiskForm.ownerName} onChange={(e) => setDeveloperRiskForm((c) => ({ ...c, ownerName: e.target.value }))} placeholder="Sorumlu" style={inputStyle} />
+                        <input type="date" value={developerRiskForm.dueDate} onChange={(e) => setDeveloperRiskForm((c) => ({ ...c, dueDate: e.target.value }))} style={inputStyle} />
+                        <textarea value={developerRiskForm.mitigation} onChange={(e) => setDeveloperRiskForm((c) => ({ ...c, mitigation: e.target.value }))} placeholder="Azaltma / aksiyon planı" style={{ ...inputStyle, gridColumn: "1 / -1", minHeight: 58 }} />
+                      </div>
+                      <button type="button" disabled={developerRiskSaving || developerRisksReady === false} onClick={() => void saveDeveloperRisk()} style={{ width: "100%", marginTop: 8, padding: "10px 11px", borderRadius: 11, border: 0, background: "#0b6f9c", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Risk Ekle</button>
+                    </div>
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+                        {[["RİSK ENDEKSİ",`${developerRiskIntelligence.riskIndex}/100`],["YÜKSEK",developerRiskIntelligence.high],["ORTA",developerRiskIntelligence.medium]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 13, background: "#fff", border: "1px solid #e0e9ef" }}><span style={{ color: "#8496a4", fontSize: 8 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: String(label)==="YÜKSEK" && Number(value)>0 ? "#b24d34" : "#153a65", fontSize: 15 }}>{String(value)}</strong></div>)}
+                      </div>
+                      <div style={{ display: "grid", gap: 7, marginTop: 8, maxHeight: 280, overflowY: "auto" }}>
+                        {developerRiskIntelligence.scored.length ? developerRiskIntelligence.scored.map((risk) => <div key={risk.id} style={{ padding: 11, borderRadius: 13, background: risk.score >= 15 ? "#fff4f1" : "#f8fbfd", border: risk.score >= 15 ? "1px solid #efc9c0" : "1px solid #e2eaf0" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ color: "#34556c", fontSize: 10 }}>{risk.title}</strong><span style={{ display: "block", marginTop: 3, color: "#8496a4", fontSize: 8.5 }}>{risk.category} · Olasılık {risk.probability}/5 · Etki {risk.impact}/5</span></div><strong style={{ color: risk.score >= 15 ? "#b24d34" : risk.score >= 8 ? "#9a6700" : "#087b5e", fontSize: 13 }}>{risk.score}/25</strong></div>{risk.mitigation ? <span style={{ display: "block", marginTop: 5, color: "#6f8391", fontSize: 8.5 }}>{risk.mitigation}</span> : null}<div style={{ display: "flex", gap: 5, marginTop: 6 }}>{(["open","mitigating","closed"] as const).map((status) => <button key={status} type="button" onClick={() => void updateDeveloperRiskStatus(risk,status)} style={{ padding: "5px 7px", borderRadius: 8, border: risk.status===status ? "1px solid #0f8065" : "1px solid #dce6ed", background: risk.status===status ? "#eaf8f3" : "#fff", color: risk.status===status ? "#087b5e" : "#6d8291", fontSize: 7.5, fontWeight: 900, cursor: "pointer" }}>{status === "open" ? "Açık" : status === "mitigating" ? "Azaltılıyor" : "Kapalı"}</button>)}</div></div>) : <div style={{ padding: 15, borderRadius: 12, background: "#f8fbfd", color: "#8193a1", fontSize: 9.5 }}>{developerRisksReady === false ? "Risk SQL migration'ını çalıştırın." : "Bu projede açık risk kaydı yok."}</div>}
+                      </div>
+                    </div>
+                  </div> : null}
+
+                  {developerAdvancedMode === "cashflow" ? <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "minmax(300px,.65fr) minmax(0,1.35fr)", gap: 12 }}>
+                    <div style={{ padding: 14, borderRadius: 16, background: "#f8fbfd", border: "1px solid #e0e9ef" }}>
+                      <strong style={{ color: "#34556c", fontSize: 11 }}>Aylık Nakit Planı</strong>
+                      <div style={{ display: "grid", gap: 7, marginTop: 8 }}>
+                        <input type="month" value={developerCashflowForm.monthKey} onChange={(e) => setDeveloperCashflowForm((c) => ({ ...c, monthKey: e.target.value }))} style={inputStyle} />
+                        <input value={developerCashflowForm.plannedExpense} onChange={(e) => setDeveloperCashflowForm((c) => ({ ...c, plannedExpense: e.target.value }))} placeholder="Planlanan gider TL" style={inputStyle} />
+                        <input value={developerCashflowForm.plannedIncome} onChange={(e) => setDeveloperCashflowForm((c) => ({ ...c, plannedIncome: e.target.value }))} placeholder="Planlanan tahsilat TL" style={inputStyle} />
+                        <input value={developerCashflowForm.note} onChange={(e) => setDeveloperCashflowForm((c) => ({ ...c, note: e.target.value }))} placeholder="Not" style={inputStyle} />
+                      </div>
+                      <button type="button" disabled={developerCashflowSaving || developerCashflowReady === false} onClick={() => void saveDeveloperCashflowPlan()} style={{ width: "100%", marginTop: 8, padding: "10px 11px", borderRadius: 11, border: 0, background: "#0f8065", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Aylık Plan Ekle</button>
+                    </div>
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+                        {[["PLAN GİDER",developerCashflowIntelligence.plannedExpense],["PLAN GELİR",developerCashflowIntelligence.plannedIncome],["GERÇEK GİDER",developerCashflowIntelligence.actualExpense],["FİNANSMAN AÇIĞI",developerCashflowIntelligence.fundingGap]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 13, background: "#fff", border: "1px solid #e0e9ef" }}><span style={{ color: "#8496a4", fontSize: 8 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: String(label)==="FİNANSMAN AÇIĞI" && Number(value)>0 ? "#b24d34" : "#153a65", fontSize: 14 }}>{Number(value).toLocaleString("tr-TR")} ₺</strong></div>)}
+                      </div>
+                      <div style={{ display: "grid", gap: 7, marginTop: 8, maxHeight: 280, overflowY: "auto" }}>
+                        {developerCashflowIntelligence.rows.length ? developerCashflowIntelligence.rows.map((row) => <div key={row.month} style={{ display: "grid", gridTemplateColumns: "90px repeat(4,minmax(0,1fr))", gap: 7, alignItems: "center", padding: 10, borderRadius: 12, background: "#f8fbfd", border: "1px solid #e2eaf0" }}><strong style={{ color: "#34556c", fontSize: 9.5 }}>{row.month}</strong><span style={{ color: "#7f93a1", fontSize: 8.5 }}>Plan G: {row.plannedExpense.toLocaleString("tr-TR")} ₺</span><span style={{ color: "#7f93a1", fontSize: 8.5 }}>Plan T: {row.plannedIncome.toLocaleString("tr-TR")} ₺</span><span style={{ color: "#7f93a1", fontSize: 8.5 }}>Gerçek G: {row.actualExpense.toLocaleString("tr-TR")} ₺</span><strong style={{ color: row.cumulative >= 0 ? "#087b5e" : "#b24d34", fontSize: 9.5 }}>Kümülatif {row.cumulative.toLocaleString("tr-TR")} ₺</strong></div>) : <div style={{ padding: 15, borderRadius: 12, background: "#f8fbfd", color: "#8193a1", fontSize: 9.5 }}>{developerCashflowReady === false ? "Nakit akışı SQL migration'ını çalıştırın." : "Aylık nakit planı henüz yok."}</div>}
+                      </div>
+                    </div>
+                  </div> : null}
+                </article>
+
+                {developerCenterIntelligence.selected ? <>
+                  <div style={{ marginTop: 14, padding: 16, borderRadius: 18, background: "linear-gradient(135deg,#0c2940,#0b6f9c 55%,#0f8065)", color: "#fff" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div><div style={{ fontSize: 10, fontWeight: 950, letterSpacing: 1, color: "#bfe8f4" }}>SEÇİLİ PROJE</div><strong style={{ display: "block", marginTop: 5, fontSize: 18 }}>{developerCenterIntelligence.selected.name}</strong><span style={{ display: "block", marginTop: 4, color: "rgba(255,255,255,.72)", fontSize: 10 }}>{developerCenterIntelligence.selected.parcel_info || "Ada/parsel girilmedi"} · {developerCenterIntelligence.selected.project_type || "Proje"}</span></div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(100px,1fr))", gap: 7 }}>
+                        {[["BÜTÇE",developerCenterIntelligence.budget.toLocaleString("tr-TR") + " ₺"],["HARCAMA",developerCenterIntelligence.expenses.toLocaleString("tr-TR") + " ₺"],["STOK DEĞERİ",developerCenterIntelligence.inventoryValue.toLocaleString("tr-TR") + " ₺"],["POTANSİYEL KÂR",developerCenterIntelligence.potentialProfit.toLocaleString("tr-TR") + " ₺"]].map(([label,value]) => <div key={String(label)} style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.09)" }}><span style={{ fontSize: 8, color: "rgba(255,255,255,.65)" }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, fontSize: 11 }}>{String(value)}</strong></div>)}
+                      </div>
+                    </div>
+                  </div>
+
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+                    {[
+                      ["PROJE SAĞLIĞI",`${developerCenterIntelligence.projectHealth}/100`,developerCenterIntelligence.projectHealth>=80?"Güçlü":developerCenterIntelligence.projectHealth>=60?"Kontrollü":"Dikkat"],
+                      ["MALİYET / m²",`${developerCenterIntelligence.costPerM2.toLocaleString("tr-TR")} ₺`,"gerçek gider"],
+                      ["BEKLENEN MARJ",`%${developerCenterIntelligence.expectedMargin}`,"gelir-gider bazlı"],
+                      ["KALAN GÜN",developerCenterIntelligence.selected.target_end_date ? `${developerCenterIntelligence.daysRemaining}` : "—","hedef teslime"],
+                      ["FİNANS SAĞLIĞI",`${developerCenterIntelligence.financeHealth}/100`,"bütçe + marj"],
+                      ["TAKVİM SAĞLIĞI",`${developerCenterIntelligence.scheduleHealth}/100`,"termin + gecikme"],
+                    ].map(([label,value,note]) => <div key={String(label)} style={{ padding: 10, borderRadius: 13, background: "#fff", border: "1px solid #dfe9ef" }}><span style={{ display: "block", color: "#8295a4", fontSize: 9, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: String(label)==="PROJE SAĞLIĞI" && developerCenterIntelligence.projectHealth<60 ? "#b24d34" : "#153a65", fontSize: 16 }}>{String(value)}</strong><span style={{ display: "block", marginTop: 2, color: "#99a7b2", fontSize: 8.5 }}>{String(note)}</span></div>)}
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 12, marginTop: 12 }}>
+                    <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dde8ef" }}>
+                      <div style={{ ...eyebrow, color: "#0b6f9c" }}>SATIŞ & STOK MERKEZİ</div>
+                      <h3 style={{ margin: "5px 0 8px", color: "#153a65", fontSize: 19 }}>Bağımsız bölüm stokları</h3>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+                        {[["SATILIK",developerCenterIntelligence.available],["REZERVE",developerCenterIntelligence.reserved],["SATILDI",developerCenterIntelligence.sold],["ARSA PAYI",developerCenterIntelligence.ownerShare]].map(([label,value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 11, background: "#f8fbfd" }}><span style={{ color: "#8b9aa7", fontSize: 8 }}>{String(label)}</span><strong style={{ display: "block", color: "#34556c", fontSize: 15 }}>{String(value)}</strong></div>)}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8 }}>
+                        <input value={developerUnitForm.unitCode} onChange={(e) => setDeveloperUnitForm((c) => ({ ...c, unitCode: e.target.value }))} placeholder="Daire / bölüm kodu" style={inputStyle} />
+                        <input value={developerUnitForm.unitType} onChange={(e) => setDeveloperUnitForm((c) => ({ ...c, unitType: e.target.value }))} placeholder="Tip (3+1)" style={inputStyle} />
+                        <input value={developerUnitForm.floorLabel} onChange={(e) => setDeveloperUnitForm((c) => ({ ...c, floorLabel: e.target.value }))} placeholder="Kat" style={inputStyle} />
+                        <input value={developerUnitForm.netArea} onChange={(e) => setDeveloperUnitForm((c) => ({ ...c, netArea: e.target.value }))} placeholder="Net m²" style={inputStyle} />
+                        <input value={developerUnitForm.grossArea} onChange={(e) => setDeveloperUnitForm((c) => ({ ...c, grossArea: e.target.value }))} placeholder="Brüt m²" style={inputStyle} />
+                        <input value={developerUnitForm.listPrice} onChange={(e) => setDeveloperUnitForm((c) => ({ ...c, listPrice: e.target.value }))} placeholder="Liste fiyatı" style={inputStyle} />
+                        <select value={developerUnitForm.status} onChange={(e) => setDeveloperUnitForm((c) => ({ ...c, status: e.target.value as DeveloperUnit["status"] }))} style={{ ...inputStyle, gridColumn: "1 / -1" }}><option value="available">Satılık</option><option value="reserved">Rezerve</option><option value="sold">Satıldı</option><option value="owner_share">Arsa Sahibi Payı</option></select>
+                      </div>
+                      <button type="button" onClick={() => void saveDeveloperUnit()} style={{ width: "100%", marginTop: 7, padding: "10px 11px", borderRadius: 11, border: 0, background: "#0b6f9c", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Bağımsız Bölüm Ekle</button>
+                      <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 250, overflowY: "auto" }}>
+                        {developerCenterIntelligence.units.map((unit) => <div key={unit.id} style={{ padding: 10, borderRadius: 12, background: "#f8fbfd", border: "1px solid #e4ebf0" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 10 }}>{unit.unit_code} · {unit.unit_type}</strong><span style={{ color: unit.status === "sold" ? "#087b5e" : unit.status === "reserved" ? "#9a6700" : "#60798a", fontSize: 10.5, fontWeight: 950 }}>{unit.status.toLocaleUpperCase("tr-TR")}</span></div><span style={{ display: "block", marginTop: 3, color: "#8496a4", fontSize: 10.5 }}>{unit.floor_label || "Kat yok"} · {unit.net_area_m2} net / {unit.gross_area_m2} brüt · {Number(unit.list_price || 0).toLocaleString("tr-TR")} ₺</span><div style={{ display: "flex", gap: 5, marginTop: 6, flexWrap: "wrap" }}>{(["available","reserved","sold","owner_share"] as const).map((status) => <button key={status} type="button" onClick={() => void updateDeveloperUnitStatus(unit,status)} style={{ padding: "5px 7px", borderRadius: 8, border: unit.status===status ? "1px solid #0f8065" : "1px solid #dce6ed", background: unit.status===status ? "#eaf8f2" : "#fff", color: unit.status===status ? "#087b5e" : "#6b8190", fontSize: 7.5, fontWeight: 900, cursor: "pointer" }}>{status === "available" ? "Satılık" : status === "reserved" ? "Rezerve" : status === "sold" ? "Satıldı" : "Arsa Payı"}</button>)}</div></div>)}
+                      </div>
+                    </article>
+
+                    <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dde8ef" }}>
+                      <div style={{ ...eyebrow, color: "#0b6f9c" }}>MALİYET & NAKİT AKIŞI</div>
+                      <h3 style={{ margin: "5px 0 8px", color: "#153a65", fontSize: 19 }}>Gerçek proje finansı</h3>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+                        {[["GİDER",developerCenterIntelligence.expenses],["GELİR",developerCenterIntelligence.incomes],["KALAN BÜTÇE",developerCenterIntelligence.remainingBudget]].map(([label,value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 11, background: "#f8fbfd" }}><span style={{ color: "#8b9aa7", fontSize: 8 }}>{String(label)}</span><strong style={{ display: "block", color: "#34556c", fontSize: 14 }}>{Number(value).toLocaleString("tr-TR")} ₺</strong></div>)}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, marginTop: 8 }}>
+                        <select value={developerCostForm.costType} onChange={(e) => setDeveloperCostForm((c) => ({ ...c, costType: e.target.value as DeveloperCost["cost_type"] }))} style={inputStyle}><option value="expense">Gider</option><option value="income">Gelir</option></select>
+                        <input value={developerCostForm.category} onChange={(e) => setDeveloperCostForm((c) => ({ ...c, category: e.target.value }))} placeholder="Kategori" style={inputStyle} />
+                        <input value={developerCostForm.amount} onChange={(e) => setDeveloperCostForm((c) => ({ ...c, amount: e.target.value }))} placeholder="Tutar TL" style={inputStyle} />
+                        <input type="date" value={developerCostForm.transactionDate} onChange={(e) => setDeveloperCostForm((c) => ({ ...c, transactionDate: e.target.value }))} style={inputStyle} />
+                        <input value={developerCostForm.description} onChange={(e) => setDeveloperCostForm((c) => ({ ...c, description: e.target.value }))} placeholder="Açıklama" style={{ ...inputStyle, gridColumn: "1 / -1" }} />
+                      </div>
+                      <button type="button" onClick={() => void saveDeveloperCost()} style={{ width: "100%", marginTop: 7, padding: "10px 11px", borderRadius: 11, border: 0, background: "#0b6f9c", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Finans Hareketi Ekle</button>
+                      <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 250, overflowY: "auto" }}>
+                        {developerCenterIntelligence.costs.map((item) => <div key={item.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: 10, borderRadius: 12, background: "#f8fbfd", border: "1px solid #e4ebf0" }}><div><strong style={{ color: "#34556c", fontSize: 10.5 }}>{item.category}</strong><span style={{ display: "block", marginTop: 3, color: "#8798a5", fontSize: 8 }}>{item.transaction_date} · {item.description || "Açıklama yok"}</span></div><strong style={{ color: item.cost_type === "income" ? "#087b5e" : "#b24d34", fontSize: 10 }}>{item.cost_type === "income" ? "+" : "-"}{Number(item.amount).toLocaleString("tr-TR")} ₺</strong></div>)}
+                      </div>
+                    </article>
+
+                    <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dde8ef" }}>
+                      <div style={{ ...eyebrow, color: "#0f8065" }}>İŞ PROGRAMI & ŞANTİYE</div>
+                      <h3 style={{ margin: "5px 0 8px", color: "#153a65", fontSize: 19 }}>İmalat adımları ve ilerleme</h3>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+                        <input value={developerMilestoneForm.title} onChange={(e) => setDeveloperMilestoneForm((c) => ({ ...c, title: e.target.value }))} placeholder="İş kalemi *" style={{ ...inputStyle, gridColumn: "1 / -1" }} />
+                        <input value={developerMilestoneForm.stage} onChange={(e) => setDeveloperMilestoneForm((c) => ({ ...c, stage: e.target.value }))} placeholder="Aşama" style={inputStyle} />
+                        <input type="date" value={developerMilestoneForm.dueDate} onChange={(e) => setDeveloperMilestoneForm((c) => ({ ...c, dueDate: e.target.value }))} style={inputStyle} />
+                        <input value={developerMilestoneForm.progress} onChange={(e) => setDeveloperMilestoneForm((c) => ({ ...c, progress: e.target.value }))} placeholder="İlerleme %" style={inputStyle} />
+                        <select value={developerMilestoneForm.status} onChange={(e) => setDeveloperMilestoneForm((c) => ({ ...c, status: e.target.value as DeveloperMilestone["status"] }))} style={inputStyle}><option value="pending">Bekliyor</option><option value="active">Devam Ediyor</option><option value="done">Tamamlandı</option><option value="delayed">Gecikti</option></select>
+                        <input value={developerMilestoneForm.plannedCost} onChange={(e) => setDeveloperMilestoneForm((c) => ({ ...c, plannedCost: e.target.value }))} placeholder="Planlanan maliyet" style={inputStyle} />
+                        <input value={developerMilestoneForm.actualCost} onChange={(e) => setDeveloperMilestoneForm((c) => ({ ...c, actualCost: e.target.value }))} placeholder="Gerçekleşen maliyet" style={inputStyle} />
+                        <input value={developerMilestoneForm.note} onChange={(e) => setDeveloperMilestoneForm((c) => ({ ...c, note: e.target.value }))} placeholder="Not" style={{ ...inputStyle, gridColumn: "1 / -1" }} />
+                      </div>
+                      <button type="button" onClick={() => void saveDeveloperMilestone()} style={{ width: "100%", marginTop: 7, padding: "10px 11px", borderRadius: 11, border: 0, background: "#0f8065", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ İş Programına Ekle</button>
+                      <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 250, overflowY: "auto" }}>
+                        {developerCenterIntelligence.milestones.map((item) => <div key={item.id} style={{ padding: 10, borderRadius: 12, background: item.status === "delayed" ? "#fff5f2" : "#f8fbfd", border: item.status === "delayed" ? "1px solid #efc9c0" : "1px solid #e4ebf0" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 10 }}>{item.title}</strong><span style={{ color: item.status === "done" ? "#087b5e" : item.status === "delayed" ? "#b24d34" : "#60798a", fontSize: 10.5, fontWeight: 950 }}>{item.progress}%</span></div><div style={{ height: 6, borderRadius: 999, background: "#e5edf2", marginTop: 6, overflow: "hidden" }}><div style={{ width: `${Math.max(0,Math.min(100,item.progress))}%`, height: "100%", background: item.status === "delayed" ? "#c45b46" : "#0f8065" }} /></div><span style={{ display: "block", marginTop: 5, color: "#8496a4", fontSize: 10.5 }}>{item.stage || "Aşama yok"} · {item.due_date || "Termin yok"} · Plan {Number(item.planned_cost).toLocaleString("tr-TR")} ₺ / Gerçek {Number(item.actual_cost).toLocaleString("tr-TR")} ₺</span></div>)}
+                      </div>
+                    </article>
+
+                    <article style={{ padding: 16, borderRadius: 18, color: "#fff", background: "linear-gradient(145deg,#0d2f4a,#0f6f72)" }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 950, color: "#cbeaf0", letterSpacing: 1 }}>AI PROJE YÖNETİCİSİ</div>
+                      <h3 style={{ margin: "6px 0 4px", fontSize: 20 }}>Bugün projede neye odaklanmalı?</h3>
+                      <div style={{ display: "grid", gap: 7, marginTop: 10 }}>
+                        {developerCenterIntelligence.alerts.map((item, index) => <div key={`${item}-${index}`} style={{ padding: 10, borderRadius: 11, background: "rgba(255,255,255,.09)", fontSize: 10.5, lineHeight: 1.45 }}><strong>{index + 1}.</strong> {item}</div>)}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 11 }}>
+                        <div style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.08)" }}><span style={{ fontSize: 8, color: "rgba(255,255,255,.65)" }}>BÜTÇE KULLANIMI</span><strong style={{ display: "block", marginTop: 4, fontSize: 17 }}>%{developerCenterIntelligence.budgetUsage}</strong></div>
+                        <div style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.08)" }}><span style={{ fontSize: 8, color: "rgba(255,255,255,.65)" }}>SATIŞ ORANI</span><strong style={{ display: "block", marginTop: 4, fontSize: 17 }}>%{developerCenterIntelligence.salesRate}</strong></div>
+                        <div style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.08)" }}><span style={{ fontSize: 8, color: "rgba(255,255,255,.65)" }}>ŞANTİYE İLERLEME</span><strong style={{ display: "block", marginTop: 4, fontSize: 17 }}>%{developerCenterIntelligence.avgProgress}</strong></div>
+                        <div style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.08)" }}><span style={{ fontSize: 8, color: "rgba(255,255,255,.65)" }}>GECİKEN İŞ</span><strong style={{ display: "block", marginTop: 4, fontSize: 17 }}>{developerCenterIntelligence.delayed}</strong></div>
+                      </div>
+                      <div style={{ marginTop: 11, color: "rgba(255,255,255,.72)", fontSize: 10.5, lineHeight: 1.5 }}>AI önerileri yalnızca sistemdeki gerçek proje, stok, maliyet ve iş programı kayıtlarından türetilir.</div>
+                    </article>
+                  </div>
+                </> : null}
               </article>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginTop: 12 }}>
-                {(() => {
-                  const project = developerProject === "elysium" ? { progress:"%64", value:"₺51,5 Mn", budget:"₺12,5 Mn", sales:"9 / 12", margin:"%34" } : developerProject === "nova" ? { progress:"%58", value:"₺22,5 Mn", budget:"₺9,8 Mn", sales:"5,5 / 8", margin:"%29" } : { progress:"%12", value:"₺46,0 Mn", budget:"₺3,2 Mn", sales:"0 / 15", margin:"%31" };
-                  return [["Proje ilerlemesi",project.progress,"Plan / gerçekleşen","Takvimde"],["Tahmini proje değeri",project.value,"Satış değeri görünümü","Güncel"],["Gerçekleşen harcama",project.budget,"Onaylı maliyet kayıtları","Kontrollü"],["Satılabilir stok",project.sales,"Bağımsız bölüm görünümü","Canlı"],["Brüt marj",project.margin,"Senaryo bazlı tahmin","Güçlü"]].map(([title,value,text,badge],i) => <article key={title} style={{ padding: 16, borderRadius: 18, border: i === 4 ? "1px solid #cce5d8" : "1px solid #eadfca", background: i === 4 ? "linear-gradient(145deg,#effbf5,#fff)" : "linear-gradient(145deg,#fff,#fffbf3)", boxShadow: "0 9px 24px rgba(86,62,24,.06)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span style={{ color: "#85765d", fontSize: 10.5, fontWeight: 950 }}>{title.toUpperCase()}</span><span style={{ padding: "4px 7px", borderRadius: 999, background: i === 4 ? "#def7e9" : "#fff1d6", color: i === 4 ? "#047857" : "#9a6700", fontSize: 10.5, fontWeight: 950 }}>{badge}</span></div><strong style={{ display: "block", marginTop: 7, color: i === 4 ? "#047857" : "#5c4217", fontSize: 23 }}>{value}</strong><span style={{ display: "block", marginTop: 4, color: "#9a8d78", fontSize: 11 }}>{text}</span></article>);
-                })()}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(310px,.8fr)", gap: 13, marginTop: 13 }}>
-                <article style={{ ...qualityRuleStyle, padding: 20 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={{ ...eyebrow, color: "#a66a0a" }}>AI FİZİBİLİTE VE SENARYO MOTORU</div><h3 style={{ margin: "6px 0 3px", color: "#153a65" }}>Arsa, maliyet ve satış dengesi</h3><p style={{ margin: 0, color: "#74899e", fontSize: 11 }}>Karar destek modeli · Resmî proje ve mali müşavir kontrolü gerektirir</p></div><div style={{ display: "flex", gap: 6 }}>{([['base','Baz'],['cost','Maliyet +%12'],['sales','Satış -%8']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setDeveloperScenario(id)} style={{ padding: "7px 9px", borderRadius: 9, border: developerScenario === id ? "1px solid #b7791f" : "1px solid #e5dccd", background: developerScenario === id ? "#fff5df" : "#fff", color: developerScenario === id ? "#9a6700" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 11 }}>{label}</button>)}</div></div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))", gap: 9, marginTop: 15 }}>{[
-                    ["Satılabilir alan","1.845 m²"],["Toplam maliyet",developerScenario === "cost" ? "₺40,3 Mn" : "₺36,0 Mn"],["Tahmini ciro",developerScenario === "sales" ? "₺50,2 Mn" : "₺54,6 Mn"],["Brüt kâr",developerScenario === "cost" ? "₺14,3 Mn" : developerScenario === "sales" ? "₺14,2 Mn" : "₺18,6 Mn"],["Geri dönüş",developerScenario === "base" ? "18 ay" : "22 ay"]
-                  ].map(([a,b]) => <div key={a} style={{ padding: 12, borderRadius: 14, background: "#fffbf3", border: "1px solid #eadfca" }}><span style={{ display: "block", color: "#85765d", fontSize: 10.5, fontWeight: 850 }}>{a.toUpperCase()}</span><strong style={{ display: "block", marginTop: 5, color: "#9a6700", fontSize: 18 }}>{b}</strong></div>)}</div>
-                  <div style={{ marginTop: 13, padding: 14, borderRadius: 15, background: "linear-gradient(90deg,#fffaf0,#fff5df)", border: "1px solid #efd59d", color: "#6d582e", fontSize: 11, lineHeight: 1.65 }}><strong style={{ color: "#5c4217" }}>AI yorumu:</strong> Baz senaryoda proje güçlü aday görünümünde. Maliyet artışı ve satış yavaşlaması birlikte gerçekleşirse nakit tamponu artırılmalı, kritik satın almalar sabit fiyatlı sözleşmelerle korunmalıdır.</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}><button type="button" onClick={() => setEnterpriseNotice("Proje fizibilite yönetici özeti hazırlandı. Profesyonel PDF entegrasyonunda rapora dönüştürülecektir.")} style={{ padding: "10px 13px", borderRadius: 11, border: 0, background: "#a66a0a", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Fizibilite Özeti</button><button type="button" onClick={() => setEnterpriseNotice("Seçili senaryo yönetici karar kuyruğuna eklendi.")} style={{ padding: "10px 13px", borderRadius: 11, border: "1px solid #dfcfb3", background: "#fff", color: "#6d582e", fontWeight: 900, cursor: "pointer" }}>Karar Kuyruğuna Ekle</button></div>
-                </article>
-
-                <article style={{ ...qualityRuleStyle, padding: 20 }}>
-                  <div style={eyebrow}>FİNANS VE NAKİT AKIŞI</div><h3 style={{ margin: "6px 0 3px", color: "#153a65" }}>Bütçe kontrol görünümü</h3>
-                  <div style={{ marginTop: 16, height: 128, display: "flex", alignItems: "end", gap: 8 }}>{[38,51,44,62,57,76,69,88,82,96].map((h,i) => <div key={i} style={{ flex: 1, height: `${h}%`, borderRadius: "7px 7px 3px 3px", background: i > 6 ? "linear-gradient(180deg,#e2a938,#9a6700)" : "linear-gradient(180deg,#f6d994,#d3a545)" }} />)}</div>
-                  <div style={{ display: "grid", gap: 8, marginTop: 14 }}>{[["Planlanan maliyet","₺36,0 Mn"],["Gerçekleşen","₺12,5 Mn"],["Kalan finansman","₺23,5 Mn"],["Nakit tamponu","4,2 ay"]].map(([a,b],i) => <div key={a} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: 10, borderRadius: 12, background: i === 3 ? "#effbf5" : "#fffbf3" }}><span style={{ color: "#74899e", fontSize: 11 }}>{a}</span><strong style={{ color: i === 3 ? "#047857" : "#6d582e", fontSize: 12 }}>{b}</strong></div>)}</div>
-                </article>
-              </div>
-
-              <article style={{ ...qualityRuleStyle, padding: 20, marginTop: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrow}>İNŞAAT TAKVİMİ VE SAHA İLERLEMESİ</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Kritik yol görünümü</h3></div><span style={{ ...secureBadge, background: "#fff7e7", borderColor: "#efd59d", color: "#9a6700" }}>Haftalık saha özeti</span></div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 9, marginTop: 14 }}>{[
-                  ["Hafriyat & temel",100,"Tamamlandı","#10b981"],["Taşıyıcı sistem",100,"Tamamlandı","#10b981"],["Duvar & kaba sıva",72,"Devam ediyor","#d89614"],["Elektrik & mekanik",46,"Sahada","#0876c9"],["Cephe",18,"Hazırlık","#7c3aed"],["Teslim",4,"Planlı","#74899e"]
-                ].map(([title,value,status,color]) => <div key={String(title)} style={{ padding: 14, borderRadius: 15, border: "1px solid #dce8f3", background: "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#153a65", fontSize: 11 }}>{title}</strong><span style={{ color: String(color), fontSize: 10.5, fontWeight: 950 }}>{status}</span></div><div style={{ height: 7, borderRadius: 999, background: "#edf2f7", overflow: "hidden", marginTop: 11 }}><div style={{ width: `${value}%`, height: "100%", borderRadius: 999, background: String(color) }} /></div><span style={{ display: "block", marginTop: 7, color: "#74899e", fontSize: 11 }}>%{value} ilerleme</span></div>)}</div>
-              </article>
-
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(300px,.8fr)", gap: 13, marginTop: 13 }}>
-                <article style={{ ...qualityRuleStyle, padding: 20 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}><div><div style={eyebrow}>GÖREV VE EKİP MERKEZİ</div><h3 style={{ margin: "6px 0 0", color: "#153a65" }}>Öncelikli operasyon listesi</h3></div><div style={{ display: "flex", gap: 6 }}>{([['all','Tümü'],['critical','Kritik'],['week','Bu hafta']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setDeveloperTaskFilter(id)} style={{ padding: "7px 9px", borderRadius: 9, border: developerTaskFilter === id ? "1px solid #b7791f" : "1px solid #dce8f3", background: developerTaskFilter === id ? "#fff5df" : "#fff", color: developerTaskFilter === id ? "#9a6700" : "#607890", fontWeight: 900, cursor: "pointer", fontSize: 11 }}>{label}</button>)}</div></div>
-                  <div style={{ overflowX: "auto", marginTop: 13 }}><table style={tableStyle}><thead><tr><th style={thStyle}>İş kalemi</th><th style={thStyle}>Sorumlu</th><th style={thStyle}>Termin</th><th style={thStyle}>Öncelik</th><th style={thStyle}>Durum</th></tr></thead><tbody>{[
-                    ["Dış cephe alt konstrüksiyon","Şantiye Şefi","31 Tem","Yüksek","Malzeme bekliyor"],["Elektrik kolon kontrolü","Elektrik Ekibi","30 Tem","Orta","Sahada"],["Asansör kuyu ölçümü","Teknik Ofis","02 Ağu","Yüksek","Kontrol"],["3+1 daire satış dosyası","Satış Ekibi","05 Ağu","Orta","Hazırlanıyor"],["Kaba sıva hakedişi","Finans","29 Tem","Düşük","Onay bekliyor"]
-                  ].filter(row => developerTaskFilter === "all" || (developerTaskFilter === "critical" ? row[3] === "Yüksek" : ["31 Tem","30 Tem","02 Ağu"].includes(row[2]))).map(row => <tr key={row[0]}>{row.map((cell,i) => <td key={cell} style={{ ...tdStyle, color: i === 3 ? (cell === "Yüksek" ? "#b42318" : cell === "Orta" ? "#9a6700" : "#087b55") : tdStyle.color, fontWeight: i === 0 || i === 3 ? 850 : 650 }}>{cell}</td>)}</tr>)}</tbody></table></div>
-                </article>
-
-                <article style={{ padding: 20, borderRadius: 22, background: "linear-gradient(145deg,#fff,#fffbf3)", border: "1px solid #eadfca", boxShadow: "0 10px 28px rgba(86,62,24,.07)" }}>
-                  <div style={eyebrow}>AI RİSK MERKEZİ</div><h3 style={{ margin: "6px 0 12px", color: "#153a65" }}>Bugünün proje sinyalleri</h3>
-                  <div style={{ display: "grid", gap: 9 }}>{[["Maliyet riski","Cephe kaleminde tedarik fiyatı yükseldi.","Yüksek"],["Takvim riski","Asansör ölçümü iki kritik işi etkileyebilir.","Orta"],["Satış fırsatı","Orta kat 3+1 talebi son 14 günde güçlendi.","Fırsat"],["Nakit akışı","Mevcut tahsilat planı 4,2 aylık tampon sağlıyor.","Dengeli"]].map(([title,text,level],i) => <div key={title} style={{ padding: 12, borderRadius: 14, border: i === 0 ? "1px solid #f1c6c6" : "1px solid #eadfca", background: i === 0 ? "#fff8f8" : "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#153a65", fontSize: 11 }}>{title}</strong><span style={{ color: i === 0 ? "#b42318" : i === 2 ? "#047857" : "#9a6700", fontSize: 10.5, fontWeight: 950 }}>{level}</span></div><p style={{ margin: "5px 0 0", color: "#74899e", fontSize: 11, lineHeight: 1.45 }}>{text}</p></div>)}</div>
-                </article>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(205px,1fr))", gap: 10, marginTop: 13 }}>
-                {[["🏠","Satış Merkezi","Satışta 6 · Rezerve 1 · Satıldı 5"],["📁","Doküman Merkezi","Ruhsat, proje, hakediş ve sözleşmeler"],["👷","Ekip Yönetimi","6 ekip · 28 aktif görev"],["📄","Haftalık Rapor","İlerleme, finans, risk ve fotoğraf özeti"]].map(([icon,title,text]) => <button type="button" key={title} onClick={() => setEnterpriseNotice(`${title} çalışma alanı seçildi. proje veri tabloları ve dosya depolama katmanıyla bağlanacaktır.`)} style={{ padding: 16, borderRadius: 17, border: "1px solid #eadfca", background: "linear-gradient(145deg,#fff,#fffbf5)", textAlign: "left", cursor: "pointer" }}><span style={{ fontSize: 22 }}>{icon}</span><strong style={{ display: "block", marginTop: 8, color: "#5c4217", fontSize: 12 }}>{title}</strong><span style={{ display: "block", marginTop: 4, color: "#85765d", fontSize: 11, lineHeight: 1.45 }}>{text}</span><span style={{ display: "block", marginTop: 8, color: "#a66a0a", fontSize: 11, fontWeight: 900 }}>Çalışma alanını aç →</span></button>)}
-              </div>
-
-            </section>
+</section>
           ) : null}
 
 
