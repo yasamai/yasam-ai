@@ -3362,6 +3362,52 @@ type TechnicalInspection = {
   updated_at: string;
 };
 
+
+type TrustDataSource = {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  category: "official" | "partner" | "market" | "user" | "internal";
+  authority_level: number;
+  update_frequency: "realtime" | "daily" | "weekly" | "monthly" | "quarterly" | "manual";
+  status: "active" | "degraded" | "paused";
+  coverage_scope: string | null;
+  last_success_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type TrustObservation = {
+  id: string;
+  owner_user_id: string;
+  source_id: string;
+  city: string | null;
+  district: string | null;
+  neighborhood: string | null;
+  metric_key: string;
+  metric_value: number;
+  unit: string | null;
+  observed_at: string;
+  confidence: number;
+  sample_size: number | null;
+  methodology_note: string | null;
+  created_at: string;
+};
+
+type TrustQualityCheck = {
+  id: string;
+  owner_user_id: string;
+  source_id: string | null;
+  observation_id: string | null;
+  check_type: "freshness" | "range" | "consistency" | "duplicate" | "provenance" | "manual";
+  severity: "info" | "warning" | "critical";
+  status: "open" | "resolved";
+  message: string;
+  detected_at: string;
+  resolved_at: string | null;
+};
+
 function StrategicExpansionCenter({
   records,
   regionalData,
@@ -3376,6 +3422,11 @@ function StrategicExpansionCenter({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiResult, setAiResult] = useState("");
+  const [naturalQuery, setNaturalQuery] = useState("");
+  const [naturalQueryLoading, setNaturalQueryLoading] = useState(false);
+  const [naturalQueryResult, setNaturalQueryResult] = useState("");
+  const [naturalQueryError, setNaturalQueryError] = useState("");
+  const [naturalQueryEvidence, setNaturalQueryEvidence] = useState({ listings: 0, regional: 0, reports: 0, consensus: 0 });
   const [marketCity, setMarketCity] = useState("Tümü");
   const [marketPropertyType, setMarketPropertyType] = useState("Tümü");
   const [locationProvinces, setLocationProvinces] = useState<TurkiyeLocationOption[]>([]);
@@ -3418,7 +3469,7 @@ function StrategicExpansionCenter({
   const [pdfRecordId, setPdfRecordId] = useState("");
   const [pdfAudience, setPdfAudience] = useState<"investor" | "bank" | "customer">("investor");
   const [pdfNotice, setPdfNotice] = useState("");
-  const [enterpriseRole, setEnterpriseRole] = useState<"bank" | "valuation" | "developer" | "agency" | "technical" | "investor">("bank");
+  const [enterpriseRole, setEnterpriseRole] = useState<"bank" | "valuation" | "developer" | "agency" | "technical" | "investor" | "data">("bank");
   const [listingQuery, setListingQuery] = useState("");
   const [listingTransaction, setListingTransaction] = useState<"Tümü" | "Satılık" | "Kiralık">("Tümü");
   const [listingPropertyType, setListingPropertyType] = useState("Tümü");
@@ -3702,6 +3753,43 @@ function StrategicExpansionCenter({
     note: "",
   });
 
+  const [trustReady, setTrustReady] = useState<boolean | null>(null);
+  const [trustLoading, setTrustLoading] = useState(false);
+  const [trustSaving, setTrustSaving] = useState(false);
+  const [trustSources, setTrustSources] = useState<TrustDataSource[]>([]);
+  const [trustObservations, setTrustObservations] = useState<TrustObservation[]>([]);
+  const [trustChecks, setTrustChecks] = useState<TrustQualityCheck[]>([]);
+  const [selectedTrustSourceId, setSelectedTrustSourceId] = useState("");
+  const [trustNotice, setTrustNotice] = useState("");
+  const [trustMode, setTrustMode] = useState<"overview" | "sources" | "observations" | "quality" | "consensus">("overview");
+  const [trustSourceForm, setTrustSourceForm] = useState({
+    name: "",
+    category: "market" as TrustDataSource["category"],
+    authorityLevel: "3",
+    updateFrequency: "monthly" as TrustDataSource["update_frequency"],
+    status: "active" as TrustDataSource["status"],
+    coverageScope: "Türkiye",
+    lastSuccessAt: "",
+    notes: "",
+  });
+  const [trustObservationForm, setTrustObservationForm] = useState({
+    city: "",
+    district: "",
+    neighborhood: "",
+    metricKey: "satilik_konut_m2",
+    metricValue: "",
+    unit: "TL/m²",
+    observedAt: new Date().toISOString().slice(0, 10),
+    confidence: "70",
+    sampleSize: "",
+    methodologyNote: "",
+  });
+  const [trustCheckForm, setTrustCheckForm] = useState({
+    checkType: "manual" as TrustQualityCheck["check_type"],
+    severity: "warning" as TrustQualityCheck["severity"],
+    message: "",
+  });
+
 
 
 
@@ -3712,7 +3800,7 @@ function StrategicExpansionCenter({
       if (!detail?.section) return;
       const allowedSections = ["command", "roadmap", "ai", "market", "listings", "admin", "membership", "pdf", "enterprise", "crm", "project"];
       if (allowedSections.includes(detail.section)) setSection(detail.section as typeof section);
-      if (["bank", "valuation", "developer", "agency", "technical", "investor"].includes(detail.role || "")) {
+      if (["bank", "valuation", "developer", "agency", "technical", "investor", "data"].includes(detail.role || "")) {
         setEnterpriseRole(detail.role as typeof enterpriseRole);
       }
     };
@@ -3780,6 +3868,13 @@ function StrategicExpansionCenter({
   useEffect(() => {
     void loadTechnicalCenter();
     // Mimar & Mühendis Merkezi verileri oturum değiştiğinde RLS üzerinden yeniden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+
+  useEffect(() => {
+    void loadTrustCenter();
+    // Türkiye Veri & Güven katmanı oturum değiştiğinde RLS üzerinden yeniden okunur.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -5205,6 +5300,129 @@ KURALLAR
     }
   }
 
+
+  async function loadTrustCenter() {
+    if (!user) {
+      setTrustSources([]);
+      setTrustObservations([]);
+      setTrustChecks([]);
+      setTrustReady(null);
+      return;
+    }
+    setTrustLoading(true);
+    const [sourcesRes, observationsRes, checksRes] = await Promise.all([
+      supabase.from("trust_data_sources").select("*").eq("owner_user_id", user.id).order("updated_at", { ascending: false }),
+      supabase.from("trust_observations").select("*").eq("owner_user_id", user.id).order("observed_at", { ascending: false }).limit(1000),
+      supabase.from("trust_quality_checks").select("*").eq("owner_user_id", user.id).order("detected_at", { ascending: false }).limit(1000),
+    ]);
+    const error = sourcesRes.error || observationsRes.error || checksRes.error;
+    if (error) {
+      const missing = /trust_data_sources|trust_observations|trust_quality_checks|relation .* does not exist|schema cache/i.test(error.message);
+      setTrustReady(missing ? false : null);
+      if (!missing) setTrustNotice(`Türkiye Veri & Güven Merkezi okunamadı: ${error.message}`);
+      setTrustSources([]);
+      setTrustObservations([]);
+      setTrustChecks([]);
+    } else {
+      setTrustReady(true);
+      setTrustSources((sourcesRes.data ?? []) as TrustDataSource[]);
+      setTrustObservations((observationsRes.data ?? []) as TrustObservation[]);
+      setTrustChecks((checksRes.data ?? []) as TrustQualityCheck[]);
+      setSelectedTrustSourceId((current) => current || String(sourcesRes.data?.[0]?.id || ""));
+    }
+    setTrustLoading(false);
+  }
+
+  async function saveTrustSource() {
+    if (!user) return;
+    if (trustSourceForm.name.trim().length < 2) return setTrustNotice("Veri kaynağı adı zorunludur.");
+    setTrustSaving(true);
+    const lastSuccess = trustSourceForm.lastSuccessAt ? new Date(`${trustSourceForm.lastSuccessAt}T12:00:00`).toISOString() : null;
+    const { data, error } = await supabase.from("trust_data_sources").insert({
+      owner_user_id: user.id,
+      name: trustSourceForm.name.trim(),
+      category: trustSourceForm.category,
+      authority_level: Math.min(5, Math.max(1, Number(trustSourceForm.authorityLevel) || 1)),
+      update_frequency: trustSourceForm.updateFrequency,
+      status: trustSourceForm.status,
+      coverage_scope: trustSourceForm.coverageScope.trim() || null,
+      last_success_at: lastSuccess,
+      notes: trustSourceForm.notes.trim() || null,
+    }).select("id").single();
+    if (error) setTrustNotice(`Veri kaynağı kaydedilemedi: ${error.message}`);
+    else {
+      setTrustSourceForm({ name: "", category: "market", authorityLevel: "3", updateFrequency: "monthly", status: "active", coverageScope: "Türkiye", lastSuccessAt: "", notes: "" });
+      setSelectedTrustSourceId(String(data.id));
+      setTrustNotice("Veri kaynağı güven siciline eklendi.");
+      await loadTrustCenter();
+    }
+    setTrustSaving(false);
+  }
+
+  async function saveTrustObservation() {
+    if (!user || !selectedTrustSourceId) return setTrustNotice("Önce veri kaynağı seçin.");
+    if (!trustObservationForm.metricKey.trim()) return setTrustNotice("Metrik anahtarı zorunludur.");
+    const metricValue = Number(trustObservationForm.metricValue);
+    if (!Number.isFinite(metricValue)) return setTrustNotice("Metrik değeri sayısal olmalıdır.");
+    setTrustSaving(true);
+    const { error } = await supabase.from("trust_observations").insert({
+      owner_user_id: user.id,
+      source_id: selectedTrustSourceId,
+      city: trustObservationForm.city.trim() || null,
+      district: trustObservationForm.district.trim() || null,
+      neighborhood: trustObservationForm.neighborhood.trim() || null,
+      metric_key: trustObservationForm.metricKey.trim(),
+      metric_value: metricValue,
+      unit: trustObservationForm.unit.trim() || null,
+      observed_at: new Date(`${trustObservationForm.observedAt || new Date().toISOString().slice(0,10)}T12:00:00`).toISOString(),
+      confidence: Math.min(100, Math.max(0, Number(trustObservationForm.confidence) || 0)),
+      sample_size: trustObservationForm.sampleSize ? Math.max(0, Number(trustObservationForm.sampleSize) || 0) : null,
+      methodology_note: trustObservationForm.methodologyNote.trim() || null,
+    });
+    if (error) setTrustNotice(`Veri gözlemi kaydedilemedi: ${error.message}`);
+    else {
+      setTrustObservationForm({ city: "", district: "", neighborhood: "", metricKey: "satilik_konut_m2", metricValue: "", unit: "TL/m²", observedAt: new Date().toISOString().slice(0,10), confidence: "70", sampleSize: "", methodologyNote: "" });
+      setTrustNotice("Veri gözlemi kaynak ve güven bilgisiyle kaydedildi.");
+      await loadTrustCenter();
+    }
+    setTrustSaving(false);
+  }
+
+  async function saveTrustCheck() {
+    if (!user) return;
+    if (!trustCheckForm.message.trim()) return setTrustNotice("Kalite kontrol açıklaması zorunludur.");
+    setTrustSaving(true);
+    const { error } = await supabase.from("trust_quality_checks").insert({
+      owner_user_id: user.id,
+      source_id: selectedTrustSourceId || null,
+      observation_id: null,
+      check_type: trustCheckForm.checkType,
+      severity: trustCheckForm.severity,
+      status: "open",
+      message: trustCheckForm.message.trim(),
+    });
+    if (error) setTrustNotice(`Kalite kontrol kaydı eklenemedi: ${error.message}`);
+    else {
+      setTrustCheckForm({ checkType: "manual", severity: "warning", message: "" });
+      setTrustNotice("Kalite kontrol uyarısı açıldı.");
+      await loadTrustCenter();
+    }
+    setTrustSaving(false);
+  }
+
+  async function resolveTrustCheck(check: TrustQualityCheck) {
+    if (!user) return;
+    const { error } = await supabase.from("trust_quality_checks").update({
+      status: "resolved",
+      resolved_at: new Date().toISOString(),
+    }).eq("id", check.id).eq("owner_user_id", user.id);
+    if (error) setTrustNotice(`Kalite kontrol kaydı kapatılamadı: ${error.message}`);
+    else {
+      setTrustChecks((current) => current.map((item) => item.id === check.id ? { ...item, status: "resolved", resolved_at: new Date().toISOString() } : item));
+      setTrustNotice("Kalite kontrol kaydı çözüldü olarak işaretlendi.");
+    }
+  }
+
   async function openListingInquiry(inquiry: ListingInquiry) {
     setSelectedInquiryId(inquiry.id);
     setListingLeadAiResult("");
@@ -6298,6 +6516,122 @@ ${currentText}`
     };
   }, [technicalProjects, selectedTechnicalProjectId, technicalDocuments, technicalBoqItems, technicalIssues, technicalInspections]);
 
+
+  const trustCenterIntelligence = useMemo(() => {
+    const now = Date.now();
+    const selected = trustSources.find((item) => item.id === selectedTrustSourceId) ?? trustSources[0] ?? null;
+    const selectedId = selected?.id || "";
+    const selectedObservations = trustObservations.filter((item) => item.source_id === selectedId);
+    const selectedChecks = trustChecks.filter((item) => item.source_id === selectedId);
+    const openChecks = trustChecks.filter((item) => item.status === "open");
+    const criticalChecks = openChecks.filter((item) => item.severity === "critical").length;
+    const warningChecks = openChecks.filter((item) => item.severity === "warning").length;
+    const activeSources = trustSources.filter((item) => item.status === "active");
+    const officialSources = trustSources.filter((item) => item.category === "official").length;
+    const uniqueCities = new Set(trustObservations.map((item) => item.city).filter(Boolean)).size;
+    const uniqueDistricts = new Set(trustObservations.map((item) => [item.city,item.district].filter(Boolean).join("/")).filter(Boolean)).size;
+    const avgConfidence = trustObservations.length ? Math.round(trustObservations.reduce((sum,item) => sum + Number(item.confidence || 0), 0) / trustObservations.length) : 0;
+
+    const sourceScores = trustSources.map((source) => {
+      const observations = trustObservations.filter((item) => item.source_id === source.id);
+      const checks = trustChecks.filter((item) => item.source_id === source.id && item.status === "open");
+      const authority = Math.round((Number(source.authority_level || 1) / 5) * 100);
+      const lastSuccess = source.last_success_at ? new Date(source.last_success_at).getTime() : 0;
+      const ageDays = lastSuccess ? Math.max(0, Math.floor((now - lastSuccess) / 86400000)) : 9999;
+      const freshnessTarget = source.update_frequency === "realtime" ? 1 : source.update_frequency === "daily" ? 2 : source.update_frequency === "weekly" ? 10 : source.update_frequency === "monthly" ? 45 : source.update_frequency === "quarterly" ? 120 : 365;
+      const freshness = lastSuccess ? Math.max(0, Math.min(100, Math.round(100 - (ageDays / Math.max(1,freshnessTarget)) * 70))) : 0;
+      const confidence = observations.length ? Math.round(observations.reduce((sum,item) => sum + Number(item.confidence || 0),0) / observations.length) : 0;
+      const qualityPenalty = checks.reduce((sum,item) => sum + (item.severity === "critical" ? 35 : item.severity === "warning" ? 15 : 5), 0);
+      const quality = Math.max(0, 100 - qualityPenalty);
+      const statusFactor = source.status === "active" ? 1 : source.status === "degraded" ? .65 : .25;
+      const trustScore = Math.max(0, Math.min(100, Math.round((authority * .30 + freshness * .30 + confidence * .25 + quality * .15) * statusFactor)));
+      return { source, observations: observations.length, checks: checks.length, authority, freshness, confidence, quality, ageDays, trustScore };
+    }).sort((a,b) => b.trustScore - a.trustScore);
+
+    const platformTrustScore = sourceScores.length ? Math.round(sourceScores.reduce((sum,item) => sum + item.trustScore,0) / sourceScores.length) : 0;
+    const staleSources = sourceScores.filter((item) => item.freshness < 50).length;
+    const provenanceCoverage = trustObservations.length ? Math.round(trustObservations.filter((item) => item.source_id).length / trustObservations.length * 100) : 0;
+
+    const metricGroups = new Map<string, TrustObservation[]>();
+    for (const item of trustObservations) {
+      const key = [item.city || "", item.district || "", item.neighborhood || "", item.metric_key].join("|");
+      const current = metricGroups.get(key) || [];
+      current.push(item);
+      metricGroups.set(key, current);
+    }
+    const consensusRows = Array.from(metricGroups.entries()).map(([key, rows]) => {
+      const [city, district, neighborhood, metricKey] = key.split("|");
+      const sourceById = new Map(sourceScores.map((row) => [row.source.id, row]));
+      let weightedSum = 0;
+      let totalWeight = 0;
+      const values: number[] = [];
+      const sourceIds = new Set<string>();
+      for (const row of rows) {
+        const source = sourceById.get(row.source_id);
+        const sourceTrust = source?.trustScore ?? 50;
+        const observationConfidence = Number(row.confidence || 0);
+        const weight = Math.max(1, sourceTrust) * Math.max(1, observationConfidence);
+        const value = Number(row.metric_value || 0);
+        if (Number.isFinite(value)) {
+          weightedSum += value * weight;
+          totalWeight += weight;
+          values.push(value);
+          sourceIds.add(row.source_id);
+        }
+      }
+      const weightedAverage = totalWeight ? weightedSum / totalWeight : 0;
+      const min = values.length ? Math.min(...values) : 0;
+      const max = values.length ? Math.max(...values) : 0;
+      const spread = weightedAverage > 0 ? Math.round(((max - min) / weightedAverage) * 100) : 0;
+      const avgConfidenceLocal = rows.length ? Math.round(rows.reduce((sum, row) => sum + Number(row.confidence || 0), 0) / rows.length) : 0;
+      const consensusConfidence = Math.max(0, Math.min(100, Math.round(
+        avgConfidenceLocal * .45 +
+        Math.min(100, sourceIds.size * 22) * .30 +
+        Math.max(0, 100 - spread) * .25
+      )));
+      return {
+        key, city, district, neighborhood, metricKey,
+        count: rows.length,
+        sourceCount: sourceIds.size,
+        weightedAverage,
+        min,
+        max,
+        spread,
+        confidence: consensusConfidence,
+        unit: rows.find((row) => row.unit)?.unit || "",
+      };
+    }).sort((a,b) => b.confidence - a.confidence);
+
+    const highDisagreementRows = consensusRows.filter((row) => row.sourceCount >= 2 && row.spread >= 25);
+    const multiSourceRows = consensusRows.filter((row) => row.sourceCount >= 2);
+    const consensusCoverage = consensusRows.length ? Math.round(multiSourceRows.length / consensusRows.length * 100) : 0;
+    const freshnessCoverage = trustSources.length ? Math.round(sourceScores.filter((row) => row.freshness >= 60).length / trustSources.length * 100) : 0;
+    const dataReadinessScore = Math.max(0, Math.min(100, Math.round(
+      platformTrustScore * .35 +
+      provenanceCoverage * .20 +
+      freshnessCoverage * .20 +
+      consensusCoverage * .15 +
+      Math.max(0, 100 - criticalChecks * 20) * .10
+    )));
+
+    const alerts: string[] = [];
+    if (!trustSources.length) alerts.push("Henüz veri kaynağı sicili oluşturulmadı.");
+    if (criticalChecks > 0) alerts.push(`${criticalChecks} kritik veri kalite uyarısı açık.`);
+    if (staleSources > 0) alerts.push(`${staleSources} veri kaynağının tazelik skoru %50 altında.`);
+    if (trustObservations.length === 0) alerts.push("Kaynaklar için ölçümlü veri gözlemleri henüz kaydedilmedi.");
+    if (officialSources === 0 && trustSources.length > 0) alerts.push("Sicilde 'resmî' olarak sınıflandırılmış kaynak yok; platform bunu otomatik olarak resmî veri kabul etmez.");
+    if (highDisagreementRows.length > 0) alerts.push(`${highDisagreementRows.length} bölgesel metrikte kaynaklar arası fark %25'in üzerinde.`);
+    if (consensusRows.length > 0 && consensusCoverage < 40) alerts.push(`Çok kaynaklı doğrulama kapsamı %${consensusCoverage}; daha fazla bağımsız kaynak gerekli.`);
+    if (!alerts.length) alerts.push("Açık kritik veri güven uyarısı görünmüyor.");
+
+    return {
+      selected, selectedObservations, selectedChecks, openChecks, criticalChecks, warningChecks,
+      activeSources: activeSources.length, officialSources, uniqueCities, uniqueDistricts, avgConfidence,
+      sourceScores, platformTrustScore, staleSources, provenanceCoverage, consensusRows,
+      highDisagreementRows, consensusCoverage, freshnessCoverage, dataReadinessScore, alerts,
+    };
+  }, [trustSources, trustObservations, trustChecks, selectedTrustSourceId]);
+
   const [bankScenario, setBankScenario] = useState<"balanced" | "conservative" | "growth">("balanced");
   const [bankQueueFilter, setBankQueueFilter] = useState<"all" | "urgent" | "review">("all");
   const [developerProject, setDeveloperProject] = useState<"elysium" | "nova" | "vera">("elysium");
@@ -6795,6 +7129,156 @@ ${currentText}`
     ? `YAI-${new Date(selectedPdfRecord.created_at).getFullYear() || new Date().getFullYear()}-${selectedPdfRecord.id.slice(0, 8).toLocaleUpperCase("tr-TR")}`
     : "YAI-ÖNİZLEME";
 
+
+  async function runNaturalDecisionSearch(preset?: string) {
+    const question = (preset ?? naturalQuery).trim();
+    if (question.length < 4) {
+      setNaturalQueryError("Arama için biraz daha açık bir soru yazın.");
+      return;
+    }
+
+    setNaturalQuery(question);
+    setNaturalQueryLoading(true);
+    setNaturalQueryError("");
+    setNaturalQueryResult("");
+
+    const normalizedQuestion = question.toLocaleLowerCase("tr-TR");
+    const stopWords = new Set(["için","olan","ve","ile","bir","bu","şu","en","ne","nasıl","bana","göre","mı","mi","mu","mü","tl","de","da"]);
+    const keywords = normalizedQuestion
+      .split(/[^a-zA-ZçğıöşüÇĞİÖŞÜ0-9]+/)
+      .map((item) => item.trim())
+      .filter((item) => item.length >= 3 && !stopWords.has(item))
+      .slice(0, 16);
+
+    const scoreText = (value: string) => {
+      const normalized = value.toLocaleLowerCase("tr-TR");
+      return keywords.reduce((sum, keyword) => sum + (normalized.includes(keyword) ? 1 : 0), 0);
+    };
+
+    const listingCandidates = liveListings
+      .filter((item) => item.status === "published")
+      .map((item) => ({
+        item,
+        score: scoreText([item.title,item.city,item.district,item.neighborhood,item.property_type,item.transaction_type,item.description].filter(Boolean).join(" ")),
+      }))
+      .sort((a,b) => b.score - a.score || Number(b.item.updated_at ? new Date(b.item.updated_at).getTime() : 0) - Number(a.item.updated_at ? new Date(a.item.updated_at).getTime() : 0))
+      .filter((row, index) => row.score > 0 || index < 5)
+      .slice(0, 8);
+
+    const regionalCandidates = regionalData
+      .map((item) => ({
+        item,
+        score: scoreText([item.city,item.district,item.neighborhood,item.propertyType,item.sourceNote].filter(Boolean).join(" ")),
+      }))
+      .sort((a,b) => b.score - a.score || Number(b.item.dataConfidence || 0) - Number(a.item.dataConfidence || 0))
+      .filter((row, index) => row.score > 0 || index < 5)
+      .slice(0, 8);
+
+    const reportCandidates = records
+      .map((item) => ({
+        item,
+        score: scoreText([locationText(item),item.property_type,item.decision,item.report].filter(Boolean).join(" ")),
+      }))
+      .sort((a,b) => b.score - a.score || Number(new Date(b.item.updated_at || b.item.created_at || 0).getTime()) - Number(new Date(a.item.updated_at || a.item.created_at || 0).getTime()))
+      .filter((row, index) => row.score > 0 || index < 4)
+      .slice(0, 6);
+
+    const consensusCandidates = trustCenterIntelligence.consensusRows
+      .map((item) => ({
+        item,
+        score: scoreText([item.city,item.district,item.neighborhood,item.metricKey].filter(Boolean).join(" ")),
+      }))
+      .sort((a,b) => b.score - a.score || b.item.confidence - a.item.confidence)
+      .filter((row, index) => row.score > 0 || index < 5)
+      .slice(0, 8);
+
+    setNaturalQueryEvidence({
+      listings: listingCandidates.length,
+      regional: regionalCandidates.length,
+      reports: reportCandidates.length,
+      consensus: consensusCandidates.length,
+    });
+
+    const listingContext = listingCandidates.length
+      ? listingCandidates.map(({item}, index) => `${index+1}. ${item.title} | ${[item.city,item.district,item.neighborhood].filter(Boolean).join(" / ")} | ${item.property_type} | ${item.transaction_type} | ${Number(item.price || 0).toLocaleString("tr-TR")} TL | ${Number(item.area_m2 || 0).toLocaleString("tr-TR")} m² | doğrulama:${item.verification_status}`).join("\n")
+      : "İlgili canlı ilan kaydı yok.";
+
+    const regionalContext = regionalCandidates.length
+      ? regionalCandidates.map(({item}, index) => `${index+1}. ${[item.city,item.district,item.neighborhood].filter(Boolean).join(" / ")} | ${item.propertyType} | satış m²:${Number(item.averageM2 || 0).toLocaleString("tr-TR")} | kira m²:${Number(item.rentM2 || 0).toLocaleString("tr-TR")} | yıllık değişim:%${item.annualChange || 0} | likidite:${item.liquidityScore || 0}/100 | veri güveni:${item.dataConfidence || 0}/100 | kaynak:${item.sourceNote || item.source || "belirtilmedi"} | tarih:${item.updatedAt || item.periodDate || "belirtilmedi"}`).join("\n")
+      : "İlgili bölgesel veri kaydı yok.";
+
+    const reportContext = reportCandidates.length
+      ? reportCandidates.map(({item}, index) => `${index+1}. ${locationText(item)} | ${item.property_type || "Taşınmaz"} | ${Number(item.asking_price || 0).toLocaleString("tr-TR")} TL | karar:${item.decision || "yok"} | rapor özeti:${String(item.report || "").slice(0,700).replace(/\s+/g," ")}`).join("\n")
+      : "İlgili kayıtlı analiz raporu yok.";
+
+    const consensusContext = consensusCandidates.length
+      ? consensusCandidates.map(({item}, index) => `${index+1}. ${[item.city,item.district,item.neighborhood].filter(Boolean).join(" / ")} | ${item.metricKey} | ağırlıklı ortak:${Math.round(item.weightedAverage).toLocaleString("tr-TR")} ${item.unit} | alt:${Math.round(item.min).toLocaleString("tr-TR")} | üst:${Math.round(item.max).toLocaleString("tr-TR")} | bağımsız kaynak:${item.sourceCount} | ayrışma:%${item.spread} | konsensüs güveni:%${item.confidence}`).join("\n")
+      : "İlgili çok-kaynaklı konsensüs verisi yok.";
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `Sen Yaşam AI Doğal Dil Gayrimenkul Karar Arama Motoru'sun.
+
+KULLANICI SORUSU
+${question}
+
+YALNIZCA AŞAĞIDAKİ KAYITLI VERİLERİ KULLAN.
+
+[CANLI İLANLAR]
+${listingContext}
+
+[BÖLGESEL VERİ]
+${regionalContext}
+
+[KAYITLI ANALİZ RAPORLARI]
+${reportContext}
+
+[ÇOK KAYNAKLI VERİ KONSENSÜSÜ]
+${consensusContext}
+
+[VERİ GÜVEN DURUMU]
+Platform güven: ${trustCenterIntelligence.platformTrustScore}/100
+Veri hazırlık: ${trustCenterIntelligence.dataReadinessScore}/100
+Çok kaynak kapsamı: %${trustCenterIntelligence.consensusCoverage}
+Kritik açık kalite uyarısı: ${trustCenterIntelligence.criticalChecks}
+
+ZORUNLU KURALLAR
+- Verilmeyen bilgi, ilan, fiyat, gerçekleşmiş satış, resmî kayıt veya piyasa verisi UYDURMA.
+- İnternete veya gerçek zamanlı resmî kaynağa erişiyormuş gibi davranma.
+- Kaynak güveni düşük veya veri yetersizse bunu kararın merkezine koy.
+- Bir ilanın "doğrulanmış" olduğunu yalnızca verification_status=verified ise söyle.
+- Bölgesel konsensüsü gerçekleşmiş satış veya resmî ekspertiz olarak sunma.
+- Kullanıcı "en iyi", "alınır mı", "nerede", "kaçtan" gibi karar sorusu sorarsa önce veri yeterliliğini değerlendir.
+- Her önemli çıkarımın sonuna dayandığı veri türünü ekle: [İLAN], [BÖLGESEL VERİ], [RAPOR] veya [KONSENSÜS].
+- Desteklenmeyen noktada açıkça "mevcut veride yok" de.
+
+ÇIKTI BİÇİMİ
+1. KISA CEVAP
+2. EN GÜÇLÜ BULGULAR (maksimum 5)
+3. UYGUN SEÇENEKLER / KARŞILAŞTIRMA (veri varsa)
+4. RİSKLER VE EKSİK VERİLER
+5. SONRAKİ EN DOĞRU ADIM
+6. VERİ GÜVENİ: Düşük / Orta / Yüksek + kısa gerekçe
+
+Türkçe, kısa, profesyonel ve karar odaklı yaz.`,
+        }),
+      });
+
+      const data: unknown = await response.json();
+      if (!response.ok) throw new Error(extractText(data) || "AI doğal dil araması tamamlanamadı.");
+      const answer = extractText(data).trim();
+      if (!answer) throw new Error("AI doğal dil araması boş yanıt döndürdü.");
+      setNaturalQueryResult(answer);
+    } catch (error) {
+      setNaturalQueryError(error instanceof Error ? error.message : "AI doğal dil araması tamamlanamadı.");
+    } finally {
+      setNaturalQueryLoading(false);
+    }
+  }
+
   async function generateExplainableDecision() {
     if (!selectedAiRecord) {
       setAiError("Önce analiz edilmiş bir rapor seçin.");
@@ -7070,6 +7554,49 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
 
       {section === "ai" ? (
         <>
+          <article style={{ position: "relative", overflow: "hidden", padding: "clamp(22px,4vw,34px)", borderRadius: 25, marginBottom: 14, color: "#fff", background: "radial-gradient(circle at 84% 18%,rgba(255,255,255,.16),transparent 28%),linear-gradient(135deg,#071f38 0%,#075f79 52%,#0f8065 100%)", boxShadow: "0 24px 58px rgba(15,63,83,.20)" }}>
+            <div style={{ position: "relative", display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(280px,.65fr)", gap: 20, alignItems: "center" }}>
+              <div>
+                <div style={{ color: "#cceff0", fontSize: 12, fontWeight: 950, letterSpacing: 1.4 }}>YAŞAM AI · DOĞAL DİL KARAR ARAMASI</div>
+                <h3 style={{ margin: "8px 0 7px", fontSize: "clamp(28px,4vw,42px)", lineHeight: 1.05 }}>Gayrimenkul verisine soru sorun; sistem kanıtla cevaplasın.</h3>
+                <p style={{ margin: 0, maxWidth: 760, color: "rgba(255,255,255,.82)", fontSize: 14.5, lineHeight: 1.65 }}>Canlı ilan, bölgesel kayıt, analiz raporu ve Türkiye Veri & Güven konsensüsünü tek soruda tarar. Kaynakta olmayan bilgiyi üretmez.</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 12 }}>
+                  {[
+                    "4 milyon TL bütçeyle elimdeki veriye göre neresi mantıklı?",
+                    "Adana Ceyhan için kayıtlı m² verileri ne söylüyor?",
+                    "Doğrulanmış ilanlar arasında dikkat çeken fırsat var mı?",
+                    "Veri güveni düşük olan bölgeleri göster.",
+                  ].map((prompt) => <button key={prompt} type="button" onClick={() => void runNaturalDecisionSearch(prompt)} disabled={naturalQueryLoading} style={{ padding: "7px 9px", borderRadius: 999, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.09)", color: "#fff", fontSize: 11.5, fontWeight: 850, cursor: "pointer" }}>{prompt}</button>)}
+                </div>
+              </div>
+              <div style={{ padding: 15, borderRadius: 18, background: "rgba(3,27,43,.25)", border: "1px solid rgba(255,255,255,.16)", backdropFilter: "blur(10px)" }}>
+                <div style={{ color: "#d6f3ef", fontSize: 11.5, fontWeight: 900 }}>ARAMADA KULLANILAN KANIT</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 8 }}>
+                  {[["İLAN",naturalQueryEvidence.listings],["BÖLGESEL",naturalQueryEvidence.regional],["RAPOR",naturalQueryEvidence.reports],["KONSENSÜS",naturalQueryEvidence.consensus]].map(([label,value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 10, background: "rgba(255,255,255,.08)" }}><span style={{ display: "block", color: "rgba(255,255,255,.67)", fontSize: 10.5 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 3, fontSize: 16 }}>{String(value)}</strong></div>)}
+                </div>
+                <span style={{ display: "block", marginTop: 9, color: "rgba(255,255,255,.67)", fontSize: 11.5, lineHeight: 1.5 }}>Yanıtlar yalnızca sisteme kayıtlı veriyle sınırlandırılır.</span>
+              </div>
+            </div>
+            <div style={{ position: "relative", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, marginTop: 14 }}>
+              <textarea value={naturalQuery} onChange={(e) => setNaturalQuery(e.target.value)} placeholder="Örn. 5 milyon TL bütçem var; kayıtlı verilere göre yatırım için hangi bölge daha güçlü?" style={{ width: "100%", minHeight: 78, padding: "13px 14px", borderRadius: 14, border: "1px solid rgba(255,255,255,.2)", background: "rgba(255,255,255,.96)", color: "#173b56", fontSize: 14, lineHeight: 1.55, resize: "vertical", outline: "none" }} />
+              <button type="button" onClick={() => void runNaturalDecisionSearch()} disabled={naturalQueryLoading || naturalQuery.trim().length < 4} style={{ alignSelf: "stretch", minWidth: 155, padding: "12px 15px", borderRadius: 14, border: 0, background: "#fff", color: "#0b5f74", fontSize: 13, fontWeight: 950, cursor: "pointer", opacity: naturalQueryLoading || naturalQuery.trim().length < 4 ? .65 : 1 }}>{naturalQueryLoading ? "Taranıyor…" : "AI Karar Ara"}</button>
+            </div>
+            {naturalQueryError ? <div style={{ position: "relative", marginTop: 9, padding: "10px 12px", borderRadius: 11, background: "rgba(133,25,25,.22)", border: "1px solid rgba(255,190,190,.25)", color: "#fff", fontSize: 12.5 }}>{naturalQueryError}</div> : null}
+          </article>
+
+          {naturalQueryResult ? (
+            <article style={{ ...reportPaper, marginBottom: 14, border: "1px solid #cfe4df", boxShadow: "0 14px 34px rgba(18,92,78,.10)" }}>
+              <div style={sectionHeader}>
+                <div><div style={{ ...eyebrow, color: "#0f8065" }}>KANITA DAYALI AI YANITI</div><h3 style={{ margin: "6px 0 0", color: "#153a65", fontSize: 21 }}>{naturalQuery}</h3></div>
+                <span style={{ ...secureBadge, background: "#edf9f5", color: "#087b5e", borderColor: "#cce7dc" }}>Kayıtlı veriyle sınırlı</span>
+              </div>
+              <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.75, color: "#263f5a", fontSize: 14 }}>{naturalQueryResult}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 13 }}>
+                {[["İlan kanıtı",naturalQueryEvidence.listings],["Bölgesel veri",naturalQueryEvidence.regional],["Rapor",naturalQueryEvidence.reports],["Konsensüs",naturalQueryEvidence.consensus]].map(([label,value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 10, background: "#f8fbfd", border: "1px solid #e0e9ef" }}><span style={{ color: "#607890", fontSize: 11.5 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 3, color: "#153a65", fontSize: 14 }}>{String(value)}</strong></div>)}
+              </div>
+            </article>
+          ) : null}
+
           <div style={twoColumnGrid}>
             <article style={{ ...qualityRuleStyle, padding: 18 }}>
               <div style={eyebrow}>AÇIKLANABİLİR AI KARAR MOTORU</div>
@@ -8181,11 +8708,11 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
         <>
           <article style={{ padding: "16px 18px", borderRadius: 21, border: "1px solid #d8e5f0", background: "linear-gradient(145deg,#ffffff,#f7fbff)", boxShadow: "0 12px 32px rgba(31,64,97,.07)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-              <div><div style={eyebrow}>AKTİF ÇALIŞMA ALANI</div><h2 style={{ margin: "6px 0 3px", color: "#153a65", fontSize: 23 }}>{enterpriseRole === "bank" ? "Banka Operasyon Merkezi" : enterpriseRole === "developer" ? "Müteahhit ve Proje Merkezi" : enterpriseRole === "investor" ? "Yatırımcı ve Portföy Merkezi" : enterpriseRole === "valuation" ? "Değerleme Merkezi" : enterpriseRole === "agency" ? "Emlak Ofisi Merkezi" : "Mimar ve Mühendis Merkezi"}</h2><p style={{ margin: 0, color: "#74899e", fontSize: 11 }}>Sadece seçili çalışma alanı gösterilir. Ortak navigasyon ve AI katmanı tüm modüllerde korunur.</p></div>
+              <div><div style={eyebrow}>AKTİF ÇALIŞMA ALANI</div><h2 style={{ margin: "6px 0 3px", color: "#153a65", fontSize: 23 }}>{enterpriseRole === "bank" ? "Banka Operasyon Merkezi" : enterpriseRole === "developer" ? "Müteahhit ve Proje Merkezi" : enterpriseRole === "investor" ? "Yatırımcı ve Portföy Merkezi" : enterpriseRole === "valuation" ? "Değerleme Merkezi" : enterpriseRole === "agency" ? "Emlak Ofisi Merkezi" : enterpriseRole === "technical" ? "Mimar ve Mühendis Merkezi" : "Türkiye Veri & Güven Merkezi"}</h2><p style={{ margin: 0, color: "#74899e", fontSize: 11 }}>Sadece seçili çalışma alanı gösterilir. Ortak navigasyon ve AI katmanı tüm modüllerde korunur.</p></div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {([['bank','Banka'],['developer','Müteahhit'],['investor','Yatırımcı'],['valuation','Değerleme'],['agency','Emlak Ofisi'],['technical','Mimar & Mühendis']] as const).map(([id,label]) => {
+                {([['bank','Banka'],['developer','Müteahhit'],['investor','Yatırımcı'],['valuation','Değerleme'],['agency','Emlak Ofisi'],['technical','Mimar & Mühendis'],['data','Türkiye Veri & Güven']] as const).map(([id,label]) => {
                   const active = enterpriseRole === id;
-                  const accent = id === "bank" ? "#0b5fa5" : id === "developer" ? "#0f8065" : id === "agency" ? "#c56b12" : id === "investor" ? "#0f8065" : id === "valuation" ? "#6b46c1" : "#285c86";
+                  const accent = id === "bank" ? "#0b5fa5" : id === "developer" ? "#0f8065" : id === "agency" ? "#c56b12" : id === "investor" ? "#0f8065" : id === "valuation" ? "#6b46c1" : id === "data" ? "#126b63" : "#285c86";
                   return <button key={id} type="button" onClick={() => { setEnterpriseRole(id); setEnterpriseNotice(""); }} style={{ padding: "10px 13px", borderRadius: 12, border: active ? `1px solid ${accent}` : "1px solid #d7e4f0", background: active ? `${accent}12` : "#fff", color: active ? accent : "#607890", fontSize: 10, fontWeight: 950, cursor: "pointer", boxShadow: active ? `0 8px 18px ${accent}18` : "none", transition: "all .2s ease" }}>{label}</button>
                 })}
               </div>
@@ -9353,6 +9880,155 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
             </section>
           ) : null}
 
+
+
+          {enterpriseRole === "data" ? (
+            <section style={{ marginTop: 14 }}>
+              <article style={{ padding: 22, borderRadius: 24, color: "#fff", background: "linear-gradient(145deg,#0c2e3d,#126b63 58%,#168c79)", boxShadow: "0 22px 52px rgba(20,87,79,.18)", border: "1px solid rgba(255,255,255,.12)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start", flexWrap: "wrap" }}>
+                  <div style={{ maxWidth: 760 }}>
+                    <div style={{ color: "#c9f5ea", fontSize: 14, fontWeight: 950, letterSpacing: 1.4 }}>TÜRKİYE VERİ & GÜVEN KATMANI · KAYNAK SİCİLİ · PROVENANCE</div>
+                    <h2 style={{ margin: "8px 0 6px", fontSize: "clamp(27px,4vw,40px)", lineHeight: 1.08 }}>Her kararın arkasındaki veriyi görün, ölçün ve sorgulayın.</h2>
+                    <p style={{ margin: 0, color: "rgba(255,255,255,.86)", fontSize: 15, lineHeight: 1.65 }}>Kaynak otoritesi, tazelik, örneklem, güven seviyesi ve kalite uyarılarını tek güven sicilinde yönetin. Kaynağı bilinmeyen veri “doğrulanmış” sayılmaz.</p>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(100px,1fr))", gap: 7 }}>
+                    {[["PLATFORM GÜVEN",`${trustCenterIntelligence.platformTrustScore}/100`],["AKTİF KAYNAK",trustCenterIntelligence.activeSources],["AÇIK UYARI",trustCenterIntelligence.openChecks.length],["TAZELİK RİSKİ",trustCenterIntelligence.staleSources]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 13, background: "rgba(255,255,255,.09)", border: "1px solid rgba(255,255,255,.11)" }}><span style={{ display: "block", color: "rgba(255,255,255,.76)", fontSize: 11.5, fontWeight: 900 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, fontSize: 17 }}>{String(value)}</strong></div>)}
+                  </div>
+                </div>
+              </article>
+
+              <div style={{ marginTop: 9, padding: "11px 13px", borderRadius: 12, background: "#fff8e8", border: "1px solid #ead8af", color: "#6e5722", fontSize: 13, lineHeight: 1.55 }}>
+                <strong>Güven kuralı:</strong> “Resmî” kategorisi yalnızca gerçekten resmî/otoritatif bir kaynak sisteme bağlandığında kullanıcı tarafından seçilmelidir. Yaşam AI kaynak adından otomatik resmiyet iddiası üretmez; bu ekran kaynak kökenini ve veri kalitesini izler.
+              </div>
+              {trustNotice ? <div style={{ marginTop: 9, padding: "10px 12px", borderRadius: 11, background: "#f3f8fb", border: "1px solid #d9e7ef", color: "#425968", fontSize: 13 }}>{trustNotice}</div> : null}
+
+              <article style={{ marginTop: 12, padding: 16, borderRadius: 19, background: "#fff", border: "1px solid #dce8ef" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <div><div style={{ ...eyebrow, color: "#126b63" }}>VERİ GÜVEN KOKPİTİ</div><h3 style={{ margin: "5px 0 0", color: "#153a65", fontSize: 20 }}>Türkiye çapında kaynak kalitesi ve izlenebilirlik</h3></div>
+                  <span style={{ color: trustReady === true ? "#087b5e" : "#8193a1", fontSize: 12, fontWeight: 950 }}>{trustReady === true ? "● Güven veritabanı canlı" : trustReady === false ? "SQL kurulumu gerekli" : "Kontrol ediliyor"}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+                  {[["VERİ HAZIRLIK",`${trustCenterIntelligence.dataReadinessScore}/100`],["GÜVEN",`${trustCenterIntelligence.platformTrustScore}/100`],["KAYNAK",trustSources.length],["GÖZLEM",trustObservations.length],["ÇOK KAYNAK",`%${trustCenterIntelligence.consensusCoverage}`],["TAZELİK",`%${trustCenterIntelligence.freshnessCoverage}`],["KRİTİK UYARI",trustCenterIntelligence.criticalChecks]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 13, background: String(label)==="KRİTİK UYARI" && Number(value)>0 ? "#fff4f1" : "#f8fbfd", border: String(label)==="KRİTİK UYARI" && Number(value)>0 ? "1px solid #efc9c0" : "1px solid #e0e9ef" }}><span style={{ color: "#52697a", fontSize: 11.5, fontWeight: 900 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: String(label)==="KRİTİK UYARI" && Number(value)>0 ? "#b24d34" : "#153a65", fontSize: 15 }}>{String(value)}</strong></div>)}
+                </div>
+              </article>
+
+              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                {([["overview","Yönetici Özeti"],["sources","Kaynak Sicili"],["observations","Veri Gözlemleri"],["consensus","Bölgesel Konsensüs"],["quality","Kalite & Uyarılar"]] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setTrustMode(id)} style={{ padding: "8px 11px", borderRadius: 999, border: trustMode===id ? "1px solid #126b63" : "1px solid #dce6ed", background: trustMode===id ? "#eaf8f3" : "#fff", color: trustMode===id ? "#087b5e" : "#52697a", fontSize: 13, fontWeight: 900, cursor: "pointer" }}>{label}</button>)}
+              </div>
+
+              {trustMode === "overview" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(300px,.8fr)", gap: 12, marginTop: 10 }}>
+                <article style={{ padding: 16, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                  <div style={{ ...eyebrow, color: "#126b63" }}>KAYNAK GÜVEN SIRALAMASI</div>
+                  <h3 style={{ margin: "5px 0 9px", color: "#153a65", fontSize: 18 }}>Otorite + tazelik + gözlem güveni + kalite</h3>
+                  <div style={{ display: "grid", gap: 7 }}>
+                    {trustCenterIntelligence.sourceScores.length ? trustCenterIntelligence.sourceScores.slice(0,12).map((row) => <button key={row.source.id} type="button" onClick={() => { setSelectedTrustSourceId(row.source.id); setTrustMode("sources"); }} style={{ padding: 11, borderRadius: 12, border: "1px solid #e0e9ef", background: selectedTrustSourceId===row.source.id ? "#eef9f5" : "#f9fbfd", textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 13 }}>{row.source.name}</strong><strong style={{ color: row.trustScore>=75 ? "#087b5e" : row.trustScore>=50 ? "#9a6700" : "#b24d34", fontSize: 13 }}>{row.trustScore}/100</strong></div><span style={{ display: "block", marginTop: 4, color: "#52697a", fontSize: 12 }}>Otorite %{row.authority} · Tazelik %{row.freshness} · Veri güveni %{row.confidence} · Kalite %{row.quality} · {row.observations} gözlem</span></button>) : <div style={{ padding: 14, borderRadius: 12, background: "#f8fbfd", color: "#566b79", fontSize: 13 }}>Henüz kaynak sicili yok.</div>}
+                  </div>
+                </article>
+                <article style={{ padding: 16, borderRadius: 18, color: "#fff", background: "linear-gradient(145deg,#0c3441,#126b63)" }}>
+                  <div style={{ color: "#c9f5ea", fontSize: 12, fontWeight: 950, letterSpacing: 1 }}>GÜVEN AKSİYONLARI</div>
+                  <strong style={{ display: "block", marginTop: 6, fontSize: 18 }}>Bugün neyi doğrulamalıyız?</strong>
+                  <div style={{ display: "grid", gap: 7, marginTop: 9 }}>{trustCenterIntelligence.alerts.map((item,index) => <div key={`${item}-${index}`} style={{ padding: 10, borderRadius: 10, background: "rgba(255,255,255,.09)", fontSize: 13, lineHeight: 1.5 }}><strong>{index+1}.</strong> {item}</div>)}</div>
+                  <div style={{ marginTop: 11, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.15)", color: "rgba(255,255,255,.76)", fontSize: 12.5, lineHeight: 1.55 }}>Platform güven skoru bir veri yönetişimi göstergesidir; resmî ekspertiz, tapu teyidi veya mevzuat doğrulaması yerine geçmez. Veri hazırlık skoru; güven, kaynak kökeni, tazelik, çok kaynaklı doğrulama ve açık kritik uyarıları birlikte değerlendirir.</div>
+                </article>
+              </div> : null}
+
+              {trustMode === "sources" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(310px,.7fr) minmax(0,1.3fr)", gap: 12, marginTop: 10 }}>
+                <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                  <div style={{ ...eyebrow, color: "#126b63" }}>KAYNAK SİCİLİ</div><h3 style={{ margin: "5px 0 8px", color: "#153a65", fontSize: 18 }}>Yeni veri kaynağı</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+                    <input value={trustSourceForm.name} onChange={(e) => setTrustSourceForm((c) => ({ ...c, name: e.target.value }))} placeholder="Kaynak adı *" style={{ ...inputStyle, gridColumn: "1 / -1", fontSize: 14, minHeight: 42 }} />
+                    <select value={trustSourceForm.category} onChange={(e) => setTrustSourceForm((c) => ({ ...c, category: e.target.value as TrustDataSource["category"] }))} style={{ ...inputStyle, fontSize: 14, minHeight: 42 }}><option value="official">Resmî / Otoritatif</option><option value="partner">Kurumsal Partner</option><option value="market">Piyasa Kaynağı</option><option value="internal">Yaşam AI İç Veri</option><option value="user">Kullanıcı Kaynağı</option></select>
+                    <select value={trustSourceForm.authorityLevel} onChange={(e) => setTrustSourceForm((c) => ({ ...c, authorityLevel: e.target.value }))} style={{ ...inputStyle, fontSize: 14, minHeight: 42 }}>{["1","2","3","4","5"].map((v) => <option key={v} value={v}>Otorite seviyesi {v}/5</option>)}</select>
+                    <select value={trustSourceForm.updateFrequency} onChange={(e) => setTrustSourceForm((c) => ({ ...c, updateFrequency: e.target.value as TrustDataSource["update_frequency"] }))} style={{ ...inputStyle, fontSize: 14, minHeight: 42 }}><option value="realtime">Gerçek zamanlı</option><option value="daily">Günlük</option><option value="weekly">Haftalık</option><option value="monthly">Aylık</option><option value="quarterly">3 Aylık</option><option value="manual">Manuel</option></select>
+                    <select value={trustSourceForm.status} onChange={(e) => setTrustSourceForm((c) => ({ ...c, status: e.target.value as TrustDataSource["status"] }))} style={{ ...inputStyle, fontSize: 14, minHeight: 42 }}><option value="active">Aktif</option><option value="degraded">Kalite düşmüş</option><option value="paused">Durduruldu</option></select>
+                    <input value={trustSourceForm.coverageScope} onChange={(e) => setTrustSourceForm((c) => ({ ...c, coverageScope: e.target.value }))} placeholder="Kapsam: Türkiye / il / ilçe" style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <input type="date" value={trustSourceForm.lastSuccessAt} onChange={(e) => setTrustSourceForm((c) => ({ ...c, lastSuccessAt: e.target.value }))} style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <textarea value={trustSourceForm.notes} onChange={(e) => setTrustSourceForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Kaynağın yöntemi, erişim şekli, kısıtları" style={{ ...inputStyle, gridColumn: "1 / -1", minHeight: 72, fontSize: 14 }} />
+                  </div>
+                  <button type="button" disabled={trustSaving || trustReady===false} onClick={() => void saveTrustSource()} style={{ width: "100%", marginTop: 8, padding: "11px 12px", borderRadius: 11, border: 0, background: "linear-gradient(135deg,#0b6f72,#126b63)", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Kaynağı Sicile Ekle</button>
+                </article>
+                <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 14 }}>Kaynaklar</strong><span style={{ color: "#087b5e", fontSize: 12, fontWeight: 950 }}>{trustSources.length} kayıt</span></div>
+                  <div style={{ display: "grid", gap: 7, marginTop: 9, maxHeight: 380, overflowY: "auto" }}>{trustCenterIntelligence.sourceScores.map((row) => <button key={row.source.id} type="button" onClick={() => setSelectedTrustSourceId(row.source.id)} style={{ padding: 12, borderRadius: 12, border: selectedTrustSourceId===row.source.id ? "1px solid #126b63" : "1px solid #e0e9ef", background: selectedTrustSourceId===row.source.id ? "#eef9f5" : "#f9fbfd", textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 13 }}>{row.source.name}</strong><strong style={{ color: row.trustScore>=75 ? "#087b5e" : row.trustScore>=50 ? "#9a6700" : "#b24d34", fontSize: 13 }}>{row.trustScore}/100</strong></div><span style={{ display: "block", marginTop: 3, color: "#52697a", fontSize: 12 }}>{row.source.category} · {row.source.update_frequency} · {row.source.coverage_scope || "Kapsam yok"} · {row.ageDays > 999 ? "son güncelleme yok" : `${row.ageDays} gün önce`}</span></button>)}</div>
+                </article>
+              </div> : null}
+
+              {trustMode === "observations" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(310px,.7fr) minmax(0,1.3fr)", gap: 12, marginTop: 10 }}>
+                <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                  <div style={{ ...eyebrow, color: "#0b6f9c" }}>VERİ GÖZLEMİ + KAYNAK KÖKENİ</div>
+                  <h3 style={{ margin: "5px 0 8px", color: "#153a65", fontSize: 18 }}>{trustCenterIntelligence.selected?.name || "Önce kaynak seçin"}</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+                    <input value={trustObservationForm.city} onChange={(e) => setTrustObservationForm((c) => ({ ...c, city: e.target.value }))} placeholder="İl" style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <input value={trustObservationForm.district} onChange={(e) => setTrustObservationForm((c) => ({ ...c, district: e.target.value }))} placeholder="İlçe" style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <input value={trustObservationForm.neighborhood} onChange={(e) => setTrustObservationForm((c) => ({ ...c, neighborhood: e.target.value }))} placeholder="Mahalle" style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <input value={trustObservationForm.metricKey} onChange={(e) => setTrustObservationForm((c) => ({ ...c, metricKey: e.target.value }))} placeholder="Metrik: satilik_konut_m2" style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <input value={trustObservationForm.metricValue} onChange={(e) => setTrustObservationForm((c) => ({ ...c, metricValue: e.target.value }))} placeholder="Değer *" style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <input value={trustObservationForm.unit} onChange={(e) => setTrustObservationForm((c) => ({ ...c, unit: e.target.value }))} placeholder="Birim" style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <input type="date" value={trustObservationForm.observedAt} onChange={(e) => setTrustObservationForm((c) => ({ ...c, observedAt: e.target.value }))} style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <input value={trustObservationForm.confidence} onChange={(e) => setTrustObservationForm((c) => ({ ...c, confidence: e.target.value }))} placeholder="Güven %0-100" style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <input value={trustObservationForm.sampleSize} onChange={(e) => setTrustObservationForm((c) => ({ ...c, sampleSize: e.target.value }))} placeholder="Örneklem adedi" style={{ ...inputStyle, fontSize: 14, minHeight: 42 }} />
+                    <textarea value={trustObservationForm.methodologyNote} onChange={(e) => setTrustObservationForm((c) => ({ ...c, methodologyNote: e.target.value }))} placeholder="Metodoloji / veri toplama notu" style={{ ...inputStyle, gridColumn: "1 / -1", minHeight: 72, fontSize: 14 }} />
+                  </div>
+                  <button type="button" onClick={() => void saveTrustObservation()} style={{ width: "100%", marginTop: 8, padding: "11px 12px", borderRadius: 11, border: 0, background: "#0b6f9c", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Gözlemi Kaydet</button>
+                </article>
+                <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 14 }}>Son Veri Gözlemleri</strong><span style={{ color: "#087b5e", fontSize: 12, fontWeight: 950 }}>{trustCenterIntelligence.selectedObservations.length} kayıt</span></div>
+                  <div style={{ display: "grid", gap: 7, marginTop: 9, maxHeight: 390, overflowY: "auto" }}>{trustCenterIntelligence.selectedObservations.map((item) => <div key={item.id} style={{ padding: 12, borderRadius: 12, background: "#f8fbfd", border: "1px solid #e0e9ef" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 13 }}>{item.metric_key}</strong><strong style={{ color: "#153a65", fontSize: 13 }}>{Number(item.metric_value).toLocaleString("tr-TR")} {item.unit || ""}</strong></div><span style={{ display: "block", marginTop: 3, color: "#52697a", fontSize: 12 }}>{[item.city,item.district,item.neighborhood].filter(Boolean).join(" / ") || "Konum yok"} · Güven %{item.confidence} · Örneklem {item.sample_size ?? "—"} · {new Date(item.observed_at).toLocaleDateString("tr-TR")}</span>{item.methodology_note ? <span style={{ display: "block", marginTop: 4, color: "#425968", fontSize: 12 }}>{item.methodology_note}</span> : null}</div>)}</div>
+                </article>
+              </div> : null}
+
+
+              {trustMode === "consensus" ? <div style={{ marginTop: 10 }}>
+                <article style={{ padding: 16, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ ...eyebrow, color: "#126b63" }}>BÖLGESEL KONSENSÜS MOTORU</div>
+                      <h3 style={{ margin: "5px 0 5px", color: "#153a65", fontSize: 19 }}>Aynı metrikte birden fazla kaynağın ağırlıklı ortak görüşü</h3>
+                      <p style={{ margin: 0, color: "#52697a", fontSize: 13, lineHeight: 1.55 }}>Kaynak güven skoru ve gözlem güveni birlikte ağırlıklandırılır. Bu değer gerçekleşmiş satış, resmî ekspertiz veya kesin piyasa değeri değildir.</p>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(105px,1fr))", gap: 7 }}>
+                      {[["HAZIRLIK",`${trustCenterIntelligence.dataReadinessScore}/100`],["ÇOK KAYNAK",`%${trustCenterIntelligence.consensusCoverage}`],["YÜKSEK AYRIŞMA",trustCenterIntelligence.highDisagreementRows.length]].map(([label,value]) => <div key={String(label)} style={{ padding: 10, borderRadius: 11, background: "#f8fbfd", border: "1px solid #e0e9ef" }}><span style={{ color: "#52697a", fontSize: 11.5, fontWeight: 900 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: String(label)==="YÜKSEK AYRIŞMA" && Number(value)>0 ? "#b24d34" : "#153a65", fontSize: 15 }}>{String(value)}</strong></div>)}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 7, marginTop: 12 }}>
+                    {trustCenterIntelligence.consensusRows.length ? trustCenterIntelligence.consensusRows.slice(0,100).map((row) => {
+                      const risky = row.sourceCount >= 2 && row.spread >= 25;
+                      return <div key={row.key} style={{ padding: 12, borderRadius: 12, background: risky ? "#fff7f4" : "#f8fbfd", border: risky ? "1px solid #efc9c0" : "1px solid #e0e9ef" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}>
+                          <div>
+                            <strong style={{ color: "#34556c", fontSize: 13 }}>{[row.city,row.district,row.neighborhood].filter(Boolean).join(" / ") || "Konum yok"} · {row.metricKey}</strong>
+                            <span style={{ display: "block", marginTop: 3, color: "#52697a", fontSize: 12 }}>{row.sourceCount} bağımsız kaynak · {row.count} gözlem · Konsensüs güveni %{row.confidence}</span>
+                          </div>
+                          <strong style={{ color: risky ? "#b24d34" : "#087b5e", fontSize: 15 }}>{Math.round(row.weightedAverage).toLocaleString("tr-TR")} {row.unit}</strong>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 8 }}>
+                          {[["ALT",Math.round(row.min).toLocaleString("tr-TR")],["ÜST",Math.round(row.max).toLocaleString("tr-TR")],["FARK",`%${row.spread}`],["GÜVEN",`%${row.confidence}`]].map(([label,value]) => <div key={String(label)} style={{ padding: 8, borderRadius: 9, background: "#fff", border: "1px solid #e4ebef" }}><span style={{ color: "#6b7f8d", fontSize: 11 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 2, color: String(label)==="FARK" && row.spread>=25 ? "#b24d34" : "#153a65", fontSize: 12.5 }}>{String(value)}</strong></div>)}
+                        </div>
+                      </div>;
+                    }) : <div style={{ padding: 15, borderRadius: 12, background: "#f8fbfd", color: "#566b79", fontSize: 13 }}>Konsensüs hesaplamak için veri gözlemleri ekleyin. Aynı konum ve metrikte iki veya daha fazla bağımsız kaynak olduğunda çok kaynaklı doğrulama anlam kazanır.</div>}
+                  </div>
+                </article>
+              </div> : null}
+
+              {trustMode === "quality" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(310px,.7fr) minmax(0,1.3fr)", gap: 12, marginTop: 10 }}>
+                <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                  <div style={{ ...eyebrow, color: "#b24d34" }}>KALİTE KONTROL & ANOMALİ KAYDI</div>
+                  <h3 style={{ margin: "5px 0 8px", color: "#153a65", fontSize: 18 }}>Veriye şüphe düştüğünde kayıt aç</h3>
+                  <select value={trustCheckForm.checkType} onChange={(e) => setTrustCheckForm((c) => ({ ...c, checkType: e.target.value as TrustQualityCheck["check_type"] }))} style={{ ...inputStyle, width: "100%", fontSize: 14, minHeight: 42 }}><option value="freshness">Tazelik</option><option value="range">Aralık / Uç Değer</option><option value="consistency">Tutarlılık</option><option value="duplicate">Tekrar</option><option value="provenance">Kaynak Kökeni</option><option value="manual">Manuel İnceleme</option></select>
+                  <select value={trustCheckForm.severity} onChange={(e) => setTrustCheckForm((c) => ({ ...c, severity: e.target.value as TrustQualityCheck["severity"] }))} style={{ ...inputStyle, width: "100%", fontSize: 14, minHeight: 42, marginTop: 7 }}><option value="info">Bilgi</option><option value="warning">Uyarı</option><option value="critical">Kritik</option></select>
+                  <textarea value={trustCheckForm.message} onChange={(e) => setTrustCheckForm((c) => ({ ...c, message: e.target.value }))} placeholder="Sorun nedir? Hangi veri doğrulanmalı?" style={{ ...inputStyle, width: "100%", minHeight: 88, fontSize: 14, marginTop: 7 }} />
+                  <button type="button" onClick={() => void saveTrustCheck()} style={{ width: "100%", marginTop: 8, padding: "11px 12px", borderRadius: 11, border: 0, background: "#b24d34", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Kalite Uyarısı Aç</button>
+                </article>
+                <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+                    {[["AÇIK",trustCenterIntelligence.openChecks.length],["UYARI",trustCenterIntelligence.warningChecks],["KRİTİK",trustCenterIntelligence.criticalChecks]].map(([label,value]) => <div key={String(label)} style={{ padding: 10, borderRadius: 11, background: String(label)==="KRİTİK" && Number(value)>0 ? "#fff4f1" : "#f8fbfd", border: "1px solid #e0e9ef" }}><span style={{ color: "#52697a", fontSize: 12 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 3, color: String(label)==="KRİTİK" && Number(value)>0 ? "#b24d34" : "#153a65", fontSize: 15 }}>{String(value)}</strong></div>)}
+                  </div>
+                  <div style={{ display: "grid", gap: 7, marginTop: 9, maxHeight: 390, overflowY: "auto" }}>{trustChecks.map((check) => <div key={check.id} style={{ padding: 12, borderRadius: 12, background: check.status==="open" && check.severity==="critical" ? "#fff4f1" : "#f8fbfd", border: check.status==="open" && check.severity==="critical" ? "1px solid #efc9c0" : "1px solid #e0e9ef" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 13 }}>{check.message}</strong><span style={{ color: check.severity==="critical"?"#b24d34":check.severity==="warning"?"#9a6700":"#52697a", fontSize: 12, fontWeight: 950 }}>{check.severity.toLocaleUpperCase("tr-TR")}</span></div><span style={{ display: "block", marginTop: 3, color: "#52697a", fontSize: 12 }}>{check.check_type} · {check.status === "open" ? "Açık" : "Çözüldü"} · {new Date(check.detected_at).toLocaleDateString("tr-TR")}</span>{check.status==="open" ? <button type="button" onClick={() => void resolveTrustCheck(check)} style={{ marginTop: 6, padding: "6px 8px", borderRadius: 8, border: "1px solid #b9d9cf", background: "#eef9f5", color: "#087b5e", fontSize: 11.5, fontWeight: 900, cursor: "pointer" }}>Çözüldü olarak işaretle</button> : null}</div>)}</div>
+                </article>
+              </div> : null}
+            </section>
+          ) : null}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginTop: 14 }}>
             {[["🔒","Kontrollü Erişim","Rol ve yetkiye göre görünürlük"],["🧠","Açıklanabilir AI","Kararın nedenleri izlenebilir"],["🇹🇷","Türkiye Veri Motoru","Bölgesel karar altyapısı"],["📄","Kurumsal PDF","Standart ve doğrulanabilir rapor"],["🛡️","KVKK Yaklaşımı","Veri minimizasyonu ve kayıt disiplini"]].map(([icon,title,text]) => <article key={title} style={{ padding: 15, borderRadius: 16, border: "1px solid #dce8f3", background: "linear-gradient(145deg,#fff,#f8fbfe)" }}><span style={{ fontSize: 21 }}>{icon}</span><strong style={{ display: "block", color: "#153a65", marginTop: 7, fontSize: 12 }}>{title}</strong><span style={{ display: "block", color: "#74899e", marginTop: 3, fontSize: 11, lineHeight: 1.4 }}>{text}</span></article>)}
