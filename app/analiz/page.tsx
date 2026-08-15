@@ -3408,6 +3408,32 @@ type TrustQualityCheck = {
   resolved_at: string | null;
 };
 
+
+type SubscriptionProfile = {
+  id: string;
+  user_id: string;
+  plan: "standard" | "premium" | "gold";
+  billing_cycle: "monthly" | "yearly";
+  status: "trial" | "active" | "past_due" | "cancelled" | "paused";
+  current_period_start: string;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  payment_provider: string | null;
+  provider_customer_ref: string | null;
+  provider_subscription_ref: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type SubscriptionUsage = {
+  id: string;
+  user_id: string;
+  month_key: string;
+  metric_key: "analysis" | "ai_search" | "pdf" | "listing_publish" | "team_member";
+  usage_count: number;
+  updated_at: string;
+};
+
 function StrategicExpansionCenter({
   records,
   regionalData,
@@ -3466,6 +3492,11 @@ function StrategicExpansionCenter({
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
   const [membershipNotice, setMembershipNotice] = useState("");
   const [monthlyAnalysisNeed, setMonthlyAnalysisNeed] = useState(24);
+  const [subscriptionReady, setSubscriptionReady] = useState<boolean | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [subscriptionSaving, setSubscriptionSaving] = useState(false);
+  const [subscriptionProfile, setSubscriptionProfile] = useState<SubscriptionProfile | null>(null);
+  const [subscriptionUsage, setSubscriptionUsage] = useState<SubscriptionUsage[]>([]);
   const [pdfRecordId, setPdfRecordId] = useState("");
   const [pdfAudience, setPdfAudience] = useState<"investor" | "bank" | "customer">("investor");
   const [pdfNotice, setPdfNotice] = useState("");
@@ -3875,6 +3906,13 @@ function StrategicExpansionCenter({
   useEffect(() => {
     void loadTrustCenter();
     // Türkiye Veri & Güven katmanı oturum değiştiğinde RLS üzerinden yeniden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+
+  useEffect(() => {
+    void loadSubscriptionCenter();
+    // Üyelik profili ve kullanım sayaçları oturum değiştiğinde yeniden okunur.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -5423,6 +5461,78 @@ KURALLAR
     }
   }
 
+
+  async function loadSubscriptionCenter() {
+    if (!user) {
+      setSubscriptionProfile(null);
+      setSubscriptionUsage([]);
+      setSubscriptionReady(null);
+      return;
+    }
+    setSubscriptionLoading(true);
+    const month = new Date().toISOString().slice(0, 7);
+    const [profileRes, usageRes] = await Promise.all([
+      supabase.from("subscription_profiles").select("*").eq("user_id", user.id).maybeSingle(),
+      supabase.from("subscription_usage").select("*").eq("user_id", user.id).eq("month_key", month),
+    ]);
+    const error = profileRes.error || usageRes.error;
+    if (error) {
+      const missing = /subscription_profiles|subscription_usage|relation .* does not exist|schema cache/i.test(error.message);
+      setSubscriptionReady(missing ? false : null);
+      if (!missing) setMembershipNotice(`Üyelik merkezi okunamadı: ${error.message}`);
+      setSubscriptionProfile(null);
+      setSubscriptionUsage([]);
+    } else {
+      setSubscriptionReady(true);
+      setSubscriptionProfile((profileRes.data ?? null) as SubscriptionProfile | null);
+      setSubscriptionUsage((usageRes.data ?? []) as SubscriptionUsage[]);
+      if (profileRes.data?.plan) {
+        setMembershipPlan(profileRes.data.plan as "standard" | "premium" | "gold");
+        setBillingCycle(profileRes.data.billing_cycle as "monthly" | "yearly");
+      }
+    }
+    setSubscriptionLoading(false);
+  }
+
+  async function saveSubscriptionSelection(plan: "standard" | "premium" | "gold") {
+    if (!user) {
+      setMembershipNotice("Plan seçimi için oturum açmış kullanıcı gerekli.");
+      return;
+    }
+    setSubscriptionSaving(true);
+    const now = new Date();
+    const periodEnd = new Date(now);
+    if (billingCycle === "yearly") periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+    else periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+    const { data, error } = await supabase.from("subscription_profiles").upsert({
+      user_id: user.id,
+      plan,
+      billing_cycle: billingCycle,
+      status: plan === "standard" ? "active" : "trial",
+      current_period_start: now.toISOString(),
+      current_period_end: periodEnd.toISOString(),
+      cancel_at_period_end: false,
+      payment_provider: null,
+      provider_customer_ref: null,
+      provider_subscription_ref: null,
+      updated_at: now.toISOString(),
+    }, { onConflict: "user_id" }).select("*").single();
+
+    if (error) {
+      setMembershipNotice(`Plan tercihi kaydedilemedi: ${error.message}`);
+    } else {
+      setSubscriptionProfile(data as SubscriptionProfile);
+      setMembershipPlan(plan);
+      setMembershipNotice(
+        plan === "standard"
+          ? "Standart plan aktif edildi."
+          : `${plan === "premium" ? "Premium" : "Gold Elite"} tercihi kaydedildi. Ödeme sağlayıcısı henüz bağlı olmadığı için ücret tahsil edilmedi; durum deneme/ön hazırlık olarak tutuluyor.`
+      );
+    }
+    setSubscriptionSaving(false);
+  }
+
   async function openListingInquiry(inquiry: ListingInquiry) {
     setSelectedInquiryId(inquiry.id);
     setListingLeadAiResult("");
@@ -6631,6 +6741,49 @@ ${currentText}`
       highDisagreementRows, consensusCoverage, freshnessCoverage, dataReadinessScore, alerts,
     };
   }, [trustSources, trustObservations, trustChecks, selectedTrustSourceId]);
+
+
+  const subscriptionIntelligence = useMemo(() => {
+    const effectivePlan = subscriptionProfile?.plan || membershipPlan;
+    const limits = effectivePlan === "gold"
+      ? { analysis: Infinity, ai_search: Infinity, pdf: Infinity, listing_publish: Infinity, team_member: 25 }
+      : effectivePlan === "premium"
+        ? { analysis: 100, ai_search: 100, pdf: 50, listing_publish: 30, team_member: 1 }
+        : { analysis: 3, ai_search: 5, pdf: 1, listing_publish: 1, team_member: 1 };
+
+    const usageMap = Object.fromEntries(subscriptionUsage.map((row) => [row.metric_key, Number(row.usage_count || 0)]));
+    const metrics = ([
+      ["analysis","AI Analizi"],
+      ["ai_search","AI Karar Arama"],
+      ["pdf","PDF Rapor"],
+      ["listing_publish","İlan Yayını"],
+      ["team_member","Ekip Üyesi"],
+    ] as const).map(([key,label]) => {
+      const used = Number(usageMap[key] || 0);
+      const limit = limits[key];
+      const unlimited = !Number.isFinite(limit);
+      const percent = unlimited ? 0 : Math.max(0, Math.min(100, Math.round((used / Math.max(1, Number(limit))) * 100)));
+      return { key, label, used, limit, unlimited, percent };
+    });
+
+    const planLabels = { standard: "Standart", premium: "Premium", gold: "Gold Elite" } as const;
+    const statusLabel = subscriptionProfile?.status === "active" ? "Aktif" : subscriptionProfile?.status === "trial" ? "Deneme / Ön Hazırlık" : subscriptionProfile?.status === "past_due" ? "Ödeme Bekliyor" : subscriptionProfile?.status === "cancelled" ? "İptal" : subscriptionProfile?.status === "paused" ? "Duraklatıldı" : "Yerel Önizleme";
+    const paymentConnected = Boolean(subscriptionProfile?.payment_provider && subscriptionProfile?.provider_subscription_ref);
+    const daysRemaining = subscriptionProfile?.current_period_end
+      ? Math.max(0, Math.ceil((new Date(subscriptionProfile.current_period_end).getTime() - Date.now()) / 86400000))
+      : null;
+
+    const entitlements = {
+      explainableAi: true,
+      naturalLanguageSearch: effectivePlan !== "standard",
+      premiumPdf: effectivePlan !== "standard",
+      professionalCenters: effectivePlan === "gold",
+      teamRoles: effectivePlan === "gold",
+      advancedTrust: effectivePlan !== "standard",
+    };
+
+    return { effectivePlan, limits, metrics, planLabels, statusLabel, paymentConnected, daysRemaining, entitlements };
+  }, [subscriptionProfile, subscriptionUsage, membershipPlan]);
 
   const [bankScenario, setBankScenario] = useState<"balanced" | "conservative" | "growth">("balanced");
   const [bankQueueFilter, setBankQueueFilter] = useState<"all" | "urgent" | "review">("all");
@@ -8216,14 +8369,64 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
           </article>
 
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 9, margin: "-4px 0 16px" }}>
-            {["✦ Açıklanabilir AI", "▣ Profesyonel PDF", "🇹🇷 Türkiye Veri Motoru", "🔒 Güvenli abonelik altyapısı", "◈ Kurumsal kullanıma hazır"].map((item) => <span key={item} className="membership-proof-chip" style={{ padding: "9px 13px", borderRadius: 999, background: "linear-gradient(145deg,#ffffff,#f4f9fd)", border: "1px solid #dbe7f3", boxShadow: "0 8px 20px rgba(31,64,97,.06)", color: "#34536f", fontSize: 11, fontWeight: 900 }}>{item}</span>)}
+            {["✦ Açıklanabilir AI", "▣ Profesyonel PDF", "🇹🇷 Türkiye Veri Motoru", "🔒 Abonelik yetki altyapısı", "◈ Kurumsal kullanıma hazır"].map((item) => <span key={item} className="membership-proof-chip" style={{ padding: "9px 13px", borderRadius: 999, background: "linear-gradient(145deg,#ffffff,#f4f9fd)", border: "1px solid #dbe7f3", boxShadow: "0 8px 20px rgba(31,64,97,.06)", color: "#34536f", fontSize: 11, fontWeight: 900 }}>{item}</span>)}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 10, marginBottom: 16 }}>
             {[["📊 Kayıtlı analiz", String(active.length), "Canlı proje verisi"],["📄 PDF raporu", String(records.length), "Rapor merkezine hazır"],["🇹🇷 Bölgesel veri", String(regionalData.length), "Türkiye Veri Motoru"],["✦ Aktif plan", membershipPlan === "standard" ? "Standart" : membershipPlan === "premium" ? "Premium" : "Gold Elite", "Üyelik durumu"]].map(([label,value,caption],i) => <article key={label} className="membership-stat-card" style={{ position: "relative", overflow: "hidden", padding: 17, borderRadius: 19, border: i === 3 ? "1px solid #ead49c" : "1px solid #dbe7f3", background: i === 3 ? "linear-gradient(135deg,#fff7dc,#fffdf7)" : "linear-gradient(145deg,#ffffff,#f5faff)", boxShadow: "0 10px 26px rgba(31,64,97,.07)" }}><div style={{ position: "absolute", width: 82, height: 82, borderRadius: "50%", right: -28, top: -32, background: i === 3 ? "rgba(226,177,54,.14)" : "rgba(8,118,201,.09)" }} /><div style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><span style={{ color: "#74899e", fontSize: 11, fontWeight: 900 }}>{label}</span><span style={{ padding: "4px 7px", borderRadius: 999, background: i === 3 ? "#fff1bf" : "#eaf6ff", color: i === 3 ? "#8b6512" : "#0876c9", fontSize: 9, fontWeight: 950 }}>CANLI</span></div><strong style={{ position: "relative", display: "block", marginTop: 7, color: i === 3 ? "#8b6512" : "#153a65", fontSize: 26, letterSpacing: "-.4px" }}>{value}</strong><span style={{ position: "relative", display: "block", marginTop: 4, color: "#91a2b2", fontSize: 10 }}>{caption}</span><div style={{ position: "relative", height: 3, borderRadius: 99, marginTop: 12, background: "#e8f0f6", overflow: "hidden" }}><div style={{ width: i === 0 ? "68%" : i === 1 ? "54%" : i === 2 ? "76%" : "100%", height: "100%", borderRadius: 99, background: i === 3 ? "linear-gradient(90deg,#c99a35,#f6d780)" : "linear-gradient(90deg,#0876c9,#32b5ff)" }} /></div></article>)}
           </div>
 
+          <article style={{ padding: 18, marginBottom: 16, borderRadius: 21, border: "1px solid #dbe7f3", background: "linear-gradient(145deg,#ffffff,#f5fafc)", boxShadow: "0 12px 30px rgba(31,64,97,.07)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ ...eyebrow, color: "#0f8065" }}>ABONELİK OPERASYON MERKEZİ</div>
+                <h3 style={{ margin: "6px 0 4px", color: "#153a65", fontSize: 21 }}>Plan, yetki ve kullanım limitleri tek ekranda</h3>
+                <p style={{ margin: 0, color: "#52697a", fontSize: 13, lineHeight: 1.55 }}>Bu katman gerçek üyelik kaydını ve kullanım sayaçlarını yönetir. Ödeme sağlayıcısı bağlanana kadar Premium/Gold seçimleri ücret tahsil etmez.</p>
+              </div>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <span style={{ ...secureBadge, background: subscriptionReady === true ? "#eef9f5" : "#fff6e6", color: subscriptionReady === true ? "#087b5e" : "#8a681d", borderColor: subscriptionReady === true ? "#cce7dc" : "#ead7a7" }}>{subscriptionReady === true ? "Üyelik DB canlı" : subscriptionReady === false ? "SQL kurulumu gerekli" : "Kontrol ediliyor"}</span>
+                <span style={{ ...secureBadge, background: subscriptionIntelligence.paymentConnected ? "#eef9f5" : "#f5f7f9", color: subscriptionIntelligence.paymentConnected ? "#087b5e" : "#607890", borderColor: subscriptionIntelligence.paymentConnected ? "#cce7dc" : "#dbe3e9" }}>{subscriptionIntelligence.paymentConnected ? "Ödeme sağlayıcı bağlı" : "Ödeme sağlayıcı bağlı değil"}</span>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 13 }}>
+              {[
+                ["AKTİF PLAN", subscriptionIntelligence.planLabels[subscriptionIntelligence.effectivePlan]],
+                ["DURUM", subscriptionIntelligence.statusLabel],
+                ["DÖNEM", billingCycle === "yearly" ? "Yıllık" : "Aylık"],
+                ["KALAN GÜN", subscriptionIntelligence.daysRemaining == null ? "—" : subscriptionIntelligence.daysRemaining],
+              ].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 13, background: "#f8fbfd", border: "1px solid #e0e9ef" }}><span style={{ color: "#52697a", fontSize: 11.5, fontWeight: 900 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: "#153a65", fontSize: 14 }}>{String(value)}</strong></div>)}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginTop: 10 }}>
+              {subscriptionIntelligence.metrics.map((metric) => <div key={metric.key} style={{ padding: 11, borderRadius: 13, background: "#fff", border: "1px solid #e0e9ef" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: "#52697a", fontSize: 11.5, fontWeight: 900 }}><span>{metric.label}</span><strong style={{ color: "#153a65" }}>{metric.used} / {metric.unlimited ? "∞" : metric.limit}</strong></div>
+                <div style={{ height: 7, marginTop: 7, borderRadius: 999, background: "#e8eef2", overflow: "hidden" }}><div style={{ height: "100%", width: metric.unlimited ? "16%" : `${metric.percent}%`, borderRadius: 999, background: metric.percent >= 90 ? "#b24d34" : metric.percent >= 70 ? "#c18a24" : "#0f8065" }} /></div>
+              </div>)}
+            </div>
+          </article>
+
           {membershipNotice ? <div style={{ ...locationInfoBox, marginBottom: 14, border: "1px solid #b9dcf7", background: "linear-gradient(90deg,#f5fbff,#eef8ff)" }}>{membershipNotice}</div> : null}
+
+          <article style={{ marginBottom: 16, padding: 18, borderRadius: 20, border: "1px solid #dbe7f3", background: "#fff" }}>
+            <div style={{ ...eyebrow, color: "#0b6f9c" }}>YETKİ MATRİSİ</div>
+            <h3 style={{ margin: "6px 0 10px", color: "#153a65", fontSize: 20 }}>Plan gerçekten neyi açıyor?</h3>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 650 }}>
+                <thead><tr>{["Özellik","Standart","Premium","Gold Elite"].map((title) => <th key={title} style={{ padding: 10, textAlign: title==="Özellik" ? "left" : "center", color: "#52697a", fontSize: 12, borderBottom: "1px solid #dbe7f3" }}>{title}</th>)}</tr></thead>
+                <tbody>
+                  {[
+                    ["Temel AI analiz","✓","✓","✓"],
+                    ["Doğal dil karar araması","Sınırlı","✓","✓"],
+                    ["Premium PDF","1/ay","50/ay","Sınırsız"],
+                    ["Türkiye Veri & Güven","Temel","Gelişmiş","Gelişmiş"],
+                    ["Emlak Ofisi / Müteahhit / Teknik merkez","—","—","✓"],
+                    ["Ekip ve rol yönetimi","—","—","✓"],
+                  ].map((row) => <tr key={row[0]}>{row.map((cell,index) => <td key={`${row[0]}-${index}`} style={{ padding: 10, textAlign: index===0 ? "left" : "center", color: index===0 ? "#34556c" : cell==="✓" ? "#087b5e" : "#607890", fontSize: 12.5, fontWeight: index===0 ? 850 : 900, borderBottom: "1px solid #eef2f5" }}>{cell}</td>)}</tr>)}
+                </tbody>
+              </table>
+            </div>
+          </article>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(285px,1fr))", gap: 18, alignItems: "stretch" }}>
             {[
@@ -8245,8 +8448,8 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                   <div style={{ minHeight: 24, color: plan.id === "gold" ? "#f1d98f" : plan.id === "premium" ? "#9fddff" : "#238a62", fontSize: 11, fontWeight: 900 }}>{billingCycle === "yearly" && amount > 0 ? `Aylık karşılığı yaklaşık ${monthlyEquivalent.toLocaleString("tr-TR")} TL` : amount > 0 ? "İstediğiniz zaman plan değiştirin" : "Kredi kartı gerekmez"}</div>
                   <div style={{ marginTop: 16, padding: 13, borderRadius: 15, background: plan.id === "standard" ? "#f1f5f8" : "rgba(255,255,255,.08)", border: `1px solid ${plan.id === "standard" ? "#dce5ed" : "rgba(255,255,255,.12)"}` }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 900 }}><span>AI GÜÇ SEVİYESİ</span><span style={{ color: plan.accent }}>%{plan.power}</span></div><div style={{ height: 8, marginTop: 8, background: plan.id === "standard" ? "#dfe7ee" : "rgba(255,255,255,.12)", borderRadius: 999, overflow: "hidden" }}><div style={{ height: "100%", width: `${plan.power}%`, borderRadius: 999, background: plan.id === "gold" ? "linear-gradient(90deg,#a87719,#ffe49a)" : plan.id === "premium" ? "linear-gradient(90deg,#23a8ff,#9fe2ff)" : "linear-gradient(90deg,#7e91a3,#a9b8c5)" }} /></div></div>
                   <div className="membership-feature-list" style={{ display: "grid", alignContent: "start", gap: 10, marginTop: 18 }}>{plan.items.map((item) => <div key={item} style={{ display: "flex", gap: 9, alignItems: "flex-start", color: plan.muted, fontSize: 13, lineHeight: 1.35 }}><span style={{ width: 20, height: 20, borderRadius: 999, display: "grid", placeItems: "center", flex: "0 0 auto", background: plan.id === "standard" ? "#eaf0f5" : "rgba(255,255,255,.10)", color: plan.accent, fontWeight: 950 }}>✓</span><span>{item}</span></div>)}</div>
-                  <button className="membership-cta" type="button" onClick={() => { setMembershipPlan(plan.id); setMembershipNotice(plan.id === "standard" ? "Standart plan seçildi." : `${plan.name} seçildi. Canlı ödeme bağlantısı açıldığında güvenli ödeme adımına yönlendirileceksiniz.`); }} style={{ width: "100%", marginTop: 21, padding: "13px 15px", border: 0, borderRadius: 14, cursor: "pointer", fontWeight: 950, color: plan.id === "standard" ? "#153a65" : plan.id === "gold" ? "#1b1609" : "#06406c", background: selected ? plan.id === "gold" ? "linear-gradient(90deg,#d8a83e,#ffe39a)" : plan.id === "premium" ? "linear-gradient(90deg,#e7f7ff,#fff)" : "#e8eef3" : plan.id === "gold" ? "linear-gradient(90deg,#c99a35,#f6d780)" : plan.id === "premium" ? "#fff" : "#eef3f7", boxShadow: plan.id === "gold" ? "0 10px 25px rgba(235,190,83,.22)" : plan.id === "premium" ? "0 10px 25px rgba(0,0,0,.18)" : "none" }}>{selected ? "✓ Aktif Plan" : plan.id === "standard" ? "Ücretsiz Başla" : `${plan.name}'a Geç`}</button>
-                  <div style={{ marginTop: 11, textAlign: "center", fontSize: 10, color: plan.muted }}>Kart bilgileri Yaşam AI sunucularında saklanmaz.</div>
+                  <button className="membership-cta" type="button" onClick={() => void saveSubscriptionSelection(plan.id)} disabled={subscriptionSaving} style={{ width: "100%", marginTop: 21, padding: "13px 15px", border: 0, borderRadius: 14, cursor: "pointer", fontWeight: 950, color: plan.id === "standard" ? "#153a65" : plan.id === "gold" ? "#1b1609" : "#06406c", background: selected ? plan.id === "gold" ? "linear-gradient(90deg,#d8a83e,#ffe39a)" : plan.id === "premium" ? "linear-gradient(90deg,#e7f7ff,#fff)" : "#e8eef3" : plan.id === "gold" ? "linear-gradient(90deg,#c99a35,#f6d780)" : plan.id === "premium" ? "#fff" : "#eef3f7", boxShadow: plan.id === "gold" ? "0 10px 25px rgba(235,190,83,.22)" : plan.id === "premium" ? "0 10px 25px rgba(0,0,0,.18)" : "none" }}>{selected ? "✓ Aktif Plan" : plan.id === "standard" ? "Ücretsiz Başla" : `${plan.name}'a Geç`}</button>
+                  <div style={{ marginTop: 11, textAlign: "center", fontSize: 10, color: plan.muted }}>Ödeme sağlayıcısı bağlanana kadar kart bilgisi istenmez veya işlenmez.</div>
                 </div>
               </article>;
             })}
