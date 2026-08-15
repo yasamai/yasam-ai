@@ -1719,6 +1719,7 @@ KRİTİK UYARI: kararı değiştirebilecek en önemli eksik veri veya risk; yoks
               ["Ana Merkez", "⌂", "Kontrol Paneli", "command", "", "#0d5bd7"],
               ["AI Analiz", "✦", "Akıllı Analiz", "ai", "", "#7a35cf"],
               ["Türkiye", "◉", "81 İl Veri Motoru", "market", "", "#039bc1"],
+              ["İlanlar", "⌂", "Türkiye Gayrimenkul Pazarı", "listings", "", "#ff6b35"],
               ["Banka", "▥", "Finans Merkezi", "enterprise", "bank", "#16a05d"],
               ["Projeler", "▰", "Proje Yönetimi", "enterprise", "developer", "#e89413"],
               ["Portföy", "◔", "Yatırım Portföyü", "enterprise", "investor", "#c42679"],
@@ -2655,7 +2656,7 @@ KRİTİK UYARI: kararı değiştirebilecek en önemli eksik veri veya risk; yoks
         ) : null}
 
         {view === "ecosystem" ? (
-          <StrategicExpansionCenter records={records} regionalData={regionalData} />
+          <StrategicExpansionCenter records={records} regionalData={regionalData} user={user} />
         ) : null}
 
         {view === "new" ? (
@@ -3057,14 +3058,49 @@ function VerificationCenter({
 }
 
 
+type MarketplaceDraft = {
+  id: string;
+  title: string;
+  city: string;
+  district: string;
+  neighborhood: string;
+  propertyType: string;
+  transaction: "Satılık" | "Kiralık";
+  price: string;
+  area: string;
+  description?: string;
+  createdAt: string;
+};
+
+type LiveListing = {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  city: string;
+  district: string | null;
+  neighborhood: string | null;
+  property_type: string;
+  transaction_type: "Satılık" | "Kiralık";
+  price: number;
+  area_m2: number | null;
+  status: "draft" | "published" | "paused" | "sold" | "rented" | "archived";
+  verification_status: "unverified" | "pending" | "verified" | "rejected";
+  media: string[] | null;
+  created_at: string;
+  updated_at: string;
+};
+
 function StrategicExpansionCenter({
   records,
   regionalData,
+  user,
 }: {
   records: CloudRecord[];
   regionalData: RegionalDataRecord[];
+  user: User | null;
 }) {
-  const [section, setSection] = useState<"command" | "roadmap" | "ai" | "market" | "admin" | "membership" | "pdf" | "enterprise" | "crm" | "project">("command");
+  const [section, setSection] = useState<"command" | "roadmap" | "ai" | "market" | "listings" | "admin" | "membership" | "pdf" | "enterprise" | "crm" | "project">("command");
   const [aiRecordId, setAiRecordId] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -3112,13 +3148,32 @@ function StrategicExpansionCenter({
   const [pdfAudience, setPdfAudience] = useState<"investor" | "bank" | "customer">("investor");
   const [pdfNotice, setPdfNotice] = useState("");
   const [enterpriseRole, setEnterpriseRole] = useState<"bank" | "valuation" | "developer" | "agency" | "technical" | "investor">("bank");
+  const [listingQuery, setListingQuery] = useState("");
+  const [listingTransaction, setListingTransaction] = useState<"Tümü" | "Satılık" | "Kiralık">("Tümü");
+  const [listingPropertyType, setListingPropertyType] = useState("Tümü");
+  const [listingSort, setListingSort] = useState<"ai" | "priceLow" | "priceHigh">("ai");
+  const [listingNotice, setListingNotice] = useState("");
+  const [listingDrafts, setListingDrafts] = useState<MarketplaceDraft[]>([]);
+  const [listingDraft, setListingDraft] = useState<MarketplaceDraft>({
+    id: "", title: "", city: "", district: "", neighborhood: "", propertyType: "Konut", transaction: "Satılık", price: "", area: "", description: "", createdAt: "",
+  });
+  const [liveListings, setLiveListings] = useState<LiveListing[]>([]);
+  const [listingLoading, setListingLoading] = useState(false);
+  const [listingSaving, setListingSaving] = useState(false);
+  const [listingBackendReady, setListingBackendReady] = useState<boolean | null>(null);
+  const [listingFiles, setListingFiles] = useState<File[]>([]);
+  const [listingAiMode, setListingAiMode] = useState<"correct" | "enrich" | "short" | "premium">("enrich");
+  const [listingAiLoading, setListingAiLoading] = useState(false);
+  const [listingAiSuggestion, setListingAiSuggestion] = useState("");
+  const [selectedListingId, setSelectedListingId] = useState("");
+
 
 
   useEffect(() => {
     const handleModuleNavigation = (event: Event) => {
       const detail = (event as CustomEvent<{ section?: string; role?: string }>).detail;
       if (!detail?.section) return;
-      const allowedSections = ["command", "roadmap", "ai", "market", "admin", "membership", "pdf", "enterprise", "crm", "project"];
+      const allowedSections = ["command", "roadmap", "ai", "market", "listings", "admin", "membership", "pdf", "enterprise", "crm", "project"];
       if (allowedSections.includes(detail.section)) setSection(detail.section as typeof section);
       if (["bank", "valuation", "developer", "agency", "technical", "investor"].includes(detail.role || "")) {
         setEnterpriseRole(detail.role as typeof enterpriseRole);
@@ -3127,6 +3182,245 @@ function StrategicExpansionCenter({
     window.addEventListener("yasam-module-nav", handleModuleNavigation as EventListener);
     return () => window.removeEventListener("yasam-module-nav", handleModuleNavigation as EventListener);
   }, []);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("yasam-ai:listing-drafts:v1");
+      if (raw) {
+        const parsed = JSON.parse(raw) as MarketplaceDraft[];
+        if (Array.isArray(parsed)) setListingDrafts(parsed);
+      }
+    } catch {
+      // İlan taslakları yardımcı bir yerel özelliktir; bozuk kayıt sayfayı durdurmaz.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLiveListings();
+    // Kullanıcı değiştiğinde kendi taslak/yayın kayıtları RLS üzerinden yeniden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  async function loadLiveListings() {
+    setListingLoading(true);
+    const { data, error: listingsError } = await supabase
+      .from("listings")
+      .select("id,user_id,title,description,city,district,neighborhood,property_type,transaction_type,price,area_m2,status,verification_status,media,created_at,updated_at")
+      .order("created_at", { ascending: false })
+      .limit(250);
+
+    if (listingsError) {
+      const missingTable = /relation .*listings.* does not exist|Could not find the table|schema cache/i.test(listingsError.message);
+      setListingBackendReady(missingTable ? false : null);
+      if (!missingTable) setListingNotice(`Canlı ilan servisi okunamadı: ${listingsError.message}`);
+      setLiveListings([]);
+    } else {
+      setListingBackendReady(true);
+      setLiveListings((data ?? []) as LiveListing[]);
+    }
+    setListingLoading(false);
+  }
+
+  function listingImageUrl(path: string | undefined) {
+    if (!path) return "";
+    return supabase.storage.from("listing-media").getPublicUrl(path).data.publicUrl;
+  }
+
+  async function uploadListingMedia(listingId: string, files: File[]) {
+    if (!user || !files.length) return [] as string[];
+    const uploaded: string[] = [];
+    for (const file of files.slice(0, 12)) {
+      if (!file.type.startsWith("image/")) continue;
+      if (file.size > 8 * 1024 * 1024) throw new Error(`${file.name} 8 MB sınırını aşıyor.`);
+      const extension = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+      const path = `${user.id}/${listingId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from("listing-media").upload(path, file, { upsert: false, contentType: file.type });
+      if (uploadError) throw uploadError;
+      uploaded.push(path);
+    }
+    return uploaded;
+  }
+
+  async function generateListingAiDescription(mode: "correct" | "enrich" | "short" | "premium" = listingAiMode) {
+    const currentText = (listingDraft.description || "").trim();
+    if (!currentText) {
+      setListingNotice("Önce kendi ilan açıklamanızı birkaç cümleyle yazın; AI yalnızca verdiğiniz bilgileri düzenler ve zenginleştirir.");
+      return;
+    }
+    setListingAiLoading(true);
+    setListingAiSuggestion("");
+    setListingNotice("");
+    const modeInstruction = mode === "correct"
+      ? "Yalnızca yazım, noktalama ve anlatım bozukluklarını düzelt; anlamı ve bilgileri değiştirme."
+      : mode === "short"
+        ? "Metni daha kısa, taranabilir ve güçlü hale getir; önemli bilgileri koru."
+        : mode === "premium"
+          ? "Metni premium ve güven veren bir emlak ilanı diline dönüştür; abartı, kesin vaat ve uydurma özellik kullanma."
+          : "Metni profesyonel, akıcı ve satışa yardımcı hale getir; verilen özellikleri öne çıkar ama yeni özellik uydurma.";
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `Sen Yaşam AI İlan Asistanı'sın. Kullanıcının yazdığı gayrimenkul ilan açıklamasını iyileştireceksin.
+
+KATI KURALLAR
+- Kullanıcının vermediği hiçbir özelliği, oda sayısını, manzarayı, otoparkı, site özelliğini, tapu durumunu, ulaşım avantajını veya teknik bilgiyi UYDURMA.
+- Kesin yatırım getirisi, garanti satış, garanti kira, hukuki uygunluk veya ekspertiz sonucu iddia etme.
+- Türkçe yaz.
+- İlan platformuna uygun, doğal, güvenilir ve kolay okunur ol.
+- Çıktıda sadece nihai ilan açıklamasını ver; başlık, açıklama veya not etiketi ekleme.
+
+GÖREV
+${modeInstruction}
+
+İLAN BİLGİLERİ
+Başlık: ${listingDraft.title || "Belirtilmedi"}
+Konum: ${[listingDraft.city, listingDraft.district, listingDraft.neighborhood].filter(Boolean).join(" / ") || "Belirtilmedi"}
+Tür: ${listingDraft.propertyType}
+İşlem: ${listingDraft.transaction}
+Fiyat: ${listingDraft.price || "Belirtilmedi"}
+Alan: ${listingDraft.area || "Belirtilmedi"} m²
+
+KULLANICININ METNİ
+${currentText}`
+        }),
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) throw new Error(extractText(data) || "AI ilan açıklaması üretilemedi.");
+      const text = extractText(data).trim();
+      if (!text) throw new Error("AI açıklaması boş geldi.");
+      setListingAiMode(mode);
+      setListingAiSuggestion(text);
+    } catch (aiError) {
+      setListingNotice(aiError instanceof Error ? `AI açıklama asistanı: ${aiError.message}` : "AI açıklama asistanı çalıştırılamadı.");
+    } finally {
+      setListingAiLoading(false);
+    }
+  }
+
+  async function saveLiveListing(status: "draft" | "published") {
+    if (!user) { setListingNotice("İlan kaydetmek için oturum açık olmalıdır."); return; }
+    if (!listingDraft.title.trim() || !listingDraft.city.trim() || !listingDraft.district.trim() || !listingDraft.price.trim() || !listingDraft.area.trim()) {
+      setListingNotice("Canlı ilan için başlık, il, ilçe, fiyat ve m² alanlarını doldurun."); return;
+    }
+    if (listingBackendReady === false) { setListingNotice("Önce Supabase ilan migration dosyasını çalıştırın. Veritabanı hazır değil."); return; }
+    setListingSaving(true); setListingNotice("");
+    try {
+      const payload = {
+        user_id: user.id, title: listingDraft.title.trim(), description: listingDraft.description?.trim() || null,
+        city: listingDraft.city.trim(), district: listingDraft.district.trim() || null, neighborhood: listingDraft.neighborhood.trim() || null,
+        property_type: listingDraft.propertyType, transaction_type: listingDraft.transaction,
+        price: Math.round(parseMoney(listingDraft.price)), area_m2: parseNumeric(listingDraft.area) || null,
+        status, verification_status: "unverified",
+      };
+      const { data: inserted, error: insertError } = await supabase.from("listings").insert(payload).select("id").single();
+      if (insertError) throw insertError;
+      const media = inserted?.id ? await uploadListingMedia(inserted.id, listingFiles) : [];
+      if (inserted?.id && media.length) {
+        const { error: mediaError } = await supabase.from("listings").update({ media }).eq("id", inserted.id).eq("user_id", user.id);
+        if (mediaError) throw mediaError;
+      }
+      setListingDraft({ id: "", title: "", city: "", district: "", neighborhood: "", propertyType: "Konut", transaction: "Satılık", price: "", area: "", description: "", createdAt: "" });
+      setListingFiles([]);
+      setListingAiSuggestion("");
+      setListingNotice(status === "published" ? "İlan yayına alındı ve Türkiye pazar akışına eklendi." : "İlan Supabase üzerinde taslak olarak kaydedildi.");
+      await loadLiveListings();
+    } catch (saveError) { setListingNotice(saveError instanceof Error ? `İlan kaydedilemedi: ${saveError.message}` : "İlan kaydedilemedi."); }
+    finally { setListingSaving(false); }
+  }
+
+  async function changeLiveListingStatus(id: string, status: LiveListing["status"]) {
+    if (!user) return;
+    setListingSaving(true);
+    const { error: updateError } = await supabase.from("listings").update({ status }).eq("id", id).eq("user_id", user.id);
+    if (updateError) setListingNotice(`İlan durumu değiştirilemedi: ${updateError.message}`);
+    else { setListingNotice(status === "published" ? "İlan yeniden yayına alındı." : status === "paused" ? "İlan yayını durduruldu." : "İlan durumu güncellendi."); await loadLiveListings(); }
+    setListingSaving(false);
+  }
+
+  async function deleteLiveListing(id: string) {
+    if (!user || !window.confirm("Bu ilan kalıcı olarak silinsin mi?")) return;
+    setListingSaving(true);
+    const { error: deleteError } = await supabase.from("listings").delete().eq("id", id).eq("user_id", user.id);
+    if (deleteError) setListingNotice(`İlan silinemedi: ${deleteError.message}`);
+    else { setListingNotice("İlan silindi."); await loadLiveListings(); }
+    setListingSaving(false);
+  }
+
+  function saveMarketplaceDraft() {
+    if (!listingDraft.title.trim() || !listingDraft.city.trim() || !listingDraft.price.trim()) {
+      setListingNotice("Taslak için başlık, il ve fiyat alanlarını doldurun.");
+      return;
+    }
+    const next: MarketplaceDraft = {
+      ...listingDraft,
+      id: `draft-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    const nextDrafts = [next, ...listingDrafts];
+    setListingDrafts(nextDrafts);
+    try { window.localStorage.setItem("yasam-ai:listing-drafts:v1", JSON.stringify(nextDrafts)); } catch {}
+    setListingDraft({ id: "", title: "", city: "", district: "", neighborhood: "", propertyType: "Konut", transaction: "Satılık", price: "", area: "", description: "", createdAt: "" });
+    setListingNotice("İlan taslağı kaydedildi. Bu aşamada taslak yalnızca bu cihazda tutulur; halka açık yayın yapılmaz.");
+  }
+
+  function deleteMarketplaceDraft(id: string) {
+    const nextDrafts = listingDrafts.filter((item) => item.id !== id);
+    setListingDrafts(nextDrafts);
+    try { window.localStorage.setItem("yasam-ai:listing-drafts:v1", JSON.stringify(nextDrafts)); } catch {}
+  }
+
+  const marketplaceAnalysisItems = useMemo(() => records.filter((item) => !item.is_archived).map((item) => {
+    const scores = scoresFromReport(item.report ?? "");
+    const price = parseMoney(item.asking_price);
+    const area = parseNumeric(item.area);
+    const priceM2 = price > 0 && area > 0 ? Math.round(price / area) : 0;
+    const decision = (item.decision || decisionFromReport(item.report ?? "") || "BEKLE").toLocaleUpperCase("tr-TR");
+    const aiRank = (scores.opportunity ?? 0) * .34 + (scores.investment ?? 0) * .30 + (scores.trust ?? 0) * .22 + (scores.liquidity ?? 0) * .14 - (scores.risk ?? 50) * .18;
+    return { item, scores, price, area, priceM2, decision, aiRank };
+  }), [records]);
+
+  const marketplacePropertyTypes = useMemo(() => Array.from(new Set([
+    ...marketplaceAnalysisItems.map((entry) => entry.item.property_type || "Gayrimenkul"),
+    ...listingDrafts.map((draft) => draft.propertyType || "Gayrimenkul"),
+    ...liveListings.map((listing) => listing.property_type || "Gayrimenkul"),
+  ])).sort((a,b) => a.localeCompare(b, "tr")), [marketplaceAnalysisItems, listingDrafts, liveListings]);
+
+  const filteredMarketplaceAnalysis = useMemo(() => {
+    const q = listingQuery.trim().toLocaleLowerCase("tr-TR");
+    const filtered = marketplaceAnalysisItems.filter((entry) => {
+      const haystack = [entry.item.city, entry.item.district, entry.item.neighborhood, entry.item.property_type, entry.item.notes, entry.decision].filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
+      const queryOk = !q || haystack.includes(q);
+      const typeOk = listingPropertyType === "Tümü" || entry.item.property_type === listingPropertyType;
+      // analysis_reports şemasında satılık/kiralık alanı bulunmadığı için işlem tipi filtresi yalnızca gerçek ilan taslaklarına uygulanır.
+      return queryOk && typeOk && listingTransaction === "Tümü";
+    });
+    return [...filtered].sort((a,b) => listingSort === "priceLow" ? a.price - b.price : listingSort === "priceHigh" ? b.price - a.price : b.aiRank - a.aiRank);
+  }, [listingQuery, listingPropertyType, listingSort, listingTransaction, marketplaceAnalysisItems]);
+
+  const filteredLiveListings = useMemo(() => {
+    const q = listingQuery.trim().toLocaleLowerCase("tr-TR");
+    const source = liveListings.filter((listing) => listing.status === "published" || listing.user_id === user?.id);
+    const filtered = source.filter((listing) => {
+      const haystack = [listing.title, listing.description, listing.city, listing.district, listing.neighborhood, listing.property_type, listing.transaction_type].filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
+      return (!q || haystack.includes(q)) && (listingTransaction === "Tümü" || listing.transaction_type === listingTransaction) && (listingPropertyType === "Tümü" || listing.property_type === listingPropertyType);
+    });
+    return [...filtered].sort((a,b) => listingSort === "priceLow" ? Number(a.price)-Number(b.price) : listingSort === "priceHigh" ? Number(b.price)-Number(a.price) : Number(b.status === "published")-Number(a.status === "published") || new Date(b.updated_at).getTime()-new Date(a.updated_at).getTime());
+  }, [liveListings, listingPropertyType, listingQuery, listingSort, listingTransaction, user?.id]);
+
+  const selectedLiveListing = useMemo(() => liveListings.find((item) => item.id === selectedListingId) ?? null, [liveListings, selectedListingId]);
+
+  const filteredMarketplaceDrafts = useMemo(() => {
+    const q = listingQuery.trim().toLocaleLowerCase("tr-TR");
+    return listingDrafts.filter((draft) => {
+      const haystack = [draft.title, draft.city, draft.district, draft.neighborhood, draft.propertyType, draft.transaction].join(" ").toLocaleLowerCase("tr-TR");
+      return (!q || haystack.includes(q)) && (listingTransaction === "Tümü" || draft.transaction === listingTransaction) && (listingPropertyType === "Tümü" || draft.propertyType === listingPropertyType);
+    }).sort((a,b) => {
+      const pa=parseMoney(a.price), pb=parseMoney(b.price);
+      return listingSort === "priceLow" ? pa-pb : listingSort === "priceHigh" ? pb-pa : new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime();
+    });
+  }, [listingDrafts, listingPropertyType, listingQuery, listingSort, listingTransaction]);
+
   const [enterpriseNotice, setEnterpriseNotice] = useState("");
   const [enterpriseQuestion, setEnterpriseQuestion] = useState("");
   const [bankScenario, setBankScenario] = useState<"balanced" | "conservative" | "growth">("balanced");
@@ -3831,11 +4125,12 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
               {[
                 ["🏦","Banka","Teminat, LTV ve kredi karar akışı","bank","#eaf5ff"],
                 ["🏗️","Projeler","Fizibilite, saha, finans ve satış","developer","#fff7e8"],
+                ["🏠","İlanlar","Türkiye geneli akıllı ilan ve keşif pazarı","listings","#fff4ec"],
                 ["💼","Portföy","Getiri, likidite ve senaryo yönetimi","investor","#edfdf6"],
                 ["📐","Değerleme","Emsal, güven ve uzman iş akışı","valuation","#f5f0ff"],
                 ["🗺️","Türkiye","Bölgesel piyasa ve veri zekâsı","market","#eef8ff"],
                 ["📄","Raporlar","Kurumsal PDF ve yönetici özeti","pdf","#f8f6ff"],
-              ].map(([icon,title,text,target,bg]) => <button key={title} type="button" onClick={() => { if(target === "market" || target === "pdf") setSection(target as "market" | "pdf"); else { setEnterpriseRole(target as typeof enterpriseRole); setSection("enterprise"); } }} style={{ padding: 16, borderRadius: 17, border: "1px solid #dbe7f3", background: bg, textAlign: "left", cursor: "pointer" }}><span style={{ fontSize: 22 }}>{icon}</span><strong style={{ display: "block", marginTop: 9, color: "#153a65", fontSize: 14 }}>{title}</strong><span style={{ display: "block", marginTop: 4, color: "#74899e", fontSize: 10, lineHeight: 1.45 }}>{text}</span><span style={{ display: "block", marginTop: 9, color: "#0876c9", fontSize: 9, fontWeight: 950 }}>Çalışma alanını aç →</span></button>)}
+              ].map(([icon,title,text,target,bg]) => <button key={title} type="button" onClick={() => { if(target === "market" || target === "pdf" || target === "listings") setSection(target as "market" | "pdf" | "listings"); else { setEnterpriseRole(target as typeof enterpriseRole); setSection("enterprise"); } }} style={{ padding: 16, borderRadius: 17, border: "1px solid #dbe7f3", background: bg, textAlign: "left", cursor: "pointer" }}><span style={{ fontSize: 22 }}>{icon}</span><strong style={{ display: "block", marginTop: 9, color: "#153a65", fontSize: 14 }}>{title}</strong><span style={{ display: "block", marginTop: 4, color: "#74899e", fontSize: 10, lineHeight: 1.45 }}>{text}</span><span style={{ display: "block", marginTop: 9, color: "#0876c9", fontSize: 9, fontWeight: 950 }}>Çalışma alanını aç →</span></button>)}
             </div>
           </article>
 
@@ -4687,6 +4982,157 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
             </div>
           </div>
         </>
+      ) : null}
+
+      {section === "listings" ? (
+        <section style={{ marginTop: 16 }}>
+          <article style={{ position: "relative", overflow: "hidden", padding: 24, borderRadius: 26, color: "#fff", background: "radial-gradient(circle at 88% 8%,rgba(255,160,71,.30),transparent 30%),radial-gradient(circle at 8% 100%,rgba(72,198,255,.20),transparent 34%),linear-gradient(145deg,#071b35,#0a4168 58%,#0a6c78)", boxShadow: "0 24px 58px rgba(8,48,85,.22)" }}>
+            <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "minmax(0,1.25fr) minmax(290px,.75fr)", gap: 20, alignItems: "stretch" }}>
+              <div>
+                <div style={{ color: "#8fe7ff", fontSize: 10, fontWeight: 950, letterSpacing: 1.7 }}>YAŞAM AI · TÜRKİYE GAYRİMENKUL PAZARI</div>
+                <h2 style={{ margin: "9px 0 7px", fontSize: 31, lineHeight: 1.08, letterSpacing: "-.8px" }}>İlan bulmaktan öte: doğru gayrimenkulü seçin.</h2>
+                <p style={{ margin: 0, maxWidth: 790, color: "rgba(232,246,255,.76)", fontSize: 12.5, lineHeight: 1.7 }}>Türkiye genelinde ilan keşfi, AI fiyat kontrolü, yatırım skoru, risk ve pazarlık kararını tek akışta birleştiren pazar altyapısı.</p>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, marginTop: 18 }}>
+                  <input value={listingQuery} onChange={(event) => setListingQuery(event.target.value)} placeholder="Örn. Adana 3+1, yatırım için güçlü, 6 milyon TL altı…" style={{ width: "100%", minWidth: 0, padding: "14px 15px", borderRadius: 14, border: "1px solid rgba(255,255,255,.18)", outline: 0, background: "rgba(255,255,255,.10)", color: "#fff", fontSize: 13, boxShadow: "inset 0 1px 0 rgba(255,255,255,.08)" }} />
+                  <button type="button" onClick={() => setListingNotice(listingQuery.trim() ? `“${listingQuery.trim()}” için mevcut Yaşam AI envanteri filtrelendi.` : "Arama alanına konum, bütçe veya gayrimenkul türü yazın.")} style={{ padding: "0 18px", borderRadius: 14, border: 0, background: "linear-gradient(135deg,#ffb45f,#ff6b35)", color: "#2d1607", fontWeight: 950, cursor: "pointer", boxShadow: "0 12px 26px rgba(255,107,53,.28)" }}>AI ile Ara</button>
+                </div>
+              </div>
+              <div style={{ display: "grid", gap: 9 }}>
+                <div style={{ padding: 15, borderRadius: 17, background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.12)" }}><small style={{ color: "rgba(235,248,255,.55)", fontWeight: 900 }}>CANLI İLAN VERİ KAYNAĞI</small><strong style={{ display: "block", marginTop: 7, fontSize: 18, color: listingBackendReady ? "#9ff0c9" : "#ffd39c" }}>{listingBackendReady ? "CANLI · SUPABASE BAĞLI" : listingBackendReady === false ? "SQL KURULUMU GEREKLİ" : "BAĞLANTI KONTROL EDİLİYOR"}</strong><span style={{ display: "block", marginTop: 5, color: "rgba(235,248,255,.66)", fontSize: 10.5, lineHeight: 1.5 }}>{listingBackendReady ? `${liveListings.filter((item) => item.status === "published").length} yayınlanmış ilan pazar akışında. RLS ile kullanıcı sahipliği korunuyor.` : "Canlı pazar verisi yalnızca gerçek Supabase ilan kayıtlarından gösterilir; örnek veya sahte canlı ilan üretilmez."}</span></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div style={{ padding: 13, borderRadius: 15, background: "rgba(75,203,255,.11)", border: "1px solid rgba(95,211,255,.20)" }}><small style={{ color: "#a7eaff", fontWeight: 900 }}>AI ANALİZ DOSYASI</small><strong style={{ display: "block", marginTop: 5, fontSize: 22 }}>{marketplaceAnalysisItems.length}</strong></div>
+                  <div style={{ padding: 13, borderRadius: 15, background: "rgba(255,178,89,.11)", border: "1px solid rgba(255,190,110,.20)" }}><small style={{ color: "#ffe1bb", fontWeight: 900 }}>CANLI İLAN</small><strong style={{ display: "block", marginTop: 5, fontSize: 22 }}>{liveListings.filter((item) => item.status === "published").length}</strong></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article style={{ ...qualityRuleStyle, padding: 16, marginTop: 13, background: "linear-gradient(145deg,#fff,#f7fbff)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 9 }}>
+              <label style={{ color: "#607890", fontSize: 10, fontWeight: 900 }}>İŞLEM TİPİ<select value={listingTransaction} onChange={(e) => setListingTransaction(e.target.value as "Tümü" | "Satılık" | "Kiralık")} style={{ ...inputStyle, marginTop: 6 }}><option>Tümü</option><option>Satılık</option><option>Kiralık</option></select></label>
+              <label style={{ color: "#607890", fontSize: 10, fontWeight: 900 }}>GAYRİMENKUL TÜRÜ<select value={listingPropertyType} onChange={(e) => setListingPropertyType(e.target.value)} style={{ ...inputStyle, marginTop: 6 }}><option>Tümü</option>{marketplacePropertyTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
+              <label style={{ color: "#607890", fontSize: 10, fontWeight: 900 }}>SIRALAMA<select value={listingSort} onChange={(e) => setListingSort(e.target.value as "ai" | "priceLow" | "priceHigh")} style={{ ...inputStyle, marginTop: 6 }}><option value="ai">AI önceliği</option><option value="priceLow">Fiyat: düşükten</option><option value="priceHigh">Fiyat: yüksekten</option></select></label>
+              <div style={{ display: "grid", alignContent: "end" }}><button type="button" onClick={() => { setListingQuery(""); setListingTransaction("Tümü"); setListingPropertyType("Tümü"); setListingSort("ai"); }} style={{ ...softButton, minHeight: 43 }}>Filtreleri Temizle</button></div>
+            </div>
+          </article>
+
+          {listingNotice ? <div style={{ marginTop: 10, padding: "11px 13px", borderRadius: 13, border: "1px solid #cfe4f4", background: "#f0f9ff", color: "#285c86", fontSize: 11, fontWeight: 800 }}>{listingNotice}</div> : null}
+
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(330px,.65fr)", gap: 14, marginTop: 14, alignItems: "start" }}>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "end", marginBottom: 9 }}><div><div style={eyebrow}>AKILLI PAZAR AKIŞI</div><h3 style={{ margin: "5px 0 0", color: "#153a65", fontSize: 21 }}>Canlı ilanlar, analiz dosyaları ve taslaklar</h3></div><span style={secureBadge}>{filteredLiveListings.length + filteredMarketplaceAnalysis.length + filteredMarketplaceDrafts.length} sonuç</span></div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {filteredLiveListings.map((listing) => {
+                  const location=[listing.city,listing.district,listing.neighborhood].filter(Boolean).join(" / ");
+                  const price=Number(listing.price||0), area=Number(listing.area_m2||0), priceM2=price>0&&area>0?Math.round(price/area):0;
+                  const own=listing.user_id===user?.id;
+                  const cover=listingImageUrl(listing.media?.[0]);
+                  return <article key={listing.id} style={{ padding: 16, borderRadius: 19, border: listing.status === "published" ? "1px solid #bfe5d2" : "1px solid #ead7b5", background: listing.status === "published" ? "linear-gradient(145deg,#f8fffb,#fff)" : "linear-gradient(145deg,#fffaf0,#fff)", boxShadow: "0 10px 28px rgba(31,64,97,.06)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "96px minmax(0,1fr) auto", gap: 14, alignItems: "center" }}>
+                      <div style={{ width: 96, height: 78, borderRadius: 17, overflow: "hidden", display: "grid", placeItems: "center", background: "linear-gradient(145deg,#e9f5ff,#eafbf5)", border: "1px solid #d7e6ef", color: "#0b6b90", fontSize: 28 }}>{cover ? <img src={cover} alt="İlan kapak" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "⌂"}</div>
+                      <div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><span style={{ padding: "4px 7px", borderRadius: 999, background: listing.status === "published" ? "#e9f8f0" : "#fff4dc", color: listing.status === "published" ? "#087b5e" : "#996100", fontSize: 8.5, fontWeight: 950 }}>{listing.status === "published" ? "CANLI İLAN" : listing.status.toLocaleUpperCase("tr-TR")}</span><span style={{ padding: "4px 7px", borderRadius: 999, background: "#edf6ff", color: "#1769a7", fontSize: 8.5, fontWeight: 950 }}>{listing.transaction_type}</span><span style={{ padding: "4px 7px", borderRadius: 999, background: listing.verification_status === "verified" ? "#e9f8f0" : "#f4f0ff", color: listing.verification_status === "verified" ? "#087b5e" : "#6b46c1", fontSize: 8.5, fontWeight: 950 }}>{listing.verification_status === "verified" ? "DOĞRULANMIŞ" : "DOĞRULAMA BEKLİYOR"}</span></div><strong style={{ display: "block", marginTop: 7, color: "#153a65", fontSize: 16 }}>{listing.title}</strong><span style={{ display: "block", marginTop: 4, color: "#74899e", fontSize: 10 }}>{listing.property_type} · {location || "Konum eksik"}{area ? ` · ${area.toLocaleString("tr-TR")} m²` : ""}{priceM2 ? ` · ${priceM2.toLocaleString("tr-TR")} TL/m²` : ""}</span>{listing.description ? <span style={{ display: "block", marginTop: 6, color: "#607890", fontSize: 9.5, lineHeight: 1.45 }}>{listing.description.slice(0,140)}{listing.description.length>140?"…":""}</span> : null}</div>
+                      <div style={{ textAlign: "right" }}><strong style={{ color: "#153a65", fontSize: 18 }}>{price ? `${Math.round(price).toLocaleString("tr-TR")} TL` : "Fiyat yok"}</strong><span style={{ display: "block", marginTop: 5, color: "#71869b", fontSize: 9 }}>{own ? "Sizin ilanınız" : "Pazar ilanı"}</span></div>
+                    </div>
+                    <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}><button type="button" onClick={() => setSelectedListingId(listing.id)} style={{ ...blueButton, marginTop: 0, padding: "9px 12px", background: "linear-gradient(135deg,#0a6fc7,#0b4e91)" }}>İlanı İncele</button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`} target="_blank" rel="noreferrer" style={{ ...softButton, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Haritada Aç</a>{own && listing.status !== "published" ? <button type="button" disabled={listingSaving} onClick={() => void changeLiveListingStatus(listing.id,"published")} style={{ ...blueButton, padding: "9px 12px", background: "linear-gradient(135deg,#079a70,#087b5e)" }}>Yayına Al</button> : null}{own && listing.status === "published" ? <button type="button" disabled={listingSaving} onClick={() => void changeLiveListingStatus(listing.id,"paused")} style={{ ...softButton, padding: "9px 12px" }}>Yayını Durdur</button> : null}{own ? <button type="button" disabled={listingSaving} onClick={() => void deleteLiveListing(listing.id)} style={{ ...softButton, padding: "9px 12px", color: "#b42318", borderColor: "#efcccc" }}>Sil</button> : null}<span style={{ marginLeft: "auto", alignSelf: "center", color: "#087b5e", fontSize: 9, fontWeight: 900 }}>Supabase · RLS korumalı</span></div>
+                  </article>;
+                })}
+
+                {filteredMarketplaceAnalysis.map(({ item, scores, price, area, priceM2, decision }) => {
+                  const decisionColor = decision === "AL" ? "#047857" : decision.includes("PAZARLIK") ? "#9a6700" : decision.includes("RİSK") || decision.includes("UZAK") ? "#b42318" : "#285c86";
+                  const location = [item.city,item.district,item.neighborhood].filter(Boolean).join(" / ") || "Konum belirtilmedi";
+                  return <article key={item.id} style={{ padding: 16, borderRadius: 19, border: "1px solid #dce8f3", background: "linear-gradient(145deg,#fff,#f7fbff)", boxShadow: "0 10px 26px rgba(31,64,97,.06)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "64px minmax(0,1fr) auto", gap: 13, alignItems: "center" }}>
+                      <div style={{ width: 64, height: 64, borderRadius: 17, display: "grid", placeItems: "center", background: "linear-gradient(145deg,#e8f7ff,#f2edff)", color: "#0876c9", fontSize: 25, border: "1px solid #d3e8f7" }}>⌂</div>
+                      <div style={{ minWidth: 0 }}><div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}><span style={{ padding: "4px 7px", borderRadius: 999, background: "#eaf6ff", color: "#0876c9", fontSize: 8.5, fontWeight: 950 }}>AI ANALİZ DOSYASI</span><span style={{ padding: "4px 7px", borderRadius: 999, background: `${decisionColor}12`, color: decisionColor, fontSize: 8.5, fontWeight: 950 }}>{decision}</span></div><strong style={{ display: "block", marginTop: 7, color: "#153a65", fontSize: 16 }}>{item.property_type || "Gayrimenkul"} · {location}</strong><span style={{ display: "block", marginTop: 4, color: "#74899e", fontSize: 10 }}>{area ? `${area.toLocaleString("tr-TR")} m²` : "Alan yok"}{priceM2 ? ` · ${priceM2.toLocaleString("tr-TR")} TL/m²` : ""}</span></div>
+                      <div style={{ textAlign: "right" }}><strong style={{ color: "#153a65", fontSize: 17 }}>{price ? `${Math.round(price).toLocaleString("tr-TR")} TL` : "Fiyat yok"}</strong><span style={{ display: "block", marginTop: 5, color: "#74899e", fontSize: 9 }}>Mevcut analiz fiyatı</span></div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7, marginTop: 12 }}>{[["Yatırım",scores.investment],["Fırsat",scores.opportunity],["Risk",scores.risk],["Güven",scores.trust],["Likidite",scores.liquidity]].map(([label,value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 11, background: "#fff", border: "1px solid #e1eaf2" }}><small style={{ color: "#8798a9", fontSize: 8.5, fontWeight: 900 }}>{String(label).toUpperCase()}</small><strong style={{ display: "block", marginTop: 3, color: label === "Risk" && Number(value) >= 65 ? "#b42318" : "#153a65", fontSize: 14 }}>{value ?? "—"}</strong></div>)}</div>
+                    <div style={{ display: "flex", gap: 7, marginTop: 11, flexWrap: "wrap" }}><button type="button" onClick={() => { setAiRecordId(item.id); setSection("ai"); }} style={{ ...blueButton, padding: "9px 12px" }}>AI İncele</button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`} target="_blank" rel="noreferrer" style={{ ...softButton, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Haritada Aç</a><span style={{ marginLeft: "auto", alignSelf: "center", color: "#8a9aaa", fontSize: 9 }}>Canlı ilan değildir · analiz kaydıdır</span></div>
+                  </article>;
+                })}
+
+                {filteredMarketplaceDrafts.map((draft) => {
+                  const price=parseMoney(draft.price), area=parseNumeric(draft.area), priceM2=price>0&&area>0?Math.round(price/area):0;
+                  const location=[draft.city,draft.district,draft.neighborhood].filter(Boolean).join(" / ");
+                  return <article key={draft.id} style={{ padding: 16, borderRadius: 19, border: "1px solid #f0d7bf", background: "linear-gradient(145deg,#fffaf5,#fff)", boxShadow: "0 10px 26px rgba(120,75,25,.05)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "64px minmax(0,1fr) auto", gap: 13, alignItems: "center" }}><div style={{ width: 64, height: 64, borderRadius: 17, display: "grid", placeItems: "center", background: "linear-gradient(145deg,#fff0db,#fff8ed)", color: "#d86620", fontSize: 25, border: "1px solid #f2dac0" }}>＋</div><div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><span style={{ padding: "4px 7px", borderRadius: 999, background: "#fff0df", color: "#c65f1c", fontSize: 8.5, fontWeight: 950 }}>YEREL İLAN TASLAĞI</span><span style={{ padding: "4px 7px", borderRadius: 999, background: "#eef7f4", color: "#087b5e", fontSize: 8.5, fontWeight: 950 }}>{draft.transaction}</span></div><strong style={{ display: "block", marginTop: 7, color: "#153a65", fontSize: 16 }}>{draft.title}</strong><span style={{ display: "block", marginTop: 4, color: "#74899e", fontSize: 10 }}>{draft.propertyType} · {location || "Konum eksik"}{area ? ` · ${area.toLocaleString("tr-TR")} m²` : ""}{priceM2 ? ` · ${priceM2.toLocaleString("tr-TR")} TL/m²` : ""}</span></div><div style={{ textAlign: "right" }}><strong style={{ color: "#153a65", fontSize: 17 }}>{price ? `${Math.round(price).toLocaleString("tr-TR")} TL` : "Fiyat yok"}</strong><span style={{ display: "block", marginTop: 5, color: "#b36a35", fontSize: 9 }}>Henüz yayınlanmadı</span></div></div>
+                    <div style={{ display: "flex", gap: 7, marginTop: 11, justifyContent: "flex-end" }}><button type="button" onClick={() => deleteMarketplaceDraft(draft.id)} style={{ ...softButton, padding: "8px 10px", color: "#b42318", borderColor: "#efcccc" }}>Taslağı Sil</button></div>
+                  </article>;
+                })}
+
+                {!filteredLiveListings.length && !filteredMarketplaceAnalysis.length && !filteredMarketplaceDrafts.length ? <div style={emptyState}>Bu filtrelerle eşleşen mevcut analiz dosyası veya ilan taslağı yok.</div> : null}
+              </div>
+            </div>
+
+            <aside style={{ display: "grid", gap: 12, position: "relative", top: "auto", alignSelf: "start", minWidth: 0 }}>
+              <article style={{ ...qualityRuleStyle, padding: 18, background: "linear-gradient(145deg,#fff,#fff8f2)" }}>
+                <div style={{ ...eyebrow, color: "#d86620" }}>İLAN VER · CANLI YAYIN STÜDYOSU</div><h3 style={{ margin: "6px 0 5px", color: "#153a65" }}>Taslak oluşturun veya doğrudan yayına alın.</h3><p style={{ margin: 0, color: "#74899e", fontSize: 10.5, lineHeight: 1.5 }}>{listingBackendReady ? "Supabase RLS ve medya deposu hazır. Yayınlanan ilanlar Türkiye pazar akışına girer." : "SQL migration çalıştırılana kadar yerel taslak özelliğini kullanabilirsiniz."}</p>
+                <div style={{ display: "grid", gap: 8, marginTop: 13 }}>
+                  <input value={listingDraft.title} onChange={(e) => setListingDraft((d) => ({...d,title:e.target.value}))} placeholder="İlan başlığı" style={inputStyle} />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><input value={listingDraft.city} onChange={(e) => setListingDraft((d) => ({...d,city:e.target.value}))} placeholder="İl" style={inputStyle} /><input value={listingDraft.district} onChange={(e) => setListingDraft((d) => ({...d,district:e.target.value}))} placeholder="İlçe" style={inputStyle} /></div>
+                  <input value={listingDraft.neighborhood} onChange={(e) => setListingDraft((d) => ({...d,neighborhood:e.target.value}))} placeholder="Mahalle" style={inputStyle} />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><select value={listingDraft.propertyType} onChange={(e) => setListingDraft((d) => ({...d,propertyType:e.target.value}))} style={inputStyle}><option>Konut</option><option>Arsa</option><option>İşyeri</option><option>Ticari</option><option>Proje</option></select><select value={listingDraft.transaction} onChange={(e) => setListingDraft((d) => ({...d,transaction:e.target.value as "Satılık" | "Kiralık"}))} style={inputStyle}><option>Satılık</option><option>Kiralık</option></select></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><input value={listingDraft.price} onChange={(e) => setListingDraft((d) => ({...d,price:e.target.value.replace(/[^0-9]/g,"")}))} inputMode="numeric" placeholder="Fiyat (TL)" style={inputStyle} /><input value={listingDraft.area} onChange={(e) => setListingDraft((d) => ({...d,area:e.target.value.replace(/[^0-9.,]/g,"")}))} inputMode="decimal" placeholder="m²" style={inputStyle} /></div>
+                  <div style={{ padding: 11, borderRadius: 15, border: "1px solid #d6e7f4", background: "linear-gradient(145deg,#f8fcff,#fff)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 7 }}><div><strong style={{ color: "#153a65", fontSize: 10.5 }}>İlan açıklaması</strong><span style={{ display: "block", marginTop: 2, color: "#7a8fa3", fontSize: 8.5 }}>Önce kendi bilginizi yazın; AI yeni özellik uydurmaz.</span></div><span style={{ padding: "5px 8px", borderRadius: 999, background: "linear-gradient(135deg,#6d3df1,#bd2cff)", color: "#fff", fontSize: 8, fontWeight: 950 }}>✨ AI İLAN ASİSTANI</span></div>
+                    <textarea value={listingDraft.description || ""} onChange={(e) => { setListingDraft((d) => ({...d,description:e.target.value})); setListingAiSuggestion(""); }} placeholder="Örneğin: Daire yeni boyandı. Güney cephe. Mutfak yenilendi. Toplu taşımaya yakın..." rows={5} style={{ ...inputStyle, resize: "vertical", minHeight: 118, maxHeight: 260, background: "#fff" }} />
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}>
+                      {([
+                        ["correct","✍️","Düzelt","İmla ve anlatımı profesyonelleştir","linear-gradient(135deg,#eef6ff,#ffffff)","#1769aa","#cfe4f6"],
+                        ["enrich","✨","Zenginleştir","Daha etkileyici ve satış odaklı yaz","linear-gradient(135deg,#fff6dc,#fffdf5)","#a76500","#f0d18c"],
+                        ["short","⚡","Kısalt","Kısa, net ve hızlı okunan hale getir","linear-gradient(135deg,#eafbf5,#ffffff)","#087b5e","#c6eadc"],
+                        ["premium","💎","Premium Yaz","Üst segment ilan diliyle yeniden yaz","linear-gradient(135deg,#f7efff,#fff1fb)","#7a2fb3","#e0b9f1"],
+                      ] as const).map(([mode,icon,label,desc,bg,tone,border]) => {
+                        const active = listingAiMode === mode;
+                        return <button key={mode} type="button" disabled={listingAiLoading} onClick={() => void generateListingAiDescription(mode)} style={{ position: "relative", overflow: "hidden", textAlign: "left", padding: "12px 12px", minHeight: 74, borderRadius: 14, border: active ? `1px solid ${tone}` : `1px solid ${border}`, background: active ? bg : "#fff", color: tone, cursor: listingAiLoading ? "wait" : "pointer", boxShadow: active ? `0 10px 24px ${tone}22` : "0 5px 14px rgba(22,54,84,.05)", transform: active ? "translateY(-1px)" : "none", transition: "all .18s ease", opacity: listingAiLoading ? .72 : 1 }}>
+                          <span style={{ display: "inline-grid", placeItems: "center", width: 30, height: 30, borderRadius: 10, background: bg, border: `1px solid ${border}`, fontSize: 15, marginBottom: 7 }}>{icon}</span>
+                          <strong style={{ display: "block", fontSize: 10.5, fontWeight: 950, color: tone }}>{label}</strong>
+                          <small style={{ display: "block", marginTop: 3, color: "#71869a", fontSize: 8.2, lineHeight: 1.35, fontWeight: 700 }}>{desc}</small>
+                          {active ? <span style={{ position: "absolute", right: 9, top: 9, padding: "3px 6px", borderRadius: 999, background: tone, color: "#fff", fontSize: 7, fontWeight: 950 }}>SEÇİLİ</span> : null}
+                        </button>;
+                      })}
+                    </div>
+                    <div style={{ marginTop: 8, padding: "9px 10px", borderRadius: 11, background: "linear-gradient(90deg,#fff8eb,#fff)", border: "1px solid #f1ddb7", color: "#805a18", fontSize: 8.5, lineHeight: 1.45 }}><strong>Gelecek gelir modeli:</strong> AI açıklama geliştirme mikro-hizmeti ödeme sistemi açıldığında yaklaşık 50–100 TL bandında ayrı hizmet olarak sunulabilecek. Şimdilik geliştirme/test aşamasında erişim açık.</div>
+                    {listingAiLoading ? <div style={{ marginTop: 9, padding: 11, borderRadius: 12, background: "#f4f0ff", color: "#6840ca", fontSize: 9.5, fontWeight: 850 }}>AI açıklamanızı hazırlıyor…</div> : null}
+                    {listingAiSuggestion ? <div style={{ marginTop: 9, padding: 12, borderRadius: 13, background: "linear-gradient(145deg,#f5f1ff,#fff)", border: "1px solid #d8caf8" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: "#5f3bbd", fontSize: 9.5 }}>AI ÖNERİSİ · ÖNİZLEME</strong><button type="button" onClick={() => { setListingDraft((d) => ({...d,description:listingAiSuggestion})); setListingAiSuggestion(""); setListingNotice("AI açıklaması ilana uygulandı. Yayınlamadan önce son kez kontrol edin."); }} style={{ padding: "7px 9px", borderRadius: 9, border: 0, background: "#6840ca", color: "#fff", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>Bu Metni Kullan</button></div><p style={{ margin: "8px 0 0", color: "#40586f", fontSize: 9.5, lineHeight: 1.58, whiteSpace: "pre-wrap" }}>{listingAiSuggestion}</p></div> : null}
+                  </div>
+                  <label style={{ padding: 11, borderRadius: 13, border: "1px dashed #c8d9e7", background: "#f8fbff", color: "#526d86", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>Fotoğraf seç · en fazla 12 görsel<input type="file" accept="image/*" multiple onChange={(e) => setListingFiles(Array.from(e.target.files ?? []).slice(0,12))} style={{ display: "none" }} /></label>
+                  {listingFiles.length ? <div style={{ color: "#087b5e", fontSize: 9.5, fontWeight: 850 }}>{listingFiles.length} fotoğraf yayına hazırlanacak.</div> : null}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button type="button" disabled={listingSaving} onClick={() => listingBackendReady ? void saveLiveListing("draft") : saveMarketplaceDraft()} style={{ ...softButton, padding: "11px 12px" }}>{listingSaving ? "Kaydediliyor…" : listingBackendReady ? "Bulut Taslağı" : "Yerel Taslak"}</button><button type="button" disabled={listingSaving || listingBackendReady === false} onClick={() => void saveLiveListing("published")} style={{ ...blueButton, marginTop: 0, background: "linear-gradient(135deg,#ff9a4b,#ff6b35)", boxShadow: "0 10px 22px rgba(255,107,53,.20)", opacity: listingBackendReady === false ? .5 : 1 }}>{listingSaving ? "Yayınlanıyor…" : "İlanı Yayınla"}</button></div>
+                </div>
+              </article>
+
+              <article style={{ padding: 17, borderRadius: 20, border: "1px solid #dbe7f3", background: "linear-gradient(145deg,#f4faff,#fff)" }}><div style={eyebrow}>FAZ 2 CANLI YAYIN DURUMU</div><h3 style={{ margin: "6px 0 10px", color: "#153a65" }}>Gerçek ilan altyapısı</h3><div style={{ display: "grid", gap: 7 }}>{[["İlan tablosu + RLS",listingBackendReady?"Hazır":"SQL gerekli"],["Fotoğraf / medya depolama",listingBackendReady?"Hazır":"SQL gerekli"],["Taslak + yayın + durdurma",listingBackendReady?"Hazır":"Bekliyor"],["İlan doğrulama motoru","Sonraki"],["Favoriler + kayıtlı arama","Sonraki"],["Emlakçı / müteahhit rolleri","Sonraki"],["AI ilan puanlama","Temel hazır"]].map(([label,status]) => { const ready=String(status)==="Hazır"||String(status)==="Temel hazır"; return <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: 10, borderRadius: 12, background: ready?"#eefbf5":"#fff", border: ready?"1px solid #c8ead8":"1px solid #e0e9f2" }}><span style={{ color: "#35536e", fontSize: 10, fontWeight: 800 }}>{label}</span><strong style={{ color: ready?"#047857":"#9a6700", fontSize: 9 }}>{status}</strong></div>})}</div><button type="button" onClick={() => void loadLiveListings()} style={{ ...softButton, width: "100%", marginTop: 10 }}>Canlı bağlantıyı yenile</button></article>
+            </aside>
+          </div>
+          {selectedLiveListing ? (() => {
+            const listing = selectedLiveListing;
+            const location = [listing.city, listing.district, listing.neighborhood].filter(Boolean).join(" / ");
+            const price = Number(listing.price || 0);
+            const area = Number(listing.area_m2 || 0);
+            const priceM2 = price > 0 && area > 0 ? Math.round(price / area) : 0;
+            const images = (listing.media || []).map((path) => listingImageUrl(path)).filter(Boolean);
+            return <div onClick={() => setSelectedListingId("")} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(4,15,29,.72)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 18, overflowY: "auto" }}>
+              <article onClick={(event) => event.stopPropagation()} style={{ width: "min(1050px,96vw)", maxHeight: "92vh", overflowY: "auto", borderRadius: 26, background: "#fff", border: "1px solid rgba(255,255,255,.5)", boxShadow: "0 34px 90px rgba(0,0,0,.35)" }}>
+                <div style={{ position: "relative", minHeight: 230, background: images[0] ? `linear-gradient(rgba(5,20,37,.25),rgba(5,20,37,.70)),url(${images[0]}) center/cover` : "linear-gradient(145deg,#0b365c,#097e89)", padding: 24, color: "#fff", display: "grid", alignContent: "end" }}>
+                  <button type="button" onClick={() => setSelectedListingId("")} style={{ position: "absolute", right: 16, top: 16, width: 38, height: 38, borderRadius: "50%", border: "1px solid rgba(255,255,255,.25)", background: "rgba(5,17,32,.48)", color: "#fff", fontSize: 18, cursor: "pointer" }}>×</button>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><span style={{ padding: "5px 8px", borderRadius: 999, background: "#17b779", fontSize: 9, fontWeight: 950 }}>{listing.status === "published" ? "CANLI İLAN" : listing.status.toLocaleUpperCase("tr-TR")}</span><span style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(255,255,255,.16)", fontSize: 9, fontWeight: 900 }}>{listing.transaction_type}</span><span style={{ padding: "5px 8px", borderRadius: 999, background: listing.verification_status === "verified" ? "#17b779" : "#7d5ad9", fontSize: 9, fontWeight: 900 }}>{listing.verification_status === "verified" ? "DOĞRULANMIŞ" : "DOĞRULAMA BEKLİYOR"}</span></div>
+                  <h2 style={{ margin: "10px 0 5px", fontSize: 28, lineHeight: 1.12 }}>{listing.title}</h2><span style={{ color: "rgba(255,255,255,.78)", fontSize: 11 }}>{listing.property_type} · {location}</span>
+                </div>
+                <div style={{ padding: 22 }}>
+                  {images.length > 1 ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 16 }}>{images.slice(1,7).map((src,index) => <img key={src} src={src} alt={`İlan görseli ${index+2}`} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 13, border: "1px solid #e0e8ef" }} />)}</div> : null}
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(280px,.65fr)", gap: 15 }}>
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 9 }}>{[["Fiyat",price ? `${Math.round(price).toLocaleString("tr-TR")} TL` : "—"],["Alan",area ? `${area.toLocaleString("tr-TR")} m²` : "—"],["m² fiyatı",priceM2 ? `${priceM2.toLocaleString("tr-TR")} TL` : "—"]].map(([label,value]) => <div key={label} style={{ padding: 13, borderRadius: 14, background: "#f7fbff", border: "1px solid #dce8f3" }}><span style={{ color: "#7a8fa3", fontSize: 8.5, fontWeight: 900 }}>{label.toUpperCase()}</span><strong style={{ display: "block", marginTop: 5, color: "#153a65", fontSize: 15 }}>{value}</strong></div>)}</div>
+                      <div style={{ marginTop: 14 }}><div style={eyebrow}>İLAN AÇIKLAMASI</div><p style={{ margin: "7px 0 0", color: "#405b73", fontSize: 12, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>{listing.description || "İlan açıklaması girilmemiş."}</p></div>
+                    </div>
+                    <aside style={{ padding: 16, borderRadius: 18, background: "linear-gradient(145deg,#071f39,#0a5573)", color: "#fff" }}><div style={{ color: "#8eeaff", fontSize: 9, fontWeight: 950, letterSpacing: 1.2 }}>YAŞAM AI İLAN KONTROLÜ</div><h3 style={{ margin: "7px 0 5px", fontSize: 18 }}>Karar vermeden önce kontrol edin.</h3><p style={{ margin: 0, color: "rgba(255,255,255,.72)", fontSize: 10, lineHeight: 1.55 }}>Bu ilan canlı pazar kaydıdır. AI fiyat/risk analizi ayrı analiz akışında üretilir; doğrulanmamış veri ekspertiz veya resmî kayıt yerine geçmez.</p><div style={{ display: "grid", gap: 7, marginTop: 12 }}><button type="button" onClick={() => { setSelectedListingId(""); setListingNotice(`“${listing.title}” için AI inceleme akışı açılmaya hazır. İlan → analiz bağlantısı sonraki sürümde otomatik forma aktarılacak.`); }} style={{ padding: "10px 12px", borderRadius: 11, border: 0, background: "linear-gradient(135deg,#75e6ff,#36b6ff)", color: "#06243c", fontWeight: 950, cursor: "pointer" }}>AI ile Değerlendir</button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`} target="_blank" rel="noreferrer" style={{ padding: "10px 12px", borderRadius: 11, border: "1px solid rgba(255,255,255,.18)", background: "rgba(255,255,255,.07)", color: "#fff", fontWeight: 900, textDecoration: "none", textAlign: "center" }}>Haritada Aç</a></div></aside>
+                  </div>
+                </div>
+              </article>
+            </div>;
+          })() : null}
+        </section>
       ) : null}
 
       {section === "enterprise" ? (
