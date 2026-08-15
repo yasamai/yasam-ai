@@ -3445,6 +3445,20 @@ type SubscriptionPlanRequest = {
   reviewed_at: string | null;
 };
 
+
+type AdminSubscriptionRequest = {
+  request_id: string;
+  user_id: string;
+  user_email: string | null;
+  requested_plan: "standard" | "premium" | "gold";
+  requested_billing_cycle: "monthly" | "yearly";
+  request_status: "pending" | "approved" | "rejected" | "cancelled";
+  requested_at: string;
+  reviewed_at: string | null;
+  current_plan: "standard" | "premium" | "gold";
+  current_status: "trial" | "active" | "past_due" | "cancelled" | "paused";
+};
+
 function StrategicExpansionCenter({
   records,
   regionalData,
@@ -3514,6 +3528,12 @@ function StrategicExpansionCenter({
     requiredPlan: "premium" | "gold";
     description: string;
   } | null>(null);
+  const [platformAdminReady, setPlatformAdminReady] = useState<boolean | null>(null);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [adminSubscriptionRequests, setAdminSubscriptionRequests] = useState<AdminSubscriptionRequest[]>([]);
+  const [adminSubscriptionLoading, setAdminSubscriptionLoading] = useState(false);
+  const [adminSubscriptionActionId, setAdminSubscriptionActionId] = useState("");
+  const [adminSubscriptionNotice, setAdminSubscriptionNotice] = useState("");
   const [pdfRecordId, setPdfRecordId] = useState("");
   const [pdfAudience, setPdfAudience] = useState<"investor" | "bank" | "customer">("investor");
   const [pdfNotice, setPdfNotice] = useState("");
@@ -3930,6 +3950,13 @@ function StrategicExpansionCenter({
   useEffect(() => {
     void loadSubscriptionCenter();
     // Üyelik profili ve kullanım sayaçları oturum değiştiğinde yeniden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+
+  useEffect(() => {
+    void loadPlatformAdminCenter();
+    // Admin yetkisi istemci varsayımıyla değil, server-side RPC ile doğrulanır.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -5519,6 +5546,74 @@ KURALLAR
     setEnterpriseNotice("");
     setEntitlementGate(null);
     return true;
+  }
+
+
+  async function loadPlatformAdminCenter() {
+    if (!user) {
+      setPlatformAdminReady(null);
+      setIsPlatformAdmin(false);
+      setAdminSubscriptionRequests([]);
+      return;
+    }
+
+    setAdminSubscriptionLoading(true);
+    setAdminSubscriptionNotice("");
+    try {
+      const { data: adminData, error: adminError } = await supabase.rpc("is_platform_admin");
+      if (adminError) {
+        const missing = /is_platform_admin|function .* does not exist|schema cache/i.test(adminError.message);
+        setPlatformAdminReady(missing ? false : null);
+        setIsPlatformAdmin(false);
+        setAdminSubscriptionRequests([]);
+        if (!missing) setAdminSubscriptionNotice(`Admin yetkisi doğrulanamadı: ${adminError.message}`);
+        return;
+      }
+
+      const allowed = adminData === true;
+      setPlatformAdminReady(true);
+      setIsPlatformAdmin(allowed);
+
+      if (!allowed) {
+        setAdminSubscriptionRequests([]);
+        return;
+      }
+
+      const { data: requestData, error: requestError } = await supabase.rpc("admin_list_subscription_requests");
+      if (requestError) throw requestError;
+      setAdminSubscriptionRequests((requestData ?? []) as AdminSubscriptionRequest[]);
+    } catch (error) {
+      setAdminSubscriptionNotice(error instanceof Error ? `Admin merkezi okunamadı: ${error.message}` : "Admin merkezi okunamadı.");
+      setAdminSubscriptionRequests([]);
+    } finally {
+      setAdminSubscriptionLoading(false);
+    }
+  }
+
+  async function reviewSubscriptionRequest(requestId: string, action: "approve" | "reject") {
+    if (!isPlatformAdmin) {
+      setAdminSubscriptionNotice("Bu işlem yalnızca platform yöneticisi tarafından yapılabilir.");
+      return;
+    }
+    setAdminSubscriptionActionId(requestId);
+    setAdminSubscriptionNotice("");
+    try {
+      const rpcName = action === "approve" ? "admin_approve_subscription_request" : "admin_reject_subscription_request";
+      const { data, error } = await supabase.rpc(rpcName, { p_request_id: requestId });
+      if (error) throw error;
+      setAdminSubscriptionNotice(
+        action === "approve"
+          ? "Plan talebi onaylandı. Kullanıcının aktif yetkisi server-side olarak güncellendi."
+          : "Plan talebi reddedildi. Kullanıcının mevcut aktif planı değiştirilmedi."
+      );
+      await loadPlatformAdminCenter();
+      await loadSubscriptionCenter();
+      return data;
+    } catch (error) {
+      setAdminSubscriptionNotice(error instanceof Error ? `İşlem tamamlanamadı: ${error.message}` : "İşlem tamamlanamadı.");
+    } finally {
+      setAdminSubscriptionActionId("");
+    }
   }
 
   async function loadSubscriptionCenter() {
@@ -8274,6 +8369,59 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
             </div>
           </article>
 
+          <article style={{ marginBottom: 16, padding: 18, borderRadius: 21, border: isPlatformAdmin ? "1px solid #cce7dc" : "1px solid #ead7aa", background: isPlatformAdmin ? "linear-gradient(145deg,#f2fbf8,#fff)" : "linear-gradient(145deg,#fffaf0,#fff)", boxShadow: "0 12px 30px rgba(31,64,97,.07)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ ...eyebrow, color: isPlatformAdmin ? "#0f8065" : "#9a701f" }}>PLATFORM ADMIN DOĞRULAMASI</div>
+                <h3 style={{ margin: "6px 0 5px", color: "#153a65", fontSize: 20 }}>{isPlatformAdmin ? "Server-side yönetici yetkisi doğrulandı" : "Yönetici işlemleri kilitli"}</h3>
+                <p style={{ margin: 0, color: "#52697a", fontSize: 13, lineHeight: 1.55 }}>{isPlatformAdmin ? "Üyelik taleplerini onaylama ve reddetme işlemleri güvenli RPC üzerinden yürütülür; istemci tek başına plan yükseltemez." : "Bu ekranın yönetici işlemleri yalnızca platform_admins kaydında aktif yetkisi bulunan kullanıcıya açılır."}</p>
+              </div>
+              <span style={{ ...secureBadge, background: isPlatformAdmin ? "#eef9f5" : "#fff6e6", color: isPlatformAdmin ? "#087b5e" : "#8a681d", borderColor: isPlatformAdmin ? "#cce7dc" : "#ead7a7" }}>{platformAdminReady === false ? "Admin SQL kurulumu gerekli" : platformAdminReady == null ? "Kontrol ediliyor" : isPlatformAdmin ? "✓ Platform Admin" : "Yetkisiz kullanıcı"}</span>
+            </div>
+          </article>
+
+          {isPlatformAdmin ? (
+            <article style={{ ...qualityRuleStyle, padding: 18, marginBottom: 16, background: "linear-gradient(180deg,#fff,#f8fbfe)" }}>
+              <div style={sectionHeader}>
+                <div>
+                  <div style={{ ...eyebrow, color: "#7b5c16" }}>ÜYELİK ONAY MERKEZİ</div>
+                  <h3 style={{ color: "#153a65", margin: "6px 0 4px", fontSize: 21 }}>Premium & Gold plan talepleri</h3>
+                  <p style={{ margin: 0, color: "#607890", fontSize: 13, lineHeight: 1.5 }}>Onaylanan talep `subscription_profiles` üzerinde aktif planı server-side günceller. Reddedilen talep kullanıcının mevcut planını değiştirmez.</p>
+                </div>
+                <button type="button" onClick={() => void loadPlatformAdminCenter()} disabled={adminSubscriptionLoading} style={{ ...smallButton, background: "#eef7ff", color: "#0876c9", border: "1px solid #cfe4f5" }}>{adminSubscriptionLoading ? "Yenileniyor…" : "Yenile"}</button>
+              </div>
+
+              {adminSubscriptionNotice ? <div style={{ ...locationInfoBox, marginTop: 12 }}>{adminSubscriptionNotice}</div> : null}
+
+              <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
+                {adminSubscriptionRequests.filter((row) => row.request_status === "pending").length ? adminSubscriptionRequests.filter((row) => row.request_status === "pending").map((row) => (
+                  <div key={row.request_id} style={{ padding: 13, borderRadius: 14, border: "1px solid #dce7f1", background: "#fff" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) repeat(3,minmax(110px,.5fr)) auto", gap: 10, alignItems: "center" }}>
+                      <div>
+                        <strong style={{ display: "block", color: "#153a65", fontSize: 13.5 }}>{row.user_email || row.user_id}</strong>
+                        <span style={{ display: "block", marginTop: 3, color: "#7b8fa5", fontSize: 11.5 }}>{new Date(row.requested_at).toLocaleString("tr-TR")}</span>
+                      </div>
+                      <div><span style={{ color: "#7b8fa5", fontSize: 10.5 }}>MEVCUT</span><strong style={{ display: "block", marginTop: 3, color: "#34556c", fontSize: 12.5 }}>{row.current_plan === "gold" ? "Gold Elite" : row.current_plan === "premium" ? "Premium" : "Standart"}</strong></div>
+                      <div><span style={{ color: "#7b8fa5", fontSize: 10.5 }}>TALEP</span><strong style={{ display: "block", marginTop: 3, color: row.requested_plan === "gold" ? "#9a701f" : "#0876c9", fontSize: 12.5 }}>{row.requested_plan === "gold" ? "Gold Elite" : row.requested_plan === "premium" ? "Premium" : "Standart"}</strong></div>
+                      <div><span style={{ color: "#7b8fa5", fontSize: 10.5 }}>DÖNEM</span><strong style={{ display: "block", marginTop: 3, color: "#34556c", fontSize: 12.5 }}>{row.requested_billing_cycle === "yearly" ? "Yıllık" : "Aylık"}</strong></div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button type="button" onClick={() => void reviewSubscriptionRequest(row.request_id, "reject")} disabled={Boolean(adminSubscriptionActionId)} style={{ padding: "8px 10px", borderRadius: 9, border: "1px solid #e2c6c0", background: "#fff7f5", color: "#a44b39", fontSize: 11.5, fontWeight: 900, cursor: "pointer" }}>Reddet</button>
+                        <button type="button" onClick={() => void reviewSubscriptionRequest(row.request_id, "approve")} disabled={Boolean(adminSubscriptionActionId)} style={{ padding: "8px 10px", borderRadius: 9, border: 0, background: row.requested_plan === "gold" ? "linear-gradient(135deg,#c99a35,#f1d477)" : "linear-gradient(135deg,#0876c9,#27a8ff)", color: row.requested_plan === "gold" ? "#241a05" : "#fff", fontSize: 11.5, fontWeight: 950, cursor: "pointer" }}>{adminSubscriptionActionId === row.request_id ? "İşleniyor…" : "Onayla"}</button>
+                      </div>
+                    </div>
+                  </div>
+                )) : <div style={emptyState}>{adminSubscriptionLoading ? "Plan talepleri yükleniyor…" : "Bekleyen plan talebi yok."}</div>}
+              </div>
+
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #e4ebf1" }}>
+                <div style={{ color: "#607890", fontSize: 11.5, fontWeight: 900, marginBottom: 7 }}>SON İŞLEMLER</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {adminSubscriptionRequests.filter((row) => row.request_status !== "pending").slice(0, 8).map((row) => <div key={row.request_id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 10, padding: "8px 10px", borderRadius: 10, background: "#f8fbfd", color: "#52697a", fontSize: 11.5 }}><span>{row.user_email || row.user_id}</span><strong>{row.requested_plan === "gold" ? "Gold Elite" : row.requested_plan === "premium" ? "Premium" : "Standart"}</strong><span style={{ color: row.request_status === "approved" ? "#087b5e" : row.request_status === "rejected" ? "#a44b39" : "#7b8fa5", fontWeight: 900 }}>{row.request_status === "approved" ? "Onaylandı" : row.request_status === "rejected" ? "Reddedildi" : "İptal"}</span></div>)}
+                </div>
+              </div>
+            </article>
+          ) : adminSubscriptionNotice ? <div style={{ ...alertStyle, marginBottom: 16 }}>{adminSubscriptionNotice}</div> : null}
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 16 }}>
             {[
               ["Aktif kullanıcı", "1", "Oturum açık"],
@@ -8295,7 +8443,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                 ["📄", "Rapor hareketleri", "Üretilen ve güncellenen raporlar"],
                 ["⚠️", "Hata ve uyarılar", "Eksik veri ve operasyon sinyalleri"],
                 ["🏢", "Kurumsal erişimler", "Banka, ofis ve ekip yetkileri"],
-              ].map(([icon,title,text]) => <button type="button" key={title} onClick={() => title.includes("Üyelik") ? setSection("membership") : title.includes("Veri") ? setSection("market") : setEnterpriseNotice(`${title} çalışma alanı seçildi.`)} style={{ padding: 15, borderRadius: 16, border: "1px solid #dce7f1", background: "#fff", textAlign: "left", cursor: "pointer" }}><span style={{ fontSize: 21 }}>{icon}</span><strong style={{ display: "block", marginTop: 7, color: "#153a65", fontSize: 12 }}>{title}</strong><span style={{ display: "block", marginTop: 4, color: "#74899e", fontSize: 10, lineHeight: 1.4 }}>{text}</span></button>)}
+              ].map(([icon,title,text]) => <button type="button" key={title} onClick={() => title.includes("Üyelik") ? (isPlatformAdmin ? setAdminSubscriptionNotice("Üyelik Onay Merkezi yukarıda aktif.") : setSection("membership")) : title.includes("Veri") ? setSection("market") : setEnterpriseNotice(`${title} çalışma alanı seçildi.`)} style={{ padding: 15, borderRadius: 16, border: "1px solid #dce7f1", background: "#fff", textAlign: "left", cursor: "pointer" }}><span style={{ fontSize: 21 }}>{icon}</span><strong style={{ display: "block", marginTop: 7, color: "#153a65", fontSize: 12 }}>{title}</strong><span style={{ display: "block", marginTop: 4, color: "#74899e", fontSize: 10, lineHeight: 1.4 }}>{text}</span></button>)}
             </div>
           </article>
           <div style={statsGrid}>
