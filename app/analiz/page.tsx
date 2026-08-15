@@ -3091,6 +3091,16 @@ type LiveListing = {
   updated_at: string;
 };
 
+type ListingInquiry = {
+  id: string;
+  listing_id: string;
+  sender_user_id: string;
+  recipient_user_id: string;
+  message: string;
+  status: "new" | "read" | "closed";
+  created_at: string;
+};
+
 function StrategicExpansionCenter({
   records,
   regionalData,
@@ -3162,10 +3172,24 @@ function StrategicExpansionCenter({
   const [listingSaving, setListingSaving] = useState(false);
   const [listingBackendReady, setListingBackendReady] = useState<boolean | null>(null);
   const [listingFiles, setListingFiles] = useState<File[]>([]);
+  const [listingFilePreviews, setListingFilePreviews] = useState<string[]>([]);
+  const [listingPhotoInsights, setListingPhotoInsights] = useState<Array<{ width: number; height: number; brightness: number; score: number; label: string; note: string; orientation: "yatay" | "dikey" | "kare"; signature: number[] }>>([]);
   const [listingAiMode, setListingAiMode] = useState<"correct" | "enrich" | "short" | "premium">("enrich");
   const [listingAiLoading, setListingAiLoading] = useState(false);
   const [listingAiSuggestion, setListingAiSuggestion] = useState("");
   const [selectedListingId, setSelectedListingId] = useState("");
+  const [selectedListingImageIndex, setSelectedListingImageIndex] = useState(0);
+  const [listingVerificationSaving, setListingVerificationSaving] = useState(false);
+  const [favoriteListingIds, setFavoriteListingIds] = useState<string[]>([]);
+  const [listingEngagementReady, setListingEngagementReady] = useState<boolean | null>(null);
+  const [listingInquiryMessage, setListingInquiryMessage] = useState("");
+  const [listingInquirySending, setListingInquirySending] = useState(false);
+  const [listingInquiryNotice, setListingInquiryNotice] = useState("");
+  const [listingBuyerAiLoading, setListingBuyerAiLoading] = useState(false);
+  const [listingBuyerAiResult, setListingBuyerAiResult] = useState("");
+  const [listingAnalyticsReady, setListingAnalyticsReady] = useState<boolean | null>(null);
+  const [listingOwnerStats, setListingOwnerStats] = useState({ uniqueViewers: 0, totalViews: 0, favorites: 0, inquiries: 0, unreadInquiries: 0 });
+  const [listingOwnerStatsLoading, setListingOwnerStatsLoading] = useState(false);
 
 
 
@@ -3200,6 +3224,155 @@ function StrategicExpansionCenter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
+  useEffect(() => {
+    void loadListingEngagement();
+    // Favoriler yalnızca oturumdaki kullanıcı için RLS üzerinden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    const urls = listingFiles.map((file) => URL.createObjectURL(file));
+    setListingFilePreviews(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [listingFiles]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!listingFilePreviews.length) {
+      setListingPhotoInsights([]);
+      return;
+    }
+    Promise.all(listingFilePreviews.map((src) => new Promise<{ width: number; height: number; brightness: number; score: number; label: string; note: string; orientation: "yatay" | "dikey" | "kare"; signature: number[] }>((resolve) => {
+      const image = new Image();
+      image.onload = () => {
+        const width = image.naturalWidth || 0;
+        const height = image.naturalHeight || 0;
+        const ratio = height > 0 ? width / height : 1;
+        const orientation: "yatay" | "dikey" | "kare" = ratio > 1.18 ? "yatay" : ratio < .84 ? "dikey" : "kare";
+        let brightness = 128;
+        let signature: number[] = [];
+        try {
+          const canvas = document.createElement("canvas");
+          const sampleWidth = 36;
+          const sampleHeight = Math.max(24, Math.round(sampleWidth / Math.max(.4, Math.min(2.5, ratio))));
+          canvas.width = sampleWidth;
+          canvas.height = sampleHeight;
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          if (ctx) {
+            ctx.drawImage(image, 0, 0, sampleWidth, sampleHeight);
+            const data = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+            let total = 0;
+            for (let i = 0; i < data.length; i += 16) total += (data[i] + data[i + 1] + data[i + 2]) / 3;
+            brightness = Math.round(total / Math.max(1, data.length / 16));
+          }
+          const signatureCanvas = document.createElement("canvas");
+          signatureCanvas.width = 8;
+          signatureCanvas.height = 8;
+          const signatureCtx = signatureCanvas.getContext("2d", { willReadFrequently: true });
+          if (signatureCtx) {
+            signatureCtx.drawImage(image, 0, 0, 8, 8);
+            const pixels = signatureCtx.getImageData(0, 0, 8, 8).data;
+            signature = [];
+            for (let i = 0; i < pixels.length; i += 4) {
+              signature.push(Math.round((pixels[i] * .299) + (pixels[i + 1] * .587) + (pixels[i + 2] * .114)));
+            }
+          }
+        } catch {
+          brightness = 128;
+          signature = [];
+        }
+        let score = 52;
+        if (orientation === "yatay") score += 22;
+        else if (orientation === "kare") score += 10;
+        if (width >= 1400) score += 12;
+        else if (width >= 900) score += 7;
+        else if (width < 640) score -= 12;
+        if (brightness >= 75 && brightness <= 205) score += 12;
+        else if (brightness < 55 || brightness > 225) score -= 14;
+        score = Math.max(0, Math.min(100, score));
+        const label = score >= 82 ? "Kapak adayı" : score >= 68 ? "Güçlü kare" : score >= 52 ? "Kullanılabilir" : "İyileştir";
+        const note = orientation === "dikey" ? "Yatay bir alternatif, vitrin görünümünde daha güçlü olabilir." : brightness < 65 ? "Fotoğraf karanlık görünüyor; daha aydınlık çekim önerilir." : brightness > 215 ? "Işık fazla yüksek; detay kaybını kontrol edin." : width < 900 ? "Daha yüksek çözünürlüklü bir kare tercih edin." : "Işık ve kadraj ilan vitrini için uygun görünüyor.";
+        resolve({ width, height, brightness, score, label, note, orientation, signature });
+      };
+      image.onerror = () => resolve({ width: 0, height: 0, brightness: 0, score: 35, label: "Kontrol et", note: "Görsel kalite bilgisi okunamadı.", orientation: "kare", signature: [] });
+      image.src = src;
+    }))).then((rows) => { if (!cancelled) setListingPhotoInsights(rows); });
+    return () => { cancelled = true; };
+  }, [listingFilePreviews]);
+
+  const listingRecommendedCoverIndex = useMemo(() => {
+    if (!listingPhotoInsights.length) return -1;
+    return listingPhotoInsights.reduce((best, row, index, rows) => row.score > rows[best].score ? index : best, 0);
+  }, [listingPhotoInsights]);
+
+  const listingPhotoRelations = useMemo(() => {
+    const relations = listingPhotoInsights.map(() => ({ duplicateOf: -1, similarity: 0 }));
+    const similarityOf = (left: number[], right: number[]) => {
+      if (!left.length || left.length !== right.length) return 0;
+      const difference = left.reduce((sum, value, index) => sum + Math.abs(value - right[index]), 0) / left.length;
+      return Math.max(0, Math.min(100, Math.round(100 - (difference / 255) * 100)));
+    };
+    for (let index = 1; index < listingPhotoInsights.length; index += 1) {
+      let bestSimilarity = 0;
+      let duplicateOf = -1;
+      for (let candidate = 0; candidate < index; candidate += 1) {
+        const similarity = similarityOf(listingPhotoInsights[index].signature, listingPhotoInsights[candidate].signature);
+        if (similarity > bestSimilarity) {
+          bestSimilarity = similarity;
+          duplicateOf = candidate;
+        }
+      }
+      if (bestSimilarity >= 93) relations[index] = { duplicateOf, similarity: bestSimilarity };
+    }
+    return relations;
+  }, [listingPhotoInsights]);
+
+  const listingPhotoCoach = useMemo(() => {
+    const duplicateCount = listingPhotoRelations.filter((item) => item.duplicateOf >= 0).length;
+    const lowQualityCount = listingPhotoInsights.filter((item) => item.score < 52).length;
+    const verticalCount = listingPhotoInsights.filter((item) => item.orientation === "dikey").length;
+    const uniqueCount = Math.max(0, listingFiles.length - duplicateCount);
+    const warnings: string[] = [];
+    if (duplicateCount) warnings.push(`${duplicateCount} kare birbirine çok benziyor; tekrarları azaltın.`);
+    if (lowQualityCount) warnings.push(`${lowQualityCount} kare teknik olarak zayıf; ışık veya çözünürlüğü iyileştirin.`);
+    if (verticalCount > Math.max(2, Math.ceil(listingFiles.length / 2))) warnings.push("Galeride dikey kare oranı yüksek; yatay fotoğraflar vitrin görünümünü güçlendirir.");
+    if (listingFiles.length > 0 && listingRecommendedCoverIndex >= 0 && listingRecommendedCoverIndex !== 0) warnings.push(`${listingRecommendedCoverIndex + 1}. fotoğraf kapak için daha güçlü aday.`);
+    if (!warnings.length && listingFiles.length) warnings.push("Fotoğraf seti dengeli görünüyor; ilan vitrini için güçlü bir başlangıç.");
+    return { duplicateCount, lowQualityCount, verticalCount, uniqueCount, warnings };
+  }, [listingFiles.length, listingPhotoInsights, listingPhotoRelations, listingRecommendedCoverIndex]);
+
+  const listingDraftQuality = useMemo(() => {
+    const photoCount = listingFiles.length;
+    const uniquePhotoCount = Math.max(0, photoCount - listingPhotoCoach.duplicateCount);
+    const photoQuality = listingPhotoInsights.length ? Math.round(listingPhotoInsights.reduce((sum, row) => sum + row.score, 0) / listingPhotoInsights.length) : 0;
+    const descriptionLength = listingDraft.description.trim().length;
+    const basicsReady = Boolean(listingDraft.title.trim() && listingDraft.city.trim() && listingDraft.district.trim() && listingDraft.price && listingDraft.area);
+    const score = Math.max(0, Math.min(100, Math.round(
+      Math.min(40, uniquePhotoCount * 5) +
+      Math.min(15, photoQuality * .15) +
+      Math.min(20, descriptionLength / 4) +
+      (basicsReady ? 15 : 5) +
+      (listingDraft.neighborhood.trim() ? 10 : 0) -
+      Math.min(10, listingPhotoCoach.duplicateCount * 3) -
+      Math.min(8, listingPhotoCoach.lowQualityCount * 2)
+    )));
+    const level = score >= 85 ? "Premium" : score >= 70 ? "Güçlü" : score >= 50 ? "Gelişiyor" : "Eksik";
+    return { score, level, photoQuality, basicsReady, uniquePhotoCount };
+  }, [listingDraft, listingFiles.length, listingPhotoInsights, listingPhotoCoach.duplicateCount, listingPhotoCoach.lowQualityCount]);
+
+  function makeListingFileCover(index: number) {
+    setListingFiles((current) => {
+      if (index <= 0 || index >= current.length) return current;
+      const next = [...current];
+      const [picked] = next.splice(index, 1);
+      return picked ? [picked, ...next] : current;
+    });
+  }
+
+  function removeListingFile(index: number) {
+    setListingFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  }
+
   async function loadLiveListings() {
     setListingLoading(true);
     const { data, error: listingsError } = await supabase
@@ -3218,6 +3391,118 @@ function StrategicExpansionCenter({
       setLiveListings((data ?? []) as LiveListing[]);
     }
     setListingLoading(false);
+  }
+
+  async function loadListingEngagement() {
+    if (!user) {
+      setFavoriteListingIds([]);
+      setListingEngagementReady(null);
+      return;
+    }
+    const { data, error: favoriteError } = await supabase
+      .from("listing_favorites")
+      .select("listing_id")
+      .eq("user_id", user.id);
+    if (favoriteError) {
+      const missing = /relation .*listing_favorites.* does not exist|Could not find the table|schema cache/i.test(favoriteError.message);
+      setListingEngagementReady(missing ? false : null);
+      if (!missing) setListingInquiryNotice(`Favori servisi okunamadı: ${favoriteError.message}`);
+      setFavoriteListingIds([]);
+      return;
+    }
+    setListingEngagementReady(true);
+    setFavoriteListingIds((data ?? []).map((row: { listing_id: string }) => row.listing_id));
+  }
+
+  async function recordLiveListingView(listingId: string) {
+    if (!user || listingAnalyticsReady === false) return;
+    const { error } = await supabase.rpc("record_listing_view", { target_listing_id: listingId });
+    if (error) {
+      const missing = /record_listing_view|function .* does not exist|schema cache/i.test(error.message);
+      setListingAnalyticsReady(missing ? false : null);
+      if (!missing) setListingInquiryNotice(`Görüntülenme kaydı alınamadı: ${error.message}`);
+    } else {
+      setListingAnalyticsReady(true);
+    }
+  }
+
+  async function loadListingOwnerStats(listingId: string) {
+    if (!user) return;
+    setListingOwnerStatsLoading(true);
+    const { data, error } = await supabase.rpc("get_listing_owner_stats", { target_listing_id: listingId });
+    if (error) {
+      const missing = /get_listing_owner_stats|function .* does not exist|schema cache/i.test(error.message);
+      setListingAnalyticsReady(missing ? false : null);
+      if (!missing && !/not_authorized/i.test(error.message)) setListingInquiryNotice(`İlan performansı okunamadı: ${error.message}`);
+      setListingOwnerStats({ uniqueViewers: 0, totalViews: 0, favorites: 0, inquiries: 0, unreadInquiries: 0 });
+    } else {
+      const row = Array.isArray(data) ? data[0] : data;
+      setListingAnalyticsReady(true);
+      setListingOwnerStats({
+        uniqueViewers: Number(row?.unique_viewers ?? 0),
+        totalViews: Number(row?.total_views ?? 0),
+        favorites: Number(row?.favorite_count ?? 0),
+        inquiries: Number(row?.inquiry_count ?? 0),
+        unreadInquiries: Number(row?.unread_inquiry_count ?? 0),
+      });
+    }
+    setListingOwnerStatsLoading(false);
+  }
+
+  async function toggleListingFavorite(listingId: string) {
+    if (!user) { setListingInquiryNotice("Favorilere eklemek için oturum açık olmalıdır."); return; }
+    if (listingEngagementReady === false) { setListingInquiryNotice("Favoriler altyapısı için FAZ 2 etkileşim SQL dosyasını çalıştırın."); return; }
+    const active = favoriteListingIds.includes(listingId);
+    if (active) {
+      const { error } = await supabase.from("listing_favorites").delete().eq("listing_id", listingId).eq("user_id", user.id);
+      if (error) { setListingInquiryNotice(error.message); return; }
+      setFavoriteListingIds((current) => current.filter((id) => id !== listingId));
+    } else {
+      const { error } = await supabase.from("listing_favorites").insert({ listing_id: listingId, user_id: user.id });
+      if (error) { setListingInquiryNotice(error.message); return; }
+      setFavoriteListingIds((current) => Array.from(new Set([...current, listingId])));
+    }
+  }
+
+  async function shareListing(listing: LiveListing) {
+    const location = [listing.city, listing.district, listing.neighborhood].filter(Boolean).join(" / ");
+    const text = `${listing.title} · ${location} · ${Math.round(Number(listing.price || 0)).toLocaleString("tr-TR")} TL`;
+    try {
+      if (navigator.share) await navigator.share({ title: listing.title, text });
+      else { await navigator.clipboard.writeText(text); setListingInquiryNotice("İlan özeti panoya kopyalandı."); }
+    } catch (shareError) {
+      if (shareError instanceof Error && shareError.name !== "AbortError") setListingInquiryNotice("İlan paylaşımı tamamlanamadı.");
+    }
+  }
+
+  async function sendListingInquiry(listing: LiveListing) {
+    if (!user) { setListingInquiryNotice("Mesaj göndermek için oturum açık olmalıdır."); return; }
+    if (listing.user_id === user.id) { setListingInquiryNotice("Bu ilan size ait; kendinize mesaj gönderemezsiniz."); return; }
+    const message = listingInquiryMessage.trim();
+    if (message.length < 8) { setListingInquiryNotice("Mesajınız en az 8 karakter olmalıdır."); return; }
+    if (listingEngagementReady === false) { setListingInquiryNotice("Mesaj altyapısı için FAZ 2 etkileşim SQL dosyasını çalıştırın."); return; }
+    setListingInquirySending(true); setListingInquiryNotice("");
+    const { error } = await supabase.from("listing_inquiries").insert({ listing_id: listing.id, sender_user_id: user.id, recipient_user_id: listing.user_id, message });
+    if (error) setListingInquiryNotice(`Mesaj gönderilemedi: ${error.message}`);
+    else { setListingInquiryMessage(""); setListingInquiryNotice("Mesaj ilan sahibine güvenli kanal üzerinden iletildi."); }
+    setListingInquirySending(false);
+  }
+
+  async function runListingBuyerAi(listing: LiveListing) {
+    const intelligence = selectedListingIntelligence;
+    setListingBuyerAiLoading(true); setListingBuyerAiResult(""); setListingInquiryNotice("");
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: `Sen Yaşam AI Alıcı Karar Asistanı'sın. Kullanıcıya bu ilan için kısa, açıklanabilir ve temkinli karar desteği ver. Verilmeyen bilgiyi uydurma; resmi ekspertiz veya hukuki doğrulama yapılmış gibi davranma.\n\nİLAN\nBaşlık: ${listing.title}\nKonum: ${[listing.city, listing.district, listing.neighborhood].filter(Boolean).join(" / ")}\nTür: ${listing.property_type}\nİşlem: ${listing.transaction_type}\nFiyat: ${listing.price} TL\nAlan: ${listing.area_m2 || "Belirtilmedi"} m²\nAçıklama: ${listing.description || "Yok"}\nDoğrulama: ${listing.verification_status}\nFotoğraf sayısı: ${(listing.media || []).length}\n\nYAŞAM AI VERİ SİNYALİ\nBölge m² ortalaması: ${intelligence?.marketM2 || "Veri yok"}\nVeri bazlı tahmini değer: ${intelligence?.estimatedValue || "Veri yok"}\nFiyat farkı: ${intelligence?.differencePercent != null ? `${intelligence.differencePercent.toFixed(1)}%` : "Veri yok"}\nVeri güveni: ${intelligence?.confidence || 0}/100\n\nYanıtı MUTLAKA şu başlıklarla ver:\nNET GÖRÜŞ: ALMAYA DEĞER / PAZARLIKLA DEĞER / BEKLE / VERİ YETERSİZ seçeneklerinden biri ve tek cümle açıklama\nGÜÇLÜ NOKTALAR: en fazla 3 kısa madde\nDİKKAT: en fazla 3 kısa madde\nSONRAKİ ADIM: şimdi yapılacak tek en doğru hareket` })
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) throw new Error(extractText(data) || "AI alıcı değerlendirmesi üretilemedi.");
+      setListingBuyerAiResult(extractText(data).trim());
+    } catch (error) {
+      setListingInquiryNotice(error instanceof Error ? error.message : "AI alıcı değerlendirmesi çalıştırılamadı.");
+    } finally { setListingBuyerAiLoading(false); }
   }
 
   function listingImageUrl(path: string | undefined) {
@@ -3347,6 +3632,30 @@ ${currentText}`
     setListingSaving(false);
   }
 
+  async function requestListingVerification(listing: LiveListing) {
+    if (!user || listing.user_id !== user.id) return;
+    if (listing.verification_status === "verified") { setListingNotice("Bu ilan zaten doğrulanmış."); return; }
+    setListingVerificationSaving(true);
+    setListingNotice("");
+    try {
+      const { error: requestError } = await supabase.from("listing_verification_requests").insert({
+        listing_id: listing.id,
+        user_id: user.id,
+        status: "pending",
+        note: "İlan sahibi Yaşam AI doğrulama incelemesi talep etti.",
+      });
+      if (requestError && !/duplicate key|unique/i.test(requestError.message)) throw requestError;
+      const { error: statusError } = await supabase.from("listings").update({ verification_status: "pending" }).eq("id", listing.id).eq("user_id", user.id);
+      if (statusError) throw statusError;
+      setListingNotice("Doğrulama talebi alındı. İlan, belge ve veri kontrolleri tamamlanana kadar 'Doğrulama Bekliyor' olarak kalacak.");
+      await loadLiveListings();
+    } catch (verificationError) {
+      setListingNotice(verificationError instanceof Error ? `Doğrulama talebi gönderilemedi: ${verificationError.message}` : "Doğrulama talebi gönderilemedi.");
+    } finally {
+      setListingVerificationSaving(false);
+    }
+  }
+
   function saveMarketplaceDraft() {
     if (!listingDraft.title.trim() || !listingDraft.city.trim() || !listingDraft.price.trim()) {
       setListingNotice("Taslak için başlık, il ve fiyat alanlarını doldurun.");
@@ -3409,6 +3718,77 @@ ${currentText}`
   }, [liveListings, listingPropertyType, listingQuery, listingSort, listingTransaction, user?.id]);
 
   const selectedLiveListing = useMemo(() => liveListings.find((item) => item.id === selectedListingId) ?? null, [liveListings, selectedListingId]);
+
+  const selectedListingIntelligence = useMemo(() => {
+    if (!selectedLiveListing) return null;
+    const area = Number(selectedLiveListing.area_m2 || 0);
+    const askingPrice = Number(selectedLiveListing.price || 0);
+    const askingM2 = area > 0 && askingPrice > 0 ? askingPrice / area : 0;
+    const city = (selectedLiveListing.city || "").toLocaleLowerCase("tr-TR");
+    const district = (selectedLiveListing.district || "").toLocaleLowerCase("tr-TR");
+    const neighborhood = (selectedLiveListing.neighborhood || "").toLocaleLowerCase("tr-TR");
+    const propertyType = (selectedLiveListing.property_type || "").toLocaleLowerCase("tr-TR");
+    const regional = regionalData
+      .filter((item) => item.averageM2 > 0)
+      .map((item) => {
+        let match = 0;
+        if (item.city.toLocaleLowerCase("tr-TR") === city) match += 40;
+        if (item.district.toLocaleLowerCase("tr-TR") === district) match += 30;
+        if (item.neighborhood.toLocaleLowerCase("tr-TR") === neighborhood) match += 20;
+        if (item.propertyType.toLocaleLowerCase("tr-TR") === propertyType) match += 10;
+        return { item, match };
+      })
+      .sort((a,b) => b.match - a.match)[0]?.item ?? null;
+    const marketM2 = regional?.averageM2 || 0;
+    const estimatedValue = marketM2 > 0 && area > 0 ? marketM2 * area : 0;
+    const differencePercent = estimatedValue > 0 ? ((askingPrice - estimatedValue) / estimatedValue) * 100 : null;
+    const priceSignal = differencePercent == null ? "Veri eksik" : differencePercent <= -7 ? "Avantajlı" : differencePercent >= 7 ? "Yüksek fiyat" : "Piyasa bandında";
+    const confidence = regional?.dataConfidence ?? 0;
+    const verificationChecks = [
+      { label: "Temel ilan bilgileri", ok: Boolean(selectedLiveListing.title && selectedLiveListing.city && selectedLiveListing.district && askingPrice > 0 && area > 0) },
+      { label: "İlan açıklaması", ok: Boolean((selectedLiveListing.description || "").trim().length >= 30) },
+      { label: "Fotoğraf kanıtı", ok: Boolean((selectedLiveListing.media || []).length >= 3) },
+      { label: "Bölgesel fiyat verisi", ok: Boolean(regional && marketM2 > 0) },
+      { label: "Veri güveni ≥ 65", ok: confidence >= 65 },
+    ];
+    const completion = Math.round((verificationChecks.filter((x) => x.ok).length / verificationChecks.length) * 100);
+    return { askingM2, regional, marketM2, estimatedValue, differencePercent, priceSignal, confidence, verificationChecks, completion };
+  }, [regionalData, selectedLiveListing]);
+
+  const selectedSimilarListings = useMemo(() => {
+    if (!selectedLiveListing) return [] as LiveListing[];
+    const basePrice = Number(selectedLiveListing.price || 0);
+    return liveListings
+      .filter((item) => item.id !== selectedLiveListing.id && item.status === "published")
+      .map((item) => {
+        let score = 0;
+        if ((item.city || "").toLocaleLowerCase("tr-TR") === (selectedLiveListing.city || "").toLocaleLowerCase("tr-TR")) score += 35;
+        if ((item.district || "").toLocaleLowerCase("tr-TR") === (selectedLiveListing.district || "").toLocaleLowerCase("tr-TR")) score += 25;
+        if ((item.property_type || "").toLocaleLowerCase("tr-TR") === (selectedLiveListing.property_type || "").toLocaleLowerCase("tr-TR")) score += 20;
+        if (item.transaction_type === selectedLiveListing.transaction_type) score += 10;
+        const price = Number(item.price || 0);
+        if (basePrice > 0 && price > 0) score += Math.max(0, 10 - Math.abs(price - basePrice) / basePrice * 20);
+        return { item, score };
+      })
+      .sort((a,b) => b.score - a.score)
+      .slice(0, 3)
+      .map((entry) => entry.item);
+  }, [liveListings, selectedLiveListing]);
+
+
+  useEffect(() => {
+    if (!selectedLiveListing || !user) {
+      setListingOwnerStats({ uniqueViewers: 0, totalViews: 0, favorites: 0, inquiries: 0, unreadInquiries: 0 });
+      return;
+    }
+    if (selectedLiveListing.user_id === user.id) {
+      void loadListingOwnerStats(selectedLiveListing.id);
+    } else if (selectedLiveListing.status === "published") {
+      void recordLiveListingView(selectedLiveListing.id);
+    }
+    // İlan değiştiğinde tekil görüntülenme ve ilan sahibi performansı güncellenir.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLiveListing?.id, user?.id]);
 
   const filteredMarketplaceDrafts = useMemo(() => {
     const q = listingQuery.trim().toLocaleLowerCase("tr-TR");
@@ -5033,7 +5413,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                       <div><div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><span style={{ padding: "4px 7px", borderRadius: 999, background: listing.status === "published" ? "#e9f8f0" : "#fff4dc", color: listing.status === "published" ? "#087b5e" : "#996100", fontSize: 8.5, fontWeight: 950 }}>{listing.status === "published" ? "CANLI İLAN" : listing.status.toLocaleUpperCase("tr-TR")}</span><span style={{ padding: "4px 7px", borderRadius: 999, background: "#edf6ff", color: "#1769a7", fontSize: 8.5, fontWeight: 950 }}>{listing.transaction_type}</span><span style={{ padding: "4px 7px", borderRadius: 999, background: listing.verification_status === "verified" ? "#e9f8f0" : "#f4f0ff", color: listing.verification_status === "verified" ? "#087b5e" : "#6b46c1", fontSize: 8.5, fontWeight: 950 }}>{listing.verification_status === "verified" ? "DOĞRULANMIŞ" : "DOĞRULAMA BEKLİYOR"}</span></div><strong style={{ display: "block", marginTop: 7, color: "#153a65", fontSize: 16 }}>{listing.title}</strong><span style={{ display: "block", marginTop: 4, color: "#74899e", fontSize: 10 }}>{listing.property_type} · {location || "Konum eksik"}{area ? ` · ${area.toLocaleString("tr-TR")} m²` : ""}{priceM2 ? ` · ${priceM2.toLocaleString("tr-TR")} TL/m²` : ""}</span>{listing.description ? <span style={{ display: "block", marginTop: 6, color: "#607890", fontSize: 9.5, lineHeight: 1.45 }}>{listing.description.slice(0,140)}{listing.description.length>140?"…":""}</span> : null}</div>
                       <div style={{ textAlign: "right" }}><strong style={{ color: "#153a65", fontSize: 18 }}>{price ? `${Math.round(price).toLocaleString("tr-TR")} TL` : "Fiyat yok"}</strong><span style={{ display: "block", marginTop: 5, color: "#71869b", fontSize: 9 }}>{own ? "Sizin ilanınız" : "Pazar ilanı"}</span></div>
                     </div>
-                    <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}><button type="button" onClick={() => setSelectedListingId(listing.id)} style={{ ...blueButton, marginTop: 0, padding: "9px 12px", background: "linear-gradient(135deg,#0a6fc7,#0b4e91)" }}>İlanı İncele</button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`} target="_blank" rel="noreferrer" style={{ ...softButton, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Haritada Aç</a>{own && listing.status !== "published" ? <button type="button" disabled={listingSaving} onClick={() => void changeLiveListingStatus(listing.id,"published")} style={{ ...blueButton, padding: "9px 12px", background: "linear-gradient(135deg,#079a70,#087b5e)" }}>Yayına Al</button> : null}{own && listing.status === "published" ? <button type="button" disabled={listingSaving} onClick={() => void changeLiveListingStatus(listing.id,"paused")} style={{ ...softButton, padding: "9px 12px" }}>Yayını Durdur</button> : null}{own ? <button type="button" disabled={listingSaving} onClick={() => void deleteLiveListing(listing.id)} style={{ ...softButton, padding: "9px 12px", color: "#b42318", borderColor: "#efcccc" }}>Sil</button> : null}<span style={{ marginLeft: "auto", alignSelf: "center", color: "#087b5e", fontSize: 9, fontWeight: 900 }}>Supabase · RLS korumalı</span></div>
+                    <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}><button type="button" onClick={() => { setSelectedListingImageIndex(0); setSelectedListingId(listing.id); }} style={{ ...blueButton, marginTop: 0, padding: "9px 12px", background: "linear-gradient(135deg,#0a6fc7,#0b4e91)" }}>İlanı İncele</button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`} target="_blank" rel="noreferrer" style={{ ...softButton, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Haritada Aç</a>{own && listing.status !== "published" ? <button type="button" disabled={listingSaving} onClick={() => void changeLiveListingStatus(listing.id,"published")} style={{ ...blueButton, padding: "9px 12px", background: "linear-gradient(135deg,#079a70,#087b5e)" }}>Yayına Al</button> : null}{own && listing.status === "published" ? <button type="button" disabled={listingSaving} onClick={() => void changeLiveListingStatus(listing.id,"paused")} style={{ ...softButton, padding: "9px 12px" }}>Yayını Durdur</button> : null}{own ? <button type="button" disabled={listingSaving} onClick={() => void deleteLiveListing(listing.id)} style={{ ...softButton, padding: "9px 12px", color: "#b42318", borderColor: "#efcccc" }}>Sil</button> : null}<span style={{ marginLeft: "auto", alignSelf: "center", color: "#087b5e", fontSize: 9, fontWeight: 900 }}>Supabase · RLS korumalı</span></div>
                   </article>;
                 })}
 
@@ -5096,38 +5476,142 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                     {listingAiLoading ? <div style={{ marginTop: 9, padding: 11, borderRadius: 12, background: "#f4f0ff", color: "#6840ca", fontSize: 9.5, fontWeight: 850 }}>AI açıklamanızı hazırlıyor…</div> : null}
                     {listingAiSuggestion ? <div style={{ marginTop: 9, padding: 12, borderRadius: 13, background: "linear-gradient(145deg,#f5f1ff,#fff)", border: "1px solid #d8caf8" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: "#5f3bbd", fontSize: 9.5 }}>AI ÖNERİSİ · ÖNİZLEME</strong><button type="button" onClick={() => { setListingDraft((d) => ({...d,description:listingAiSuggestion})); setListingAiSuggestion(""); setListingNotice("AI açıklaması ilana uygulandı. Yayınlamadan önce son kez kontrol edin."); }} style={{ padding: "7px 9px", borderRadius: 9, border: 0, background: "#6840ca", color: "#fff", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>Bu Metni Kullan</button></div><p style={{ margin: "8px 0 0", color: "#40586f", fontSize: 9.5, lineHeight: 1.58, whiteSpace: "pre-wrap" }}>{listingAiSuggestion}</p></div> : null}
                   </div>
-                  <label style={{ padding: 11, borderRadius: 13, border: "1px dashed #c8d9e7", background: "#f8fbff", color: "#526d86", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>Fotoğraf seç · en fazla 12 görsel<input type="file" accept="image/*" multiple onChange={(e) => setListingFiles(Array.from(e.target.files ?? []).slice(0,12))} style={{ display: "none" }} /></label>
-                  {listingFiles.length ? <div style={{ color: "#087b5e", fontSize: 9.5, fontWeight: 850 }}>{listingFiles.length} fotoğraf yayına hazırlanacak.</div> : null}
+                  <div style={{ padding: 15, borderRadius: 20, border: "1px solid #cfe5f3", background: "radial-gradient(circle at 12% 0%,rgba(20,190,255,.10),transparent 32%),linear-gradient(145deg,#f8fcff,#ffffff)", boxShadow: "0 16px 38px rgba(31,64,97,.08)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+                      <div><div style={{ color: "#0a5d86", fontSize: 9, fontWeight: 950, letterSpacing: 1.05 }}>FOTOĞRAF STÜDYOSU v2</div><strong style={{ display: "block", marginTop: 4, color: "#153a65", fontSize: 13.5 }}>İlanın vitrini burada hazırlanır.</strong><span style={{ display: "block", marginTop: 4, color: "#71869a", fontSize: 8.8, lineHeight: 1.5 }}>Kapak seçimi, ışık ve kadraj sinyalleriyle daha güven veren bir ilan oluşturun.</span></div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}><span style={{ padding: "6px 9px", borderRadius: 999, background: listingFiles.length >= 6 ? "#e9f8f0" : listingFiles.length >= 3 ? "#eef6ff" : "#fff5df", color: listingFiles.length >= 6 ? "#087b5e" : listingFiles.length >= 3 ? "#1769a7" : "#996100", fontSize: 8.5, fontWeight: 950 }}>{listingFiles.length}/12 FOTOĞRAF</span><span style={{ padding: "6px 10px", borderRadius: 999, background: !listingFiles.length ? "#eef3f8" : listingDraftQuality.score >= 70 ? "#eaf9f2" : "#fff7e8", color: !listingFiles.length ? "#6f8498" : listingDraftQuality.score >= 70 ? "#087b5e" : "#9a6500", fontSize: 8.5, fontWeight: 950 }}>{listingFiles.length ? `KALİTE ${listingDraftQuality.score}/100` : "KALİTE · HENÜZ HESAPLANMADI"}</span></div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(180px,.62fr)", gap: 9, marginTop: 11 }}>
+                      <label style={{ display: "grid", placeItems: "center", minHeight: listingFiles.length ? 96 : 142, padding: 14, borderRadius: 16, border: "1.5px dashed #65bfe8", background: "radial-gradient(circle at 50% 0%,rgba(37,190,255,.14),transparent 58%),#f8fcff", color: "#285c86", textAlign: "center", cursor: "pointer" }}>
+                        <span style={{ display: "grid", placeItems: "center", width: 44, height: 44, borderRadius: 14, background: "linear-gradient(145deg,#d8f8ff,#e8efff)", color: "#0876c9", fontSize: 23, marginBottom: 7, boxShadow: "0 8px 18px rgba(8,118,201,.12)" }}>＋</span>
+                        <strong style={{ fontSize: 11.5 }}>Fotoğrafları seç veya sürükleyip bırak</strong><span style={{ marginTop: 3, color: "#8395a6", fontSize: 8.2 }}>JPG / PNG / WEBP · en fazla 12 görsel · görsel başına 8 MB</span>
+                        <input type="file" accept="image/*" multiple onChange={(e) => setListingFiles(Array.from(e.target.files ?? []).slice(0,12))} style={{ display: "none" }} />
+                      </label>
+                      <div style={{ padding: 12, borderRadius: 16, background: "linear-gradient(145deg,#071f39,#0a5b7f)", color: "#fff", boxShadow: "0 12px 25px rgba(7,31,57,.16)" }}>
+                        <div style={{ fontSize: 8, fontWeight: 950, letterSpacing: 1.05, color: "#82e7ff" }}>AI FOTOĞRAF KOÇU</div>
+                        <strong style={{ display: "block", marginTop: 5, fontSize: 12 }}>{listingFiles.length ? `${listingDraftQuality.photoQuality || 0}/100 görsel kalite` : "İlk güçlü kareyi ekleyin"}</strong>
+                        <span style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,.70)", fontSize: 8.2, lineHeight: 1.45 }}>{listingFiles.length ? (listingRecommendedCoverIndex === 0 ? "Mevcut kapak, seçili görseller içinde en güçlü aday." : `${listingRecommendedCoverIndex + 1}. fotoğraf kapak için daha güçlü görünüyor.`) : "Yatay, aydınlık ve mekânı geniş gösteren gerçek fotoğraflar daha yüksek güven üretir."}</span>
+                        {listingFiles.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 5, marginTop: 9 }}><div style={{ padding: "6px 5px", borderRadius: 9, background: "rgba(255,255,255,.08)", textAlign: "center" }}><strong style={{ display: "block", fontSize: 10 }}>{listingPhotoCoach.uniqueCount}</strong><span style={{ fontSize: 6.5, color: "rgba(255,255,255,.62)" }}>benzersiz</span></div><div style={{ padding: "6px 5px", borderRadius: 9, background: listingPhotoCoach.duplicateCount ? "rgba(255,154,75,.18)" : "rgba(255,255,255,.08)", textAlign: "center" }}><strong style={{ display: "block", fontSize: 10 }}>{listingPhotoCoach.duplicateCount}</strong><span style={{ fontSize: 6.5, color: "rgba(255,255,255,.62)" }}>benzer</span></div><div style={{ padding: "6px 5px", borderRadius: 9, background: listingPhotoCoach.lowQualityCount ? "rgba(255,99,99,.18)" : "rgba(255,255,255,.08)", textAlign: "center" }}><strong style={{ display: "block", fontSize: 10 }}>{listingPhotoCoach.lowQualityCount}</strong><span style={{ fontSize: 6.5, color: "rgba(255,255,255,.62)" }}>zayıf</span></div></div> : null}
+                        {listingRecommendedCoverIndex > 0 ? <button type="button" onClick={() => makeListingFileCover(listingRecommendedCoverIndex)} style={{ width: "100%", marginTop: 10, padding: "10px 10px", borderRadius: 12, border: "1px solid rgba(255,255,255,.24)", background: "linear-gradient(135deg,#00d8ff 0%,#2f8cff 52%,#6f62ff 100%)", color: "#fff", fontSize: 8.8, fontWeight: 950, cursor: "pointer", boxShadow: "0 10px 24px rgba(47,140,255,.32)" }}>★ EN İYİ KAPAK ADAYINI SEÇ</button> : null}
+                      </div>
+                    </div>
+                    {listingFiles.length ? <div style={{ marginTop: 11, padding: 12, borderRadius: 16, background: "linear-gradient(135deg,#0a2641,#0b5273)", color: "#fff", boxShadow: "0 12px 28px rgba(13,72,103,.15)" }}><div style={{ display: "grid", gridTemplateColumns: "72px minmax(0,1fr)", gap: 11, alignItems: "center" }}><div style={{ width: 68, height: 68, borderRadius: "50%", display: "grid", placeItems: "center", background: `conic-gradient(${listingDraftQuality.score >= 70 ? "#36d399" : listingDraftQuality.score >= 50 ? "#42bff5" : "#ffb84d"} ${listingDraftQuality.score * 3.6}deg,rgba(255,255,255,.12) 0deg)`, boxShadow: "inset 0 0 0 6px rgba(7,29,48,.72)" }}><div style={{ textAlign: "center" }}><strong style={{ display: "block", fontSize: 18 }}>{listingDraftQuality.score}</strong><span style={{ fontSize: 6.3, color: "rgba(255,255,255,.64)" }}>/100</span></div></div><div><div style={{ fontSize: 7.4, fontWeight: 950, letterSpacing: .9, color: "#76e8ff" }}>CANLI İLAN KALİTE SKORU · {listingDraftQuality.level.toLocaleUpperCase("tr-TR")}</div><strong style={{ display: "block", marginTop: 4, fontSize: 11.5 }}>{listingPhotoCoach.warnings[0]}</strong>{listingPhotoCoach.warnings.slice(1,3).map((warning) => <span key={warning} style={{ display: "block", marginTop: 4, color: "rgba(255,255,255,.66)", fontSize: 7.5, lineHeight: 1.35 }}>• {warning}</span>)}</div></div></div> : null}
+                    <div style={{ marginTop: 12, padding: 11, borderRadius: 16, background: "linear-gradient(145deg,#f8fbff,#f2f8fc)", border: "1px solid #dce9f3" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}><div><strong style={{ color: "#234866", fontSize: 10.2 }}>Önerilen çekim planı</strong><span style={{ display: "block", marginTop: 2, color: "#8798a7", fontSize: 7.6 }}>Güven veren bir ilan için temel kareleri tamamlayın.</span></div><span style={{ padding: "5px 8px", borderRadius: 999, background: "#e7f7ff", color: "#0876c9", fontSize: 7.2, fontWeight: 950 }}>8 KARE REHBERİ</span></div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 9 }}>{[
+                        {icon:"🏠",title:"Cephe",text:"İlk güven"},{icon:"🛋️",title:"Salon",text:"Geniş açı"},{icon:"🍽️",title:"Mutfak",text:"Tezgâh + dolap"},{icon:"🛏️",title:"Oda",text:"Doğal ışık"},
+                        {icon:"🚿",title:"Banyo",text:"Net detay"},{icon:"🌤️",title:"Balkon / Teras",text:"Açık alan"},{icon:"🪟",title:"Manzara",text:"Varsa göster"},{icon:"🚪",title:"Giriş",text:"İlk izlenim"}
+                      ].map((item) => <div key={item.title} style={{ minHeight: 64, padding: "8px 8px", borderRadius: 11, background: "#fff", border: "1px solid #e2eaf1", boxShadow: "0 5px 14px rgba(32,70,103,.05)" }}><span style={{ fontSize: 15 }}>{item.icon}</span><strong style={{ display: "block", marginTop: 4, color: "#31516c", fontSize: 7.9 }}>{item.title}</strong><span style={{ display: "block", marginTop: 2, color: "#91a0ad", fontSize: 6.7 }}>{item.text}</span></div>)}</div>
+                      <span style={{ display: "block", marginTop: 7, color: "#8a9aaa", fontSize: 7 }}>Bu rehber içerik iddiası değildir; hangi kareleri çekmenin faydalı olacağını gösterir.</span>
+                    </div>
+                    {listingFiles.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 10 }}>
+                      {listingFiles.map((file,index) => { const insight = listingPhotoInsights[index]; const relation = listingPhotoRelations[index]; const duplicate = (relation?.duplicateOf ?? -1) >= 0; const weak = (insight?.score ?? 100) < 52; const recommended = index === listingRecommendedCoverIndex; const tone = duplicate ? "#b45309" : weak ? "#b42318" : (insight?.score ?? 0) >= 82 ? "#087b5e" : (insight?.score ?? 0) >= 60 ? "#1769a7" : "#a46b00"; return <div key={`${file.name}-${file.lastModified}-${index}`} style={{ position: "relative", borderRadius: 13, overflow: "hidden", border: duplicate ? "2px solid #f59e0b" : weak ? "2px solid #e56b6f" : index === 0 ? "2px solid #0ba5d8" : recommended ? "2px solid #18a977" : "1px solid #d9e5ee", background: "#edf4f8", minHeight: 122, boxShadow: recommended ? "0 10px 22px rgba(24,169,119,.12)" : duplicate ? "0 10px 22px rgba(245,158,11,.10)" : "none" }}>
+                        {listingFilePreviews[index] ? <img src={listingFilePreviews[index]} alt={`Yüklenecek ilan fotoğrafı ${index+1}`} style={{ width: "100%", height: 90, objectFit: "cover", display: "block", filter: weak ? "saturate(.84)" : "none" }} /> : null}
+                        <div style={{ padding: "7px 8px 8px", background: "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 5, alignItems: "center" }}><strong style={{ color: tone, fontSize: 7.7 }}>{duplicate ? `BENZER KARE · ${Number(relation?.similarity || 0)}%` : weak ? "İYİLEŞTİR" : insight?.label || "Analiz ediliyor"}{recommended && !duplicate && !weak ? " · ÖNERİLEN" : ""}</strong><span style={{ color: "#71869a", fontSize: 7.1, fontWeight: 900 }}>{insight ? `${insight.score}/100` : "…"}</span></div><span style={{ display: "block", marginTop: 3, minHeight: 20, color: duplicate ? "#a16207" : weak ? "#a94343" : "#8798a7", fontSize: 6.8, lineHeight: 1.35 }}>{duplicate ? `${Number(relation?.duplicateOf || 0)+1}. fotoğrafa çok benziyor; galeride tekrar hissi yaratabilir.` : insight?.note || "Görsel kalite sinyali hazırlanıyor."}</span></div>
+                        <div style={{ position: "absolute", left: 5, top: 5, display: "flex", gap: 4, flexWrap: "wrap", maxWidth: "72%" }}><span style={{ padding: "4px 6px", borderRadius: 8, background: index === 0 ? "rgba(7,126,178,.94)" : "rgba(5,20,37,.76)", color: "#fff", fontSize: 7, fontWeight: 950 }}>{index === 0 ? "KAPAK" : `${index+1}. FOTO`}</span>{recommended && !duplicate && !weak ? <span style={{ padding: "4px 6px", borderRadius: 8, background: "rgba(15,156,109,.94)", color: "#fff", fontSize: 6.8, fontWeight: 950 }}>★ AI KAPAK</span> : null}{duplicate ? <span style={{ padding: "4px 6px", borderRadius: 8, background: "rgba(245,158,11,.95)", color: "#fff", fontSize: 6.8, fontWeight: 950 }}>↻ BENZER</span> : null}{weak ? <span style={{ padding: "4px 6px", borderRadius: 8, background: "rgba(190,52,52,.94)", color: "#fff", fontSize: 6.8, fontWeight: 950 }}>! ZAYIF</span> : null}{insight ? <span style={{ padding: "4px 6px", borderRadius: 8, background: "rgba(255,255,255,.92)", color: "#31516c", fontSize: 6.8, fontWeight: 900 }}>{insight.orientation.toUpperCase()}</span> : null}</div>
+                        <span style={{ position: "absolute", right: 5, top: 5, display: "flex", gap: 3 }}>{index > 0 && !duplicate ? <button type="button" onClick={() => makeListingFileCover(index)} style={{ border: 0, borderRadius: 7, padding: "4px 6px", background: "rgba(255,255,255,.95)", color: "#0b6d9f", fontSize: 6.8, fontWeight: 950, cursor: "pointer" }}>Kapak Yap</button> : null}<button type="button" onClick={() => removeListingFile(index)} style={{ border: 0, borderRadius: 7, width: 24, height: 24, background: "rgba(35,18,18,.80)", color: "#fff", fontSize: 11, fontWeight: 950, cursor: "pointer" }}>×</button></span>
+                      </div>})}
+                    </div> : null}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+                      {[{icon:"📷",label:"Fotoğraf",value:Math.min(100,listingDraftQuality.uniquePhotoCount*10),text:listingFiles.length ? `${listingDraftQuality.uniquePhotoCount}/10 benzersiz kare · ${listingPhotoCoach.duplicateCount ? `${listingPhotoCoach.duplicateCount} benzer kare var` : listingFiles.length >= 6 ? "güçlü set" : "daha fazla kare ekleyin"}` : "Henüz fotoğraf yok"},{icon:"✨",label:"Görsel kalite",value:listingFiles.length?listingDraftQuality.photoQuality:0,text:listingFiles.length ? (listingDraftQuality.photoQuality >= 75 ? "ışık + kadraj güçlü" : "ışık / kadraj geliştirilebilir") : "Fotoğraf eklenince hesaplanır"},{icon:"✍️",label:"Açıklama",value:Math.min(100,Math.round(listingDraft.description.trim().length/1.2)),text:listingDraft.description.trim().length >= 80 ? "Açıklama güçlü" : "AI ile güçlendirebilirsiniz"},{icon:"✓",label:"Temel veri",value:listingDraftQuality.basicsReady?100:45,text:listingDraftQuality.basicsReady?"Başlık, konum, fiyat ve m² hazır":"Eksik zorunlu alan var"}].map((item) => <div key={item.label} style={{ padding: "11px 12px", minHeight: 82, borderRadius: 14, background: "linear-gradient(145deg,#ffffff,#f7fafc)", border: "1px solid #dfe8ef", boxShadow: "0 7px 18px rgba(26,62,94,.05)" }}><div style={{ display: "grid", gridTemplateColumns: "30px minmax(0,1fr) auto", alignItems: "center", gap: 8 }}><span style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 10, background: item.value >= 75 ? "#e8f8f1" : item.value >= 50 ? "#eaf5fd" : "#fff5df", fontSize: 13 }}>{item.icon}</span><strong style={{ color: "#294b67", fontSize: 8.8 }}>{item.label}</strong><span style={{ color: "#506b82", fontSize: 9, fontWeight: 950 }}>{item.value}%</span></div><div style={{ height: 6, marginTop: 9, borderRadius: 999, background: "#e6edf2", overflow: "hidden" }}><div style={{ width: `${item.value}%`, height: "100%", borderRadius: 999, background: item.value >= 75 ? "linear-gradient(90deg,#10b981,#53d5ad)" : item.value >= 50 ? "linear-gradient(90deg,#159ed4,#62c8ef)" : "linear-gradient(90deg,#f0a52b,#ffd166)" }} /></div><span style={{ display: "block", marginTop: 6, color: "#8394a3", fontSize: 7.1, lineHeight: 1.35 }}>{item.text}</span></div>)}
+                    </div>
+                  </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button type="button" disabled={listingSaving} onClick={() => listingBackendReady ? void saveLiveListing("draft") : saveMarketplaceDraft()} style={{ ...softButton, padding: "11px 12px" }}>{listingSaving ? "Kaydediliyor…" : listingBackendReady ? "Bulut Taslağı" : "Yerel Taslak"}</button><button type="button" disabled={listingSaving || listingBackendReady === false} onClick={() => void saveLiveListing("published")} style={{ ...blueButton, marginTop: 0, background: "linear-gradient(135deg,#ff9a4b,#ff6b35)", boxShadow: "0 10px 22px rgba(255,107,53,.20)", opacity: listingBackendReady === false ? .5 : 1 }}>{listingSaving ? "Yayınlanıyor…" : "İlanı Yayınla"}</button></div>
                 </div>
               </article>
 
-              <article style={{ padding: 17, borderRadius: 20, border: "1px solid #dbe7f3", background: "linear-gradient(145deg,#f4faff,#fff)" }}><div style={eyebrow}>FAZ 2 CANLI YAYIN DURUMU</div><h3 style={{ margin: "6px 0 10px", color: "#153a65" }}>Gerçek ilan altyapısı</h3><div style={{ display: "grid", gap: 7 }}>{[["İlan tablosu + RLS",listingBackendReady?"Hazır":"SQL gerekli"],["Fotoğraf / medya depolama",listingBackendReady?"Hazır":"SQL gerekli"],["Taslak + yayın + durdurma",listingBackendReady?"Hazır":"Bekliyor"],["İlan doğrulama motoru","Sonraki"],["Favoriler + kayıtlı arama","Sonraki"],["Emlakçı / müteahhit rolleri","Sonraki"],["AI ilan puanlama","Temel hazır"]].map(([label,status]) => { const ready=String(status)==="Hazır"||String(status)==="Temel hazır"; return <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: 10, borderRadius: 12, background: ready?"#eefbf5":"#fff", border: ready?"1px solid #c8ead8":"1px solid #e0e9f2" }}><span style={{ color: "#35536e", fontSize: 10, fontWeight: 800 }}>{label}</span><strong style={{ color: ready?"#047857":"#9a6700", fontSize: 9 }}>{status}</strong></div>})}</div><button type="button" onClick={() => void loadLiveListings()} style={{ ...softButton, width: "100%", marginTop: 10 }}>Canlı bağlantıyı yenile</button></article>
+              <article style={{ padding: 17, borderRadius: 20, border: "1px solid #dbe7f3", background: "linear-gradient(145deg,#f4faff,#fff)" }}><div style={eyebrow}>FAZ 2 CANLI YAYIN DURUMU</div><h3 style={{ margin: "6px 0 10px", color: "#153a65" }}>Gerçek ilan altyapısı</h3><div style={{ display: "grid", gap: 7 }}>{[["İlan tablosu + RLS",listingBackendReady?"Hazır":"SQL gerekli"],["Fotoğraf / medya depolama",listingBackendReady?"Hazır":"SQL gerekli"],["Taslak + yayın + durdurma",listingBackendReady?"Hazır":"Bekliyor"],["İlan doğrulama motoru","Sonraki"],["Favoriler + güvenli mesaj","Hazır"],["Görüntülenme + ilan analitiği",listingAnalyticsReady===false?"SQL gerekli":"Hazır"],["Emlakçı / müteahhit rolleri","Sonraki"],["AI ilan puanlama","Temel hazır"]].map(([label,status]) => { const ready=String(status)==="Hazır"||String(status)==="Temel hazır"; return <div key={String(label)} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: 10, borderRadius: 12, background: ready?"#eefbf5":"#fff", border: ready?"1px solid #c8ead8":"1px solid #e0e9f2" }}><span style={{ color: "#35536e", fontSize: 10, fontWeight: 800 }}>{label}</span><strong style={{ color: ready?"#047857":"#9a6700", fontSize: 9 }}>{status}</strong></div>})}</div><button type="button" onClick={() => void loadLiveListings()} style={{ ...softButton, width: "100%", marginTop: 10 }}>Canlı bağlantıyı yenile</button></article>
             </aside>
           </div>
           {selectedLiveListing ? (() => {
             const listing = selectedLiveListing;
+            const intelligence = selectedListingIntelligence;
             const location = [listing.city, listing.district, listing.neighborhood].filter(Boolean).join(" / ");
             const price = Number(listing.price || 0);
             const area = Number(listing.area_m2 || 0);
             const priceM2 = price > 0 && area > 0 ? Math.round(price / area) : 0;
             const images = (listing.media || []).map((path) => listingImageUrl(path)).filter(Boolean);
-            return <div onClick={() => setSelectedListingId("")} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(4,15,29,.72)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 18, overflowY: "auto" }}>
-              <article onClick={(event) => event.stopPropagation()} style={{ width: "min(1050px,96vw)", maxHeight: "92vh", overflowY: "auto", borderRadius: 26, background: "#fff", border: "1px solid rgba(255,255,255,.5)", boxShadow: "0 34px 90px rgba(0,0,0,.35)" }}>
-                <div style={{ position: "relative", minHeight: 230, background: images[0] ? `linear-gradient(rgba(5,20,37,.25),rgba(5,20,37,.70)),url(${images[0]}) center/cover` : "linear-gradient(145deg,#0b365c,#097e89)", padding: 24, color: "#fff", display: "grid", alignContent: "end" }}>
-                  <button type="button" onClick={() => setSelectedListingId("")} style={{ position: "absolute", right: 16, top: 16, width: 38, height: 38, borderRadius: "50%", border: "1px solid rgba(255,255,255,.25)", background: "rgba(5,17,32,.48)", color: "#fff", fontSize: 18, cursor: "pointer" }}>×</button>
-                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}><span style={{ padding: "5px 8px", borderRadius: 999, background: "#17b779", fontSize: 9, fontWeight: 950 }}>{listing.status === "published" ? "CANLI İLAN" : listing.status.toLocaleUpperCase("tr-TR")}</span><span style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(255,255,255,.16)", fontSize: 9, fontWeight: 900 }}>{listing.transaction_type}</span><span style={{ padding: "5px 8px", borderRadius: 999, background: listing.verification_status === "verified" ? "#17b779" : "#7d5ad9", fontSize: 9, fontWeight: 900 }}>{listing.verification_status === "verified" ? "DOĞRULANMIŞ" : "DOĞRULAMA BEKLİYOR"}</span></div>
-                  <h2 style={{ margin: "10px 0 5px", fontSize: 28, lineHeight: 1.12 }}>{listing.title}</h2><span style={{ color: "rgba(255,255,255,.78)", fontSize: 11 }}>{listing.property_type} · {location}</span>
-                </div>
-                <div style={{ padding: 22 }}>
-                  {images.length > 1 ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 16 }}>{images.slice(1,7).map((src,index) => <img key={src} src={src} alt={`İlan görseli ${index+2}`} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 13, border: "1px solid #e0e8ef" }} />)}</div> : null}
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(280px,.65fr)", gap: 15 }}>
-                    <div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 9 }}>{[["Fiyat",price ? `${Math.round(price).toLocaleString("tr-TR")} TL` : "—"],["Alan",area ? `${area.toLocaleString("tr-TR")} m²` : "—"],["m² fiyatı",priceM2 ? `${priceM2.toLocaleString("tr-TR")} TL` : "—"]].map(([label,value]) => <div key={label} style={{ padding: 13, borderRadius: 14, background: "#f7fbff", border: "1px solid #dce8f3" }}><span style={{ color: "#7a8fa3", fontSize: 8.5, fontWeight: 900 }}>{label.toUpperCase()}</span><strong style={{ display: "block", marginTop: 5, color: "#153a65", fontSize: 15 }}>{value}</strong></div>)}</div>
-                      <div style={{ marginTop: 14 }}><div style={eyebrow}>İLAN AÇIKLAMASI</div><p style={{ margin: "7px 0 0", color: "#405b73", fontSize: 12, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>{listing.description || "İlan açıklaması girilmemiş."}</p></div>
+            const activeImage = images[selectedListingImageIndex] || images[0] || "";
+            const own = listing.user_id === user?.id;
+            const diff = intelligence?.differencePercent;
+            const signalTone = intelligence?.priceSignal === "Avantajlı" ? "#0a8f65" : intelligence?.priceSignal === "Yüksek fiyat" ? "#d45b2c" : intelligence?.priceSignal === "Piyasa bandında" ? "#1769a7" : "#7a8fa3";
+            const marketPosition = diff == null ? 50 : Math.max(4, Math.min(96, 50 + diff * 1.15));
+            const valueGap = intelligence?.estimatedValue ? price - intelligence.estimatedValue : 0;
+            const goImage = (direction: -1 | 1) => {
+              if (!images.length) return;
+              setSelectedListingImageIndex((current) => (current + direction + images.length) % images.length);
+            };
+            return <div onClick={() => setSelectedListingId("")} style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(3,12,24,.82)", backdropFilter: "blur(12px)", display: "grid", placeItems: "center", padding: 14, overflowY: "auto" }}>
+              <article onClick={(event) => event.stopPropagation()} style={{ width: "min(1200px,98vw)", maxHeight: "96vh", overflowY: "auto", borderRadius: 30, background: "linear-gradient(180deg,#f8fbfe,#fff)", border: "1px solid rgba(255,255,255,.58)", boxShadow: "0 42px 120px rgba(0,0,0,.42)" }}>
+                <div style={{ position: "relative", padding: 18, background: "linear-gradient(145deg,#06192e,#0a3b62)", color: "#fff" }}>
+                  <button type="button" onClick={() => setSelectedListingId("")} style={{ position: "absolute", right: 16, top: 16, zIndex: 5, width: 40, height: 40, borderRadius: "50%", border: "1px solid rgba(255,255,255,.25)", background: "rgba(3,14,27,.72)", backdropFilter: "blur(10px)", color: "#fff", fontSize: 19, cursor: "pointer" }}>×</button>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.55fr) minmax(280px,.62fr)", gap: 13, alignItems: "stretch" }}>
+                    <div style={{ position: "relative", minHeight: 390, borderRadius: 22, overflow: "hidden", background: activeImage ? `url(${activeImage}) center/cover` : "radial-gradient(circle at 70% 20%,rgba(55,218,255,.24),transparent 30%),linear-gradient(145deg,#092740,#0c6681)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.12)" }}>
+                      {!activeImage ? <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", textAlign: "center", padding: 24 }}><div><div style={{ fontSize: 46, opacity: .8 }}>⌂</div><strong style={{ display: "block", marginTop: 7, fontSize: 15 }}>Henüz ilan fotoğrafı yok</strong><span style={{ display: "block", marginTop: 4, color: "rgba(255,255,255,.62)", fontSize: 10 }}>Fotoğraf eklenmesi güven, doğrulama ve ilan kalitesi için önemlidir.</span></div></div> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(3,13,25,.02) 38%,rgba(3,13,25,.86) 100%)" }} />}
+                      {images.length > 1 ? <><button type="button" onClick={() => goImage(-1)} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "1px solid rgba(255,255,255,.28)", background: "rgba(3,16,29,.62)", color: "#fff", fontSize: 21, cursor: "pointer" }}>‹</button><button type="button" onClick={() => goImage(1)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "1px solid rgba(255,255,255,.28)", background: "rgba(3,16,29,.62)", color: "#fff", fontSize: 21, cursor: "pointer" }}>›</button></> : null}
+                      <div style={{ position: "absolute", left: 20, right: 20, bottom: 18 }}>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><span style={{ padding: "5px 8px", borderRadius: 999, background: "#17b779", fontSize: 8.5, fontWeight: 950 }}>{listing.status === "published" ? "CANLI İLAN" : listing.status.toLocaleUpperCase("tr-TR")}</span><span style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(255,255,255,.15)", fontSize: 8.5, fontWeight: 900 }}>{listing.transaction_type}</span><span style={{ padding: "5px 8px", borderRadius: 999, background: listing.verification_status === "verified" ? "#17b779" : "#7558c9", fontSize: 8.5, fontWeight: 900 }}>{listing.verification_status === "verified" ? "✓ DOĞRULANMIŞ" : listing.verification_status === "pending" ? "◷ İNCELEMEDE" : "DOĞRULAMA BEKLİYOR"}</span>{images.length ? <span style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(3,16,29,.55)", fontSize: 8.5, fontWeight: 900 }}>{selectedListingImageIndex + 1}/{images.length} FOTOĞRAF</span> : null}</div>
+                        <h2 style={{ margin: "10px 0 4px", fontSize: 27, lineHeight: 1.12, maxWidth: 760, textShadow: "0 2px 12px rgba(0,0,0,.30)" }}>{listing.title}</h2><span style={{ color: "rgba(255,255,255,.78)", fontSize: 10.8 }}>{listing.property_type} · {location}</span>
+                      </div>
                     </div>
-                    <aside style={{ padding: 16, borderRadius: 18, background: "linear-gradient(145deg,#071f39,#0a5573)", color: "#fff" }}><div style={{ color: "#8eeaff", fontSize: 9, fontWeight: 950, letterSpacing: 1.2 }}>YAŞAM AI İLAN KONTROLÜ</div><h3 style={{ margin: "7px 0 5px", fontSize: 18 }}>Karar vermeden önce kontrol edin.</h3><p style={{ margin: 0, color: "rgba(255,255,255,.72)", fontSize: 10, lineHeight: 1.55 }}>Bu ilan canlı pazar kaydıdır. AI fiyat/risk analizi ayrı analiz akışında üretilir; doğrulanmamış veri ekspertiz veya resmî kayıt yerine geçmez.</p><div style={{ display: "grid", gap: 7, marginTop: 12 }}><button type="button" onClick={() => { setSelectedListingId(""); setListingNotice(`“${listing.title}” için AI inceleme akışı açılmaya hazır. İlan → analiz bağlantısı sonraki sürümde otomatik forma aktarılacak.`); }} style={{ padding: "10px 12px", borderRadius: 11, border: 0, background: "linear-gradient(135deg,#75e6ff,#36b6ff)", color: "#06243c", fontWeight: 950, cursor: "pointer" }}>AI ile Değerlendir</button><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`} target="_blank" rel="noreferrer" style={{ padding: "10px 12px", borderRadius: 11, border: "1px solid rgba(255,255,255,.18)", background: "rgba(255,255,255,.07)", color: "#fff", fontWeight: 900, textDecoration: "none", textAlign: "center" }}>Haritada Aç</a></div></aside>
+                    <aside style={{ display: "grid", alignContent: "space-between", gap: 10, padding: 18, borderRadius: 22, background: "radial-gradient(circle at 100% 0%,rgba(25,205,255,.18),transparent 35%),linear-gradient(145deg,#0a2844,#071b31)", border: "1px solid rgba(255,255,255,.10)" }}>
+                      <div><div style={{ color: "#8ce9ff", fontSize: 8.5, fontWeight: 950, letterSpacing: 1.25 }}>İLAN FİYATI</div><strong style={{ display: "block", marginTop: 6, fontSize: 29, lineHeight: 1 }}>{price ? `${Math.round(price).toLocaleString("tr-TR")} TL` : "—"}</strong><span style={{ display: "block", marginTop: 7, color: "rgba(255,255,255,.62)", fontSize: 9.5 }}>{area ? `${area.toLocaleString("tr-TR")} m²` : "Alan belirtilmedi"}{priceM2 ? ` · ${priceM2.toLocaleString("tr-TR")} TL/m²` : ""}</span></div>
+                      <div style={{ padding: 12, borderRadius: 15, background: `${signalTone}20`, border: `1px solid ${signalTone}55` }}><span style={{ color: "rgba(255,255,255,.62)", fontSize: 8, fontWeight: 900 }}>YAŞAM AI FİYAT SİNYALİ</span><strong style={{ display: "block", marginTop: 5, color: intelligence?.priceSignal === "Yüksek fiyat" ? "#ffb18f" : intelligence?.priceSignal === "Avantajlı" ? "#75edbf" : "#a9dcff", fontSize: 17 }}>{intelligence?.priceSignal || "Veri eksik"}</strong>{diff != null ? <span style={{ display: "block", marginTop: 4, color: "rgba(255,255,255,.68)", fontSize: 9 }}>Veri bazlı değere göre {Math.abs(diff).toFixed(1)}% {diff > 0 ? "yukarıda" : "aşağıda"}.</span> : null}</div>
+                      <div style={{ display: "grid", gap: 7 }}><button type="button" disabled={listingBuyerAiLoading} onClick={() => void runListingBuyerAi(listing)} style={{ padding: "11px 12px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#68e7ff,#2eb9ff)", color: "#06243c", fontWeight: 950, cursor: "pointer", boxShadow: "0 10px 22px rgba(36,190,255,.22)" }}>{listingBuyerAiLoading ? "AI değerlendiriyor…" : "✦ Bu İlana Değer mi?"}</button><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}><button type="button" onClick={() => void toggleListingFavorite(listing.id)} style={{ padding: "10px 10px", borderRadius: 11, border: "1px solid rgba(255,255,255,.18)", background: favoriteListingIds.includes(listing.id) ? "rgba(255,190,76,.18)" : "rgba(255,255,255,.06)", color: favoriteListingIds.includes(listing.id) ? "#ffd778" : "#fff", fontWeight: 900, cursor: "pointer" }}>{favoriteListingIds.includes(listing.id) ? "★ Favoride" : "☆ Favorile"}</button><button type="button" onClick={() => void shareListing(listing)} style={{ padding: "10px 10px", borderRadius: 11, border: "1px solid rgba(255,255,255,.18)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>↗ Paylaş</button></div><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`} target="_blank" rel="noreferrer" style={{ padding: "10px 12px", borderRadius: 11, border: "1px solid rgba(255,255,255,.18)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, textDecoration: "none", textAlign: "center" }}>Haritada Aç</a></div>
+                    </aside>
                   </div>
+                </div>
+                <div style={{ padding: 20 }}>
+                  {listingInquiryNotice ? <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 12, background: "#eef7ff", border: "1px solid #cfe5f7", color: "#31516c", fontSize: 9.5, fontWeight: 800 }}>{listingInquiryNotice}</div> : null}
+                  {listingBuyerAiResult ? <article style={{ marginBottom: 15, padding: 16, borderRadius: 18, background: "linear-gradient(145deg,#071e34,#0a557c)", color: "#fff", boxShadow: "0 14px 34px rgba(5,53,89,.18)" }}><div style={{ color: "#7ce9ff", fontSize: 8.5, fontWeight: 950, letterSpacing: 1.2 }}>YAŞAM AI · ALICI KARAR ASİSTANI</div><h3 style={{ margin: "6px 0 8px", fontSize: 18 }}>Bu ilana değer mi?</h3><div style={{ whiteSpace: "pre-wrap", color: "rgba(255,255,255,.82)", fontSize: 10.5, lineHeight: 1.65 }}>{listingBuyerAiResult}</div><p style={{ margin: "10px 0 0", color: "rgba(255,255,255,.52)", fontSize: 7.8 }}>Karar desteğidir; ekspertiz, tapu/imar incelemesi ve hukuki doğrulama yerine geçmez.</p></article> : null}
+                  {images.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(92px,1fr))", gap: 7, marginBottom: 15 }}>{images.slice(0,10).map((src,index) => <button key={src} type="button" onClick={() => setSelectedListingImageIndex(index)} style={{ position: "relative", padding: 0, borderRadius: 12, overflow: "hidden", border: selectedListingImageIndex === index ? "2px solid #0b91cc" : "1px solid #d9e5ee", background: "#fff", cursor: "pointer", boxShadow: selectedListingImageIndex === index ? "0 8px 18px rgba(11,145,204,.18)" : "none" }}><img src={src} alt={`İlan görseli ${index+1}`} style={{ width: "100%", height: 76, objectFit: "cover", display: "block" }} />{index === 0 ? <span style={{ position: "absolute", left: 5, bottom: 5, padding: "3px 5px", borderRadius: 6, background: "rgba(3,20,35,.74)", color: "#fff", fontSize: 6.8, fontWeight: 950 }}>KAPAK</span> : null}</button>)}</div> : <div style={{ marginBottom: 14, padding: 12, borderRadius: 14, background: "#fff8e8", border: "1px solid #f1d494", color: "#8a6200", fontSize: 10, fontWeight: 800 }}>Fotoğraf henüz yüklenmemiş. İlan sahibinin en az 3, ideal olarak 6–10 gerçek fotoğraf eklemesi önerilir.</div>}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(300px,.65fr)", gap: 15 }}>
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>{[["Fiyat",price ? `${Math.round(price).toLocaleString("tr-TR")} TL` : "—"],["Alan",area ? `${area.toLocaleString("tr-TR")} m²` : "—"],["İlan m²",priceM2 ? `${priceM2.toLocaleString("tr-TR")} TL` : "—"]].map(([label,value]) => <div key={label} style={{ padding: 12, borderRadius: 14, background: "#f7fbff", border: "1px solid #dce8f3" }}><span style={{ color: "#7a8fa3", fontSize: 8.2, fontWeight: 900 }}>{label.toUpperCase()}</span><strong style={{ display: "block", marginTop: 5, color: "#153a65", fontSize: 14 }}>{value}</strong></div>)}</div>
+
+                      <article style={{ marginTop: 12, padding: 16, borderRadius: 19, background: "linear-gradient(145deg,#f7fbff,#fff)", border: "1px solid #d9e7f2", boxShadow: "0 10px 26px rgba(31,64,97,.05)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}><div><div style={eyebrow}>YAŞAM AI FİYAT / DEĞER KONTROLÜ</div><h3 style={{ margin: "6px 0 3px", color: "#153a65", fontSize: 18 }}>Fiyatın piyasadaki konumunu görün.</h3></div><span style={{ padding: "6px 9px", borderRadius: 999, background: intelligence?.regional ? "#eaf8f2" : "#fff4dc", color: intelligence?.regional ? "#087b5e" : "#996100", fontSize: 8.8, fontWeight: 950 }}>{intelligence?.regional ? `Veri güveni ${intelligence.confidence}/100` : "Bölgesel veri bulunamadı"}</span></div>
+                        {intelligence?.regional ? <>
+                          <div style={{ position: "relative", marginTop: 15, padding: "21px 4px 18px" }}>
+                            <div style={{ height: 12, borderRadius: 999, background: "linear-gradient(90deg,#41c995 0%,#62cfc7 28%,#55aee5 50%,#f3b45a 72%,#ea6c4c 100%)", boxShadow: "inset 0 1px 3px rgba(0,0,0,.10)" }} />
+                            <div style={{ position: "absolute", left: "50%", top: 13, width: 2, height: 27, background: "#183e5f", opacity: .35 }} /><span style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: 41, color: "#6c8295", fontSize: 7.5, fontWeight: 850 }}>VERİ BAZLI DEĞER</span>
+                            <div style={{ position: "absolute", left: `${marketPosition}%`, top: 8, transform: "translateX(-50%)" }}><div style={{ width: 16, height: 16, borderRadius: "50%", background: signalTone, border: "3px solid #fff", boxShadow: `0 3px 10px ${signalTone}66` }} /><span style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: -17, whiteSpace: "nowrap", color: signalTone, fontSize: 7.5, fontWeight: 950 }}>İLAN FİYATI</span></div>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 4 }}>{[["Bölge m² ort.",`${Math.round(intelligence.marketM2).toLocaleString("tr-TR")} TL`],["Veri bazlı değer",intelligence.estimatedValue ? `${Math.round(intelligence.estimatedValue).toLocaleString("tr-TR")} TL` : "—"],["Fiyat farkı",diff == null ? "—" : `${diff > 0 ? "+" : ""}${diff.toFixed(1)}%`]].map(([label,value],idx) => <div key={label} style={{ padding: 10, borderRadius: 12, background: "#fff", border: "1px solid #e0e9f2" }}><span style={{ display: "block", color: "#8294a6", fontSize: 8.2, fontWeight: 900 }}>{label.toUpperCase()}</span><strong style={{ display: "block", marginTop: 4, color: idx===2 ? signalTone : "#153a65", fontSize: 13.5 }}>{value}</strong></div>)}</div>
+                          <div style={{ marginTop: 9, padding: "10px 11px", borderRadius: 12, background: `${signalTone}0D`, borderLeft: `4px solid ${signalTone}` }}><strong style={{ color: signalTone, fontSize: 10.5 }}>{intelligence.priceSignal}</strong><span style={{ display: "block", marginTop: 3, color: "#587087", fontSize: 9.3, lineHeight: 1.5 }}>{diff == null ? "Fiyat konumu hesaplanamadı." : diff > 0 ? `İlan fiyatı veri bazlı değerin yaklaşık ${Math.abs(diff).toFixed(1)}% üzerinde; fark yaklaşık ${Math.abs(Math.round(valueGap)).toLocaleString("tr-TR")} TL.` : diff < 0 ? `İlan fiyatı veri bazlı değerin yaklaşık ${Math.abs(diff).toFixed(1)}% altında; fiyat avantajı yaklaşık ${Math.abs(Math.round(valueGap)).toLocaleString("tr-TR")} TL.` : "İlan fiyatı veri bazlı değerle aynı seviyede."}</span></div>
+                          <p style={{ margin: "9px 0 0", color: "#607890", fontSize: 8.9, lineHeight: 1.5 }}>Kaynak: {intelligence.regional.source || "belirtilmedi"} · dönem {intelligence.regional.periodDate || "—"} · örneklem {intelligence.regional.sampleSize || 0}. Otomatik karar desteğidir; ekspertiz değildir.</p>
+                        </> : <p style={{ margin: "10px 0 0", color: "#607890", fontSize: 10, lineHeight: 1.55 }}>Bu konum ve gayrimenkul türü için güvenilir bölgesel m² verisi bulunmadığından Yaşam AI fiyat farkı uydurmuyor. Veri Merkezi güçlendiğinde karşılaştırma otomatik açılacak.</p>}
+                      </article>
+
+                      <article style={{ marginTop: 12, padding: 16, borderRadius: 18, background: "#fff", border: "1px solid #e0e9f2" }}><div style={eyebrow}>İLAN AÇIKLAMASI</div><p style={{ margin: "7px 0 0", color: "#405b73", fontSize: 11.5, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>{listing.description || "İlan açıklaması girilmemiş."}</p></article>
+                    </div>
+                    <aside style={{ display: "grid", gap: 10, alignContent: "start" }}>
+                      <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8f2", boxShadow: "0 10px 24px rgba(31,64,97,.06)" }}><div style={eyebrow}>DOĞRULAMA HAZIRLIĞI</div><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "end", marginTop: 6 }}><strong style={{ color: "#153a65", fontSize: 19 }}>%{intelligence?.completion ?? 0}</strong><span style={{ color: listing.verification_status === "verified" ? "#087b5e" : "#7a5aa5", fontSize: 8.8, fontWeight: 950 }}>{listing.verification_status === "verified" ? "DOĞRULANDI" : listing.verification_status === "pending" ? "İNCELEMEDE" : "TALEP BEKLİYOR"}</span></div><div style={{ height: 8, borderRadius: 999, background: "#e9eff4", overflow: "hidden", marginTop: 8 }}><div style={{ width: `${intelligence?.completion ?? 0}%`, height: "100%", background: "linear-gradient(90deg,#0a8f65,#32c995)" }} /></div><div style={{ display: "grid", gap: 6, marginTop: 10 }}>{intelligence?.verificationChecks.map((check) => <div key={check.label} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "8px 9px", borderRadius: 10, background: check.ok ? "#effaf5" : "#fff8ea", color: "#49637b", fontSize: 9.2 }}><span>{check.label}</span><strong style={{ color: check.ok ? "#087b5e" : "#a26a00" }}>{check.ok ? "Hazır" : "Eksik"}</strong></div>)}</div>{own && listing.verification_status !== "verified" ? <button type="button" disabled={listingVerificationSaving || listing.verification_status === "pending"} onClick={() => void requestListingVerification(listing)} style={{ width: "100%", marginTop: 10, padding: "10px 12px", borderRadius: 11, border: 0, background: listing.verification_status === "pending" ? "#e6ebef" : "linear-gradient(135deg,#ffb452,#f27a2f)", color: listing.verification_status === "pending" ? "#718295" : "#331a05", fontWeight: 950, cursor: listing.verification_status === "pending" ? "default" : "pointer" }}>{listing.verification_status === "pending" ? "Doğrulama İncelemesinde" : listingVerificationSaving ? "Gönderiliyor…" : "Doğrulama Talep Et"}</button> : null}<p style={{ margin: "8px 0 0", color: "#7a8fa3", fontSize: 8.4, lineHeight: 1.45 }}>Doğrulama rozeti ilan sahibi tarafından verilemez. Nihai onay güvenilir doğrulama servisinden gelmelidir.</p></article>
+                      <article style={{ padding: 14, borderRadius: 17, background: "linear-gradient(145deg,#f6fbff,#eef8ff)", border: "1px solid #d2e7f5" }}><div style={{ color: "#1769a7", fontSize: 8.5, fontWeight: 950, letterSpacing: 1 }}>İLAN KALİTESİ</div><div style={{ display: "grid", gap: 6, marginTop: 9 }}>{[[images.length >= 6,"6+ fotoğraf","Alıcı güveni"],[(listing.description || "").trim().length >= 80,"Detaylı açıklama","İlan anlatımı"],[Boolean(intelligence?.regional),"Bölgesel veri","Fiyat zekâsı"]].map(([ok,label,text]) => <div key={String(label)} style={{ display: "grid", gridTemplateColumns: "25px 1fr", gap: 7, alignItems: "center" }}><span style={{ display: "grid", placeItems: "center", width: 25, height: 25, borderRadius: 8, background: ok ? "#e6f8f0" : "#fff4dd", color: ok ? "#087b5e" : "#a26a00", fontSize: 10, fontWeight: 950 }}>{ok ? "✓" : "!"}</span><div><strong style={{ display: "block", color: "#31516c", fontSize: 9.3 }}>{label}</strong><span style={{ color: "#8192a3", fontSize: 7.8 }}>{text}</span></div></div>)}</div></article>
+                      <article style={{ padding: 15, borderRadius: 18, background: "linear-gradient(145deg,#ffffff,#f7fbff)", border: "1px solid #dfe8ef", boxShadow: "0 10px 24px rgba(31,64,97,.06)" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                            <span style={{ display: "grid", placeItems: "center", width: 42, height: 42, borderRadius: 14, background: "linear-gradient(135deg,#dff6ff,#e7fff5)", color: "#0a6f8e", fontWeight: 950, boxShadow: "inset 0 0 0 1px rgba(8,123,94,.08)" }}>YS</span>
+                            <div><div style={{ color: "#71869a", fontSize: 7.5, fontWeight: 900, letterSpacing: .8 }}>İLAN SAHİBİ PROFİLİ</div><strong style={{ display: "block", marginTop: 2, color: "#24445f", fontSize: 11.5 }}>{own ? "Sizin ilanınız" : listing.verification_status === "verified" ? "Doğrulanmış ilan sahibi" : "Yaşam AI kullanıcısı"}</strong><span style={{ display: "block", marginTop: 2, color: "#8798a7", fontSize: 7.5 }}>Güvenli iletişim · kişisel iletişim bilgileri gizli</span></div>
+                          </div>
+                          <span style={{ padding: "6px 8px", borderRadius: 999, background: listing.verification_status === "verified" ? "#e8f8f1" : "#fff6e5", color: listing.verification_status === "verified" ? "#087b5e" : "#9a6700", fontSize: 7.4, fontWeight: 950 }}>{listing.verification_status === "verified" ? "✓ DOĞRULANMIŞ" : "DOĞRULAMA AÇIK"}</span>
+                        </div>
+                        {(() => { const sellerListings = liveListings.filter((entry) => entry.user_id === listing.user_id && entry.status === "published"); const verifiedSellerListings = sellerListings.filter((entry) => entry.verification_status === "verified").length; return <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 10 }}><div style={{ padding: 8, borderRadius: 11, background: "#f5faff", border: "1px solid #e1ebf3" }}><span style={{ display: "block", color: "#8294a5", fontSize: 7 }}>AKTİF İLAN</span><strong style={{ display: "block", marginTop: 3, color: "#24445f", fontSize: 13 }}>{sellerListings.length}</strong></div><div style={{ padding: 8, borderRadius: 11, background: "#f3fbf7", border: "1px solid #dceee4" }}><span style={{ display: "block", color: "#8294a5", fontSize: 7 }}>DOĞRULANMIŞ</span><strong style={{ display: "block", marginTop: 3, color: "#087b5e", fontSize: 13 }}>{verifiedSellerListings}</strong></div><div style={{ padding: 8, borderRadius: 11, background: "#fff9ed", border: "1px solid #f2e5c7" }}><span style={{ display: "block", color: "#8294a5", fontSize: 7 }}>PROFİL GÜVENİ</span><strong style={{ display: "block", marginTop: 3, color: "#9a6700", fontSize: 11 }}>{listing.verification_status === "verified" ? "Güçlü" : sellerListings.length >= 2 ? "Gelişiyor" : "Yeni"}</strong></div></div> })()}
+                        {!own ? <div style={{ marginTop: 10 }}><textarea value={listingInquiryMessage} onChange={(event) => setListingInquiryMessage(event.target.value)} placeholder="Merhaba, ilanınızla ilgileniyorum. Uygun olduğunuzda detayları görüşebilir miyiz?" style={{ width: "100%", minHeight: 72, resize: "vertical", padding: 10, borderRadius: 11, border: "1px solid #d5e1eb", background: "#fbfdff", color: "#294b67", fontSize: 9, lineHeight: 1.45 }} /><button type="button" disabled={listingInquirySending} onClick={() => void sendListingInquiry(listing)} style={{ width: "100%", marginTop: 7, padding: "10px 11px", borderRadius: 11, border: 0, background: "linear-gradient(135deg,#0e9f79,#087b5e)", color: "#fff", fontWeight: 950, cursor: "pointer" }}>{listingInquirySending ? "Gönderiliyor…" : "Güvenli Mesaj Gönder"}</button><span style={{ display: "block", marginTop: 6, color: "#8a9aaa", fontSize: 7.4, lineHeight: 1.4 }}>Telefon/e-posta paylaşılmadan mesaj ilan sahibine iletilir.</span></div> : null}
+                      </article>
+                    </aside>
+                  </div>
+                  {own ? <section style={{ marginTop: 14, padding: 16, borderRadius: 19, background: "linear-gradient(145deg,#071f36,#0b4f73)", color: "#fff", boxShadow: "0 14px 32px rgba(7,49,79,.16)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}><div><div style={{ color: "#73e7ff", fontSize: 8.2, fontWeight: 950, letterSpacing: 1 }}>İLAN PERFORMANS MERKEZİ</div><h3 style={{ margin: "5px 0 3px", fontSize: 18 }}>İlanınız ne kadar ilgi görüyor?</h3><p style={{ margin: 0, color: "rgba(255,255,255,.62)", fontSize: 8.5 }}>Tekil ziyaretçi, toplam görüntülenme, favori ve mesaj sinyallerini tek yerde izleyin.</p></div><span style={{ padding: "6px 8px", borderRadius: 999, background: listingAnalyticsReady === false ? "rgba(255,184,91,.12)" : "rgba(82,229,175,.12)", color: listingAnalyticsReady === false ? "#ffd083" : "#87f1cb", fontSize: 7.3, fontWeight: 950 }}>{listingAnalyticsReady === false ? "SQL GEREKLİ" : listingOwnerStatsLoading ? "GÜNCELLENİYOR" : "CANLI"}</span></div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7, marginTop: 12 }}>
+                      {[['Tekil ziyaretçi',listingOwnerStats.uniqueViewers,'◉'],['Görüntülenme',listingOwnerStats.totalViews,'↻'],['Favori',listingOwnerStats.favorites,'★'],['Mesaj',listingOwnerStats.inquiries,'✉'],['Yeni mesaj',listingOwnerStats.unreadInquiries,'●']].map(([label,value,icon]) => <div key={String(label)} style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.10)" }}><span style={{ color: "#7ee7ff", fontSize: 11 }}>{icon}</span><strong style={{ display: "block", marginTop: 4, fontSize: 18 }}>{String(value)}</strong><span style={{ display: "block", marginTop: 2, color: "rgba(255,255,255,.55)", fontSize: 7.2 }}>{label}</span></div>)}
+                    </div>
+                    {(() => { const views=Math.max(1,listingOwnerStats.uniqueViewers); const favoriteRate=Math.round((listingOwnerStats.favorites/views)*100); const inquiryRate=Math.round((listingOwnerStats.inquiries/views)*100); const interestScore=Math.max(0,Math.min(100,Math.round(favoriteRate*.55+inquiryRate*.9+Math.min(30,listingOwnerStats.totalViews/Math.max(1,views)*8)))); const label=interestScore>=70?'Yüksek ilgi':interestScore>=40?'Gelişen ilgi':listingOwnerStats.uniqueViewers?'Düşük ilgi':'Veri bekleniyor'; return <div style={{ marginTop: 9, padding: 10, borderRadius: 12, background: "rgba(255,255,255,.055)", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center" }}><div style={{ width: 42, height: 42, borderRadius: 14, display: "grid", placeItems: "center", background: "rgba(91,221,255,.13)", color: "#7de8ff", fontWeight: 950 }}>{interestScore}</div><div><strong style={{ fontSize: 9.5 }}>AI İlgi Skoru · {label}</strong><span style={{ display: "block", marginTop: 3, color: "rgba(255,255,255,.55)", fontSize: 7.3 }}>Favoriye dönüşüm %{favoriteRate} · Mesaja dönüşüm %{inquiryRate}. Tekil ziyaretçi bazlı yardımcı performans göstergesidir.</span></div><button type="button" onClick={() => void loadListingOwnerStats(listing.id)} style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 7.6, fontWeight: 900, cursor: "pointer" }}>Yenile</button></div> })()}
+                    {listingAnalyticsReady === false ? <div style={{ marginTop: 8, padding: 9, borderRadius: 10, background: "rgba(255,180,70,.10)", color: "#ffd18a", fontSize: 7.7 }}>İlan görüntülenme analitiği için FAZ 2 v5 analytics SQL dosyasını Supabase'de çalıştırın.</div> : null}
+                  </section> : null}
+
+                  {selectedSimilarListings.length ? <section style={{ marginTop: 16 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "end", flexWrap: "wrap" }}><div><div style={{ color: "#1769a7", fontSize: 8.5, fontWeight: 950, letterSpacing: 1 }}>BENZER İLANLAR</div><h3 style={{ margin: "5px 0 0", color: "#24445f", fontSize: 18 }}>Karar vermeden alternatifleri görün.</h3></div><span style={{ color: "#8294a5", fontSize: 8.5 }}>Konum, tür, işlem ve fiyat yakınlığına göre</span></div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 9, marginTop: 10 }}>{selectedSimilarListings.map((item) => { const cover = listingImageUrl((item.media || [])[0]); const itemLocation=[item.city,item.district,item.neighborhood].filter(Boolean).join(" / "); return <button key={item.id} type="button" onClick={() => { setSelectedListingImageIndex(0); setSelectedListingId(item.id); setListingBuyerAiResult(""); setListingInquiryMessage(""); }} style={{ padding: 0, overflow: "hidden", borderRadius: 16, border: "1px solid #dce7ef", background: "#fff", textAlign: "left", cursor: "pointer", boxShadow: "0 8px 20px rgba(31,64,97,.05)" }}><div style={{ height: 105, background: cover ? `url(${cover}) center/cover` : "linear-gradient(135deg,#e8f6fc,#dbeef7)", display: "grid", placeItems: "center", color: "#5d7c92", fontSize: 22 }}>{cover ? null : "⌂"}</div><div style={{ padding: 11 }}><strong style={{ display: "block", color: "#24445f", fontSize: 10.5, lineHeight: 1.35 }}>{item.title}</strong><span style={{ display: "block", marginTop: 4, color: "#8294a5", fontSize: 7.8 }}>{itemLocation}</span><strong style={{ display: "block", marginTop: 7, color: "#0a6797", fontSize: 12 }}>{Math.round(Number(item.price || 0)).toLocaleString("tr-TR")} TL</strong></div></button>})}</div></section> : null}
                 </div>
               </article>
             </div>;
@@ -5469,7 +5953,7 @@ function NavButton({
   const meta: Record<string, { subtitle: string; description: string; gradient: string; accent: string; secondary: string; cta: string; badge: string }> = {
     "+ Yeni Analiz": { subtitle: "Yeni karar dosyası", description: "Taşınmazı girin; değer, risk, fırsat ve teklif stratejisini tek akışta üretin.", gradient: "radial-gradient(circle at 12% 0%,rgba(88,239,255,.44),transparent 34%),radial-gradient(circle at 88% 100%,rgba(0,109,255,.42),transparent 45%),linear-gradient(145deg,#04aeea 0%,#0475e8 42%,#063c9a 100%)", accent: "#d7fbff", secondary: "#53e8ff", cta: "Yeni kararı başlat", badge: "EN HIZLI BAŞLANGIÇ" },
     Raporlarım: { subtitle: "Karar hafızanız", description: "Tüm analizleri, doğrulamaları ve geçmiş kararları güvenli bulut arşivinde yönetin.", gradient: "radial-gradient(circle at 90% 0%,rgba(116,255,206,.30),transparent 36%),linear-gradient(145deg,#16b78e 0%,#0a8b73 45%,#075547 100%)", accent: "#d7ffef", secondary: "#72f2c7", cta: "Karar arşivini aç", badge: "BULUT HAFIZASI" },
-    "AI Karşılaştırma": { subtitle: "AI karar düellosu", description: "İki gayrimenkulü aynı veri modelinde yarıştırın; hangisinin neden öne çıktığını görün.", gradient: "radial-gradient(circle at 86% 4%,rgba(255,202,83,.42),transparent 31%),radial-gradient(circle at 8% 100%,rgba(149,70,255,.50),transparent 40%),linear-gradient(145deg,#ff2e97 0%,#c21ad1 42%,#6b23d6 100%)", accent: "#fff1bd", secondary: "#ffd168", cta: "AI ile karşılaştır", badge: "AKILLI KARŞILAŞTIRMA" },
+    "AI Karşılaştırma": { subtitle: "AI karar düellosu", description: "İki gayrimenkulü aynı veri modelinde yarıştırın; hangisinin neden öne çıktığını görün.", gradient: "radial-gradient(circle at 84% 2%,rgba(255,223,128,.46),transparent 30%),radial-gradient(circle at 8% 100%,rgba(255,122,24,.35),transparent 42%),linear-gradient(145deg,#ffad22 0%,#e87308 43%,#9a3f00 100%)", accent: "#fff7df", secondary: "#ffd36a", cta: "AI ile karşılaştır", badge: "AKILLI KARŞILAŞTIRMA" },
     Dashboard: { subtitle: "Genel Bakış", description: "Komuta merkezine dönün.", gradient: "linear-gradient(145deg,#0d5bd7,#082c68)", accent: "#dff6ff", secondary: "#39a8ff", cta: "Aç", badge: "YAŞAM AI" },
     Raporlar: { subtitle: "Rapor Merkezi", description: "Raporlarınızı yönetin.", gradient: "linear-gradient(145deg,#7b35c8,#35146f)", accent: "#f5eaff", secondary: "#c67cff", cta: "Aç", badge: "YAŞAM AI" },
     "Türkiye Veri Motoru": { subtitle: "81 İl Veri Motoru", description: "Türkiye veri merkezini açın.", gradient: "linear-gradient(145deg,#008bbd,#064c80)", accent: "#e5fbff", secondary: "#25d5ff", cta: "Aç", badge: "YAŞAM AI" },
