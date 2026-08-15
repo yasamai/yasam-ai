@@ -3286,6 +3286,82 @@ type DeveloperCashflowPlan = {
   updated_at: string;
 };
 
+
+type TechnicalProject = {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  client_name: string | null;
+  city: string | null;
+  district: string | null;
+  project_type: string | null;
+  total_area_m2: number;
+  status: "design" | "coordination" | "construction" | "handover" | "completed" | "paused";
+  target_date: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type TechnicalDocument = {
+  id: string;
+  owner_user_id: string;
+  project_id: string;
+  discipline: "architecture" | "structural" | "mechanical" | "electrical" | "fire" | "landscape" | "other";
+  document_type: string;
+  title: string;
+  revision: string;
+  status: "draft" | "review" | "approved" | "superseded";
+  due_date: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type TechnicalBoqItem = {
+  id: string;
+  owner_user_id: string;
+  project_id: string;
+  discipline: "architecture" | "structural" | "mechanical" | "electrical" | "fire" | "landscape" | "other";
+  item_name: string;
+  unit: string;
+  quantity: number;
+  unit_cost: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type TechnicalIssue = {
+  id: string;
+  owner_user_id: string;
+  project_id: string;
+  discipline: "architecture" | "structural" | "mechanical" | "electrical" | "fire" | "landscape" | "other";
+  title: string;
+  severity: "low" | "medium" | "high" | "critical";
+  status: "open" | "in_review" | "resolved";
+  location_text: string | null;
+  owner_name: string | null;
+  due_date: string | null;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type TechnicalInspection = {
+  id: string;
+  owner_user_id: string;
+  project_id: string;
+  inspection_type: string;
+  title: string;
+  result: "pending" | "pass" | "conditional" | "fail";
+  inspection_date: string | null;
+  inspector_name: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 function StrategicExpansionCenter({
   records,
   regionalData,
@@ -3566,6 +3642,66 @@ function StrategicExpansionCenter({
   });
   const [developerAdvancedMode, setDeveloperAdvancedMode] = useState<"executive" | "scenario" | "risk" | "cashflow">("executive");
 
+  const [technicalReady, setTechnicalReady] = useState<boolean | null>(null);
+  const [technicalLoading, setTechnicalLoading] = useState(false);
+  const [technicalSaving, setTechnicalSaving] = useState(false);
+  const [technicalProjects, setTechnicalProjects] = useState<TechnicalProject[]>([]);
+  const [technicalDocuments, setTechnicalDocuments] = useState<TechnicalDocument[]>([]);
+  const [technicalBoqItems, setTechnicalBoqItems] = useState<TechnicalBoqItem[]>([]);
+  const [technicalIssues, setTechnicalIssues] = useState<TechnicalIssue[]>([]);
+  const [technicalInspections, setTechnicalInspections] = useState<TechnicalInspection[]>([]);
+  const [selectedTechnicalProjectId, setSelectedTechnicalProjectId] = useState("");
+  const [technicalNotice, setTechnicalNotice] = useState("");
+  const [technicalMode, setTechnicalMode] = useState<"overview" | "boq" | "documents" | "issues" | "inspection" | "ai">("overview");
+  const [technicalAiLoading, setTechnicalAiLoading] = useState(false);
+  const [technicalAiResult, setTechnicalAiResult] = useState("");
+  const [technicalProjectForm, setTechnicalProjectForm] = useState({
+    name: "",
+    clientName: "",
+    city: "",
+    district: "",
+    projectType: "Konut",
+    totalArea: "",
+    status: "design" as TechnicalProject["status"],
+    targetDate: "",
+    notes: "",
+  });
+  const [technicalDocumentForm, setTechnicalDocumentForm] = useState({
+    discipline: "architecture" as TechnicalDocument["discipline"],
+    documentType: "Uygulama Projesi",
+    title: "",
+    revision: "R00",
+    status: "draft" as TechnicalDocument["status"],
+    dueDate: "",
+    note: "",
+  });
+  const [technicalBoqForm, setTechnicalBoqForm] = useState({
+    discipline: "architecture" as TechnicalBoqItem["discipline"],
+    itemName: "",
+    unit: "m²",
+    quantity: "",
+    unitCost: "",
+    note: "",
+  });
+  const [technicalIssueForm, setTechnicalIssueForm] = useState({
+    discipline: "architecture" as TechnicalIssue["discipline"],
+    title: "",
+    severity: "medium" as TechnicalIssue["severity"],
+    status: "open" as TechnicalIssue["status"],
+    locationText: "",
+    ownerName: "",
+    dueDate: "",
+    description: "",
+  });
+  const [technicalInspectionForm, setTechnicalInspectionForm] = useState({
+    inspectionType: "Saha Kontrolü",
+    title: "",
+    result: "pending" as TechnicalInspection["result"],
+    inspectionDate: "",
+    inspectorName: "",
+    note: "",
+  });
+
 
 
 
@@ -3637,6 +3773,13 @@ function StrategicExpansionCenter({
   useEffect(() => {
     void loadDeveloperCenter();
     // Müteahhit Merkezi verileri oturum değiştiğinde RLS üzerinden yeniden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+
+  useEffect(() => {
+    void loadTechnicalCenter();
+    // Mimar & Mühendis Merkezi verileri oturum değiştiğinde RLS üzerinden yeniden okunur.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -4790,6 +4933,278 @@ MÜTEAHHİT_NOTU: en fazla 4 cümle`,
     setDeveloperNotice("Seçili proje bilgileri fizibilite formuna aktarıldı.");
   }
 
+
+  async function loadTechnicalCenter() {
+    if (!user) {
+      setTechnicalProjects([]);
+      setTechnicalDocuments([]);
+      setTechnicalBoqItems([]);
+      setTechnicalIssues([]);
+      setTechnicalInspections([]);
+      setTechnicalReady(null);
+      return;
+    }
+    setTechnicalLoading(true);
+    const [projectsRes, docsRes, boqRes, issuesRes, inspectionsRes] = await Promise.all([
+      supabase.from("technical_projects").select("*").eq("owner_user_id", user.id).order("updated_at", { ascending: false }),
+      supabase.from("technical_documents").select("*").eq("owner_user_id", user.id).order("updated_at", { ascending: false }),
+      supabase.from("technical_boq_items").select("*").eq("owner_user_id", user.id).order("updated_at", { ascending: false }),
+      supabase.from("technical_issues").select("*").eq("owner_user_id", user.id).order("updated_at", { ascending: false }),
+      supabase.from("technical_inspections").select("*").eq("owner_user_id", user.id).order("updated_at", { ascending: false }),
+    ]);
+    const error = projectsRes.error || docsRes.error || boqRes.error || issuesRes.error || inspectionsRes.error;
+    if (error) {
+      const missing = /technical_projects|technical_documents|technical_boq_items|technical_issues|technical_inspections|relation .* does not exist|schema cache/i.test(error.message);
+      setTechnicalReady(missing ? false : null);
+      if (!missing) setTechnicalNotice(`Mimar & Mühendis Merkezi okunamadı: ${error.message}`);
+      setTechnicalProjects([]);
+      setTechnicalDocuments([]);
+      setTechnicalBoqItems([]);
+      setTechnicalIssues([]);
+      setTechnicalInspections([]);
+    } else {
+      setTechnicalReady(true);
+      setTechnicalProjects((projectsRes.data ?? []) as TechnicalProject[]);
+      setTechnicalDocuments((docsRes.data ?? []) as TechnicalDocument[]);
+      setTechnicalBoqItems((boqRes.data ?? []) as TechnicalBoqItem[]);
+      setTechnicalIssues((issuesRes.data ?? []) as TechnicalIssue[]);
+      setTechnicalInspections((inspectionsRes.data ?? []) as TechnicalInspection[]);
+      setSelectedTechnicalProjectId((current) => current || String(projectsRes.data?.[0]?.id || ""));
+    }
+    setTechnicalLoading(false);
+  }
+
+  async function saveTechnicalProject() {
+    if (!user) return;
+    if (technicalProjectForm.name.trim().length < 2) {
+      setTechnicalNotice("Teknik proje adı en az 2 karakter olmalıdır.");
+      return;
+    }
+    setTechnicalSaving(true);
+    const { data, error } = await supabase.from("technical_projects").insert({
+      owner_user_id: user.id,
+      name: technicalProjectForm.name.trim(),
+      client_name: technicalProjectForm.clientName.trim() || null,
+      city: technicalProjectForm.city.trim() || null,
+      district: technicalProjectForm.district.trim() || null,
+      project_type: technicalProjectForm.projectType.trim() || null,
+      total_area_m2: Math.max(0, Number(technicalProjectForm.totalArea) || 0),
+      status: technicalProjectForm.status,
+      target_date: technicalProjectForm.targetDate || null,
+      notes: technicalProjectForm.notes.trim() || null,
+    }).select("id").single();
+    if (error) setTechnicalNotice(`Teknik proje kaydedilemedi: ${error.message}`);
+    else {
+      setTechnicalProjectForm({ name: "", clientName: "", city: "", district: "", projectType: "Konut", totalArea: "", status: "design", targetDate: "", notes: "" });
+      setSelectedTechnicalProjectId(String(data.id));
+      setTechnicalNotice("Teknik proje merkeze eklendi.");
+      await loadTechnicalCenter();
+    }
+    setTechnicalSaving(false);
+  }
+
+  async function saveTechnicalDocument() {
+    if (!user || !selectedTechnicalProjectId) return setTechnicalNotice("Önce teknik proje seçin.");
+    if (!technicalDocumentForm.title.trim()) return setTechnicalNotice("Doküman başlığı zorunludur.");
+    setTechnicalSaving(true);
+    const { error } = await supabase.from("technical_documents").insert({
+      owner_user_id: user.id,
+      project_id: selectedTechnicalProjectId,
+      discipline: technicalDocumentForm.discipline,
+      document_type: technicalDocumentForm.documentType.trim() || "Doküman",
+      title: technicalDocumentForm.title.trim(),
+      revision: technicalDocumentForm.revision.trim() || "R00",
+      status: technicalDocumentForm.status,
+      due_date: technicalDocumentForm.dueDate || null,
+      note: technicalDocumentForm.note.trim() || null,
+    });
+    if (error) setTechnicalNotice(`Doküman kaydedilemedi: ${error.message}`);
+    else {
+      setTechnicalDocumentForm({ discipline: "architecture", documentType: "Uygulama Projesi", title: "", revision: "R00", status: "draft", dueDate: "", note: "" });
+      setTechnicalNotice("Doküman / revizyon kaydı eklendi.");
+      await loadTechnicalCenter();
+    }
+    setTechnicalSaving(false);
+  }
+
+  async function updateTechnicalDocumentStatus(doc: TechnicalDocument, status: TechnicalDocument["status"]) {
+    if (!user) return;
+    const { error } = await supabase.from("technical_documents").update({ status, updated_at: new Date().toISOString() }).eq("id", doc.id).eq("owner_user_id", user.id);
+    if (error) setTechnicalNotice(`Doküman durumu güncellenemedi: ${error.message}`);
+    else {
+      setTechnicalDocuments((current) => current.map((item) => item.id === doc.id ? { ...item, status } : item));
+      setTechnicalNotice("Doküman durumu güncellendi.");
+    }
+  }
+
+  async function saveTechnicalBoqItem() {
+    if (!user || !selectedTechnicalProjectId) return setTechnicalNotice("Önce teknik proje seçin.");
+    if (!technicalBoqForm.itemName.trim()) return setTechnicalNotice("Metraj / keşif iş kalemi zorunludur.");
+    setTechnicalSaving(true);
+    const { error } = await supabase.from("technical_boq_items").insert({
+      owner_user_id: user.id,
+      project_id: selectedTechnicalProjectId,
+      discipline: technicalBoqForm.discipline,
+      item_name: technicalBoqForm.itemName.trim(),
+      unit: technicalBoqForm.unit.trim() || "adet",
+      quantity: Math.max(0, Number(technicalBoqForm.quantity) || 0),
+      unit_cost: Math.max(0, Number(technicalBoqForm.unitCost) || 0),
+      note: technicalBoqForm.note.trim() || null,
+    });
+    if (error) setTechnicalNotice(`Metraj kaydedilemedi: ${error.message}`);
+    else {
+      setTechnicalBoqForm({ discipline: "architecture", itemName: "", unit: "m²", quantity: "", unitCost: "", note: "" });
+      setTechnicalNotice("Metraj / keşif kalemi eklendi.");
+      await loadTechnicalCenter();
+    }
+    setTechnicalSaving(false);
+  }
+
+  async function saveTechnicalIssue() {
+    if (!user || !selectedTechnicalProjectId) return setTechnicalNotice("Önce teknik proje seçin.");
+    if (!technicalIssueForm.title.trim()) return setTechnicalNotice("Uygunsuzluk başlığı zorunludur.");
+    setTechnicalSaving(true);
+    const { error } = await supabase.from("technical_issues").insert({
+      owner_user_id: user.id,
+      project_id: selectedTechnicalProjectId,
+      discipline: technicalIssueForm.discipline,
+      title: technicalIssueForm.title.trim(),
+      severity: technicalIssueForm.severity,
+      status: technicalIssueForm.status,
+      location_text: technicalIssueForm.locationText.trim() || null,
+      owner_name: technicalIssueForm.ownerName.trim() || null,
+      due_date: technicalIssueForm.dueDate || null,
+      description: technicalIssueForm.description.trim() || null,
+    });
+    if (error) setTechnicalNotice(`Uygunsuzluk kaydedilemedi: ${error.message}`);
+    else {
+      setTechnicalIssueForm({ discipline: "architecture", title: "", severity: "medium", status: "open", locationText: "", ownerName: "", dueDate: "", description: "" });
+      setTechnicalNotice("Saha uygunsuzluğu / teknik konu kaydedildi.");
+      await loadTechnicalCenter();
+    }
+    setTechnicalSaving(false);
+  }
+
+  async function updateTechnicalIssueStatus(issue: TechnicalIssue, status: TechnicalIssue["status"]) {
+    if (!user) return;
+    const { error } = await supabase.from("technical_issues").update({ status, updated_at: new Date().toISOString() }).eq("id", issue.id).eq("owner_user_id", user.id);
+    if (error) setTechnicalNotice(`Teknik konu güncellenemedi: ${error.message}`);
+    else {
+      setTechnicalIssues((current) => current.map((item) => item.id === issue.id ? { ...item, status } : item));
+      setTechnicalNotice("Teknik konu durumu güncellendi.");
+    }
+  }
+
+  async function saveTechnicalInspection() {
+    if (!user || !selectedTechnicalProjectId) return setTechnicalNotice("Önce teknik proje seçin.");
+    if (!technicalInspectionForm.title.trim()) return setTechnicalNotice("Kontrol başlığı zorunludur.");
+    setTechnicalSaving(true);
+    const { error } = await supabase.from("technical_inspections").insert({
+      owner_user_id: user.id,
+      project_id: selectedTechnicalProjectId,
+      inspection_type: technicalInspectionForm.inspectionType.trim() || "Saha Kontrolü",
+      title: technicalInspectionForm.title.trim(),
+      result: technicalInspectionForm.result,
+      inspection_date: technicalInspectionForm.inspectionDate || null,
+      inspector_name: technicalInspectionForm.inspectorName.trim() || null,
+      note: technicalInspectionForm.note.trim() || null,
+    });
+    if (error) setTechnicalNotice(`Kontrol kaydedilemedi: ${error.message}`);
+    else {
+      setTechnicalInspectionForm({ inspectionType: "Saha Kontrolü", title: "", result: "pending", inspectionDate: "", inspectorName: "", note: "" });
+      setTechnicalNotice("Teknik kontrol kaydı eklendi.");
+      await loadTechnicalCenter();
+    }
+    setTechnicalSaving(false);
+  }
+
+  async function runTechnicalAiReview() {
+    const project = technicalCenterIntelligence.selected;
+    if (!project) return setTechnicalNotice("AI teknik kontrol için önce proje seçin.");
+    if (!technicalCenterIntelligence.aiReady) {
+      setTechnicalNotice("AI teknik kontrol için en az 3 gerçek teknik kayıt ekleyin: doküman, uygunsuzluk veya kontrol kayıtları.");
+      return;
+    }
+    setTechnicalAiLoading(true);
+    setTechnicalAiResult("");
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `Sen Yaşam AI Mimar & Mühendis Teknik Kontrol Asistanısın.
+Aşağıdaki kayıtlı proje verilerini kullan. Kayıtlarda olmayan proje özelliği, mevzuat uygunluğu, taşıyıcı sistem sonucu, yangın güvenliği sonucu veya saha gerçeği UYDURMA.
+
+PROJE
+Ad: ${project.name}
+Tür: ${project.project_type || "Belirtilmedi"}
+Konum: ${[project.city, project.district].filter(Boolean).join(" / ") || "Belirtilmedi"}
+Alan: ${project.total_area_m2 || 0} m²
+Durum: ${project.status}
+
+KAYIT ÖZETİ
+Doküman: ${technicalCenterIntelligence.documents.length}
+Onaylı doküman: ${technicalCenterIntelligence.approvedDocuments}
+Açık teknik konu: ${technicalCenterIntelligence.openIssues}
+Kritik konu: ${technicalCenterIntelligence.criticalIssues}
+Metraj kalemi: ${technicalCenterIntelligence.boqItems.length}
+Keşif toplamı: ${technicalCenterIntelligence.boqTotal.toLocaleString("tr-TR")} TL
+Kontrol: ${technicalCenterIntelligence.inspections.length}
+Başarısız/şartlı kontrol: ${technicalCenterIntelligence.problemInspections}
+Teslim hazırlığı: ${technicalCenterIntelligence.handoverScore}/100
+
+AÇIK KONULAR
+${technicalCenterIntelligence.issueSummary || "Açık konu kaydı yok."}
+
+KURALLAR
+- Bir proje/çizim dosyasını gerçekten incelemiş gibi davranma.
+- Statik hesap, yangın yönetmeliği, elektrik/mekanik uygunluğu için kesin onay verme.
+- Eksik veri varsa açıkça söyle.
+- Çıktı yönetici ve teknik ekip için kısa, uygulanabilir ve açıklanabilir olsun.
+
+ÇIKTI:
+1) EN KRİTİK 5 KONU
+2) DİSİPLİNLER ARASI KOORDİNASYON NOTU
+3) REVİZYON / DOKÜMAN ÖNCELİĞİ
+4) SAHA KONTROL ÖNCELİĞİ
+5) TESLİM ÖNCESİ EKSİKLER
+6) TEKNİK KARAR: HAZIR / KONTROLLÜ İLERLE / REVİZYON GEREKLİ`,
+        }),
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) throw new Error(extractText(data) || "AI teknik kontrol üretilemedi.");
+      setTechnicalAiResult(extractText(data).trim());
+    } catch (error) {
+      setTechnicalNotice(error instanceof Error ? error.message : "AI teknik kontrol çalıştırılamadı.");
+    } finally {
+      setTechnicalAiLoading(false);
+    }
+  }
+
+  async function copyTechnicalWeeklyReport() {
+    const project = technicalCenterIntelligence.selected;
+    const report = [
+      "YAŞAM AI · MİMAR & MÜHENDİS HAFTALIK TEKNİK ÖZETİ",
+      `Proje: ${project?.name || "Seçilmedi"}`,
+      `Teknik sağlık: ${technicalCenterIntelligence.technicalHealth}/100`,
+      `Teslim hazırlığı: ${technicalCenterIntelligence.handoverScore}/100`,
+      `Onaylı doküman: ${technicalCenterIntelligence.approvedDocuments}/${technicalCenterIntelligence.documents.length}`,
+      `Açık teknik konu: ${technicalCenterIntelligence.openIssues}`,
+      `Kritik konu: ${technicalCenterIntelligence.criticalIssues}`,
+      `Keşif toplamı: ${technicalCenterIntelligence.boqTotal.toLocaleString("tr-TR")} ₺`,
+      `Kontrol başarı oranı: %${technicalCenterIntelligence.inspectionPassRate}`,
+      "",
+      "ÖNCELİKLİ AKSİYONLAR",
+      ...technicalCenterIntelligence.alerts.map((item, index) => `${index + 1}. ${item}`),
+    ].join("\\n");
+    try {
+      await navigator.clipboard.writeText(report);
+      setTechnicalNotice("Haftalık teknik özet panoya kopyalandı.");
+    } catch {
+      setTechnicalNotice("Teknik özet kopyalanamadı.");
+    }
+  }
+
   async function openListingInquiry(inquiry: ListingInquiry) {
     setSelectedInquiryId(inquiry.id);
     setListingLeadAiResult("");
@@ -5786,6 +6201,103 @@ ${currentText}`
   const [agencyAiQuestion, setAgencyAiQuestion] = useState("");
   const [agencyAiLoading, setAgencyAiLoading] = useState(false);
   const [agencyAiAnswer, setAgencyAiAnswer] = useState("");
+
+  const technicalCenterIntelligence = useMemo(() => {
+    const selected = technicalProjects.find((project) => project.id === selectedTechnicalProjectId) ?? technicalProjects[0] ?? null;
+    const projectId = selected?.id || "";
+    const documents = technicalDocuments.filter((item) => item.project_id === projectId);
+    const boqItems = technicalBoqItems.filter((item) => item.project_id === projectId);
+    const issues = technicalIssues.filter((item) => item.project_id === projectId);
+    const inspections = technicalInspections.filter((item) => item.project_id === projectId);
+
+    const approvedDocuments = documents.filter((item) => item.status === "approved").length;
+    const documentApprovalRate = Math.round(approvedDocuments / Math.max(1, documents.length) * 100);
+    const openIssuesRows = issues.filter((item) => item.status !== "resolved");
+    const openIssues = openIssuesRows.length;
+    const criticalIssues = openIssuesRows.filter((item) => item.severity === "critical").length;
+    const highIssues = openIssuesRows.filter((item) => item.severity === "high").length;
+    const issueClosureRate = Math.round(issues.filter((item) => item.status === "resolved").length / Math.max(1, issues.length) * 100);
+    const boqTotal = boqItems.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_cost || 0), 0);
+    const passedInspections = inspections.filter((item) => item.result === "pass").length;
+    const problemInspections = inspections.filter((item) => item.result === "fail" || item.result === "conditional").length;
+    const inspectionPassRate = Math.round(passedInspections / Math.max(1, inspections.length) * 100);
+
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const overdueDocuments = documents.filter((item) => item.due_date && item.due_date < todayKey && item.status !== "approved" && item.status !== "superseded").length;
+    const overdueIssues = openIssuesRows.filter((item) => item.due_date && item.due_date < todayKey).length;
+    const disciplinesWithData = new Set<string>([
+      ...documents.map((item) => item.discipline),
+      ...boqItems.map((item) => item.discipline),
+      ...issues.map((item) => item.discipline),
+    ]).size;
+    const dataCompletenessParts = [
+      documents.length > 0,
+      boqItems.length > 0,
+      issues.length > 0,
+      inspections.length > 0,
+      disciplinesWithData >= 3,
+      Boolean(selected?.target_date),
+    ];
+    const dataCompleteness = Math.round(dataCompletenessParts.filter(Boolean).length / dataCompletenessParts.length * 100);
+    const aiReady = Boolean(selected && (documents.length + issues.length + inspections.length >= 3));
+
+    const disciplineKeys: TechnicalDocument["discipline"][] = ["architecture","structural","mechanical","electrical","fire","landscape"];
+    const disciplineLabels: Record<string,string> = {
+      architecture: "Mimari",
+      structural: "Statik",
+      mechanical: "Mekanik",
+      electrical: "Elektrik",
+      fire: "Yangın",
+      landscape: "Peyzaj",
+      other: "Diğer",
+    };
+    const disciplineReadiness = disciplineKeys.map((discipline) => {
+      const docs = documents.filter((item) => item.discipline === discipline);
+      const approved = docs.filter((item) => item.status === "approved").length;
+      const open = openIssuesRows.filter((item) => item.discipline === discipline).length;
+      const score = docs.length === 0 ? 0 : Math.max(0, Math.min(100, Math.round((approved / docs.length) * 80 + Math.max(0, 20 - open * 5))));
+      return { discipline, label: disciplineLabels[discipline], docs: docs.length, approved, open, score };
+    });
+
+    const coordinationCoverage = Math.round(disciplineReadiness.filter((item) => item.docs > 0).length / disciplineKeys.length * 100);
+    const handoverScore = Math.max(0, Math.min(100, Math.round(
+      documentApprovalRate * .38 +
+      issueClosureRate * .28 +
+      inspectionPassRate * .24 +
+      coordinationCoverage * .10 -
+      criticalIssues * 8
+    )));
+    const technicalHealth = Math.max(0, Math.min(100, Math.round(
+      documentApprovalRate * .30 +
+      Math.max(0, 100 - openIssues * 8 - criticalIssues * 12) * .30 +
+      inspectionPassRate * .25 +
+      coordinationCoverage * .15
+    )));
+
+    const alerts: string[] = [];
+    if (criticalIssues > 0) alerts.push(`${criticalIssues} kritik teknik konu açık; önce kapatılmalı.`);
+    if (documents.length === 0) alerts.push("Revizyon ve doküman kayıtları henüz oluşturulmamış.");
+    else if (documentApprovalRate < 70) alerts.push(`Doküman onay oranı %${documentApprovalRate}; revizyon kuyruğu gözden geçirilmeli.`);
+    if (problemInspections > 0) alerts.push(`${problemInspections} kontrol sonucu şartlı/başarısız.`);
+    if (overdueDocuments > 0) alerts.push(`${overdueDocuments} dokümanın hedef tarihi geçmiş ve onay bekliyor.`);
+    if (overdueIssues > 0) alerts.push(`${overdueIssues} açık teknik konunun hedef tarihi geçmiş.`);
+    if (coordinationCoverage < 80) alerts.push(`Disiplin kapsaması %${coordinationCoverage}; koordinasyon seti tamamlanmalı.`);
+    if (boqItems.length === 0) alerts.push("Metraj / keşif listesi henüz oluşturulmamış.");
+    if (!alerts.length && selected) alerts.push("Kritik teknik uyarı görünmüyor; rutin koordinasyon sürdürülebilir.");
+
+    const issueSummary = openIssuesRows.slice(0, 8).map((item) =>
+      `${disciplineLabels[item.discipline] || item.discipline}: ${item.title} (${item.severity})`
+    ).join("\\n");
+
+    return {
+      selected, documents, boqItems, issues, inspections, approvedDocuments, documentApprovalRate,
+      openIssuesRows, openIssues, criticalIssues, highIssues, issueClosureRate, boqTotal,
+      passedInspections, problemInspections, inspectionPassRate, overdueDocuments, overdueIssues,
+      disciplinesWithData, dataCompleteness, aiReady, disciplineReadiness,
+      coordinationCoverage, handoverScore, technicalHealth, alerts, issueSummary, disciplineLabels
+    };
+  }, [technicalProjects, selectedTechnicalProjectId, technicalDocuments, technicalBoqItems, technicalIssues, technicalInspections]);
+
   const [bankScenario, setBankScenario] = useState<"balanced" | "conservative" | "growth">("balanced");
   const [bankQueueFilter, setBankQueueFilter] = useState<"all" | "urgent" | "review">("all");
   const [developerProject, setDeveloperProject] = useState<"elysium" | "nova" | "vera">("elysium");
@@ -8657,6 +9169,190 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
               <div style={{ marginTop: 12, padding: 13, borderRadius: 15, border: "1px solid #d7ebe3", background: "#f5fcf9", color: "#607890", fontSize: 11, lineHeight: 1.55 }}><strong style={{ color: "#0b5e4b" }}>Karar desteği açıklaması:</strong> Bu ekran örnek portföy verileriyle çalışan ön yüz prototipidir. Sunulan skorlar ve senaryolar yatırım danışmanlığı değildir; gerçek kullanımda doğrulanmış veriler, kullanıcı yetkileri ve uzman kontrolüyle desteklenecektir.</div>
             </section>
           ) : null}
+
+          {enterpriseRole === "technical" ? (
+            <section style={{ marginTop: 14 }}>
+              <article style={{ padding: 22, borderRadius: 24, color: "#fff", background: "linear-gradient(145deg,#0b2438,#0b5f74 55%,#0f8065)", boxShadow: "0 22px 52px rgba(18,65,82,.18)", border: "1px solid rgba(255,255,255,.12)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start", flexWrap: "wrap" }}>
+                  <div style={{ maxWidth: 760 }}>
+                    <div style={{ color: "#c9f1ec", fontSize: 14.5, fontWeight: 950, letterSpacing: 1.5 }}>FAZ 5 · MİMAR & MÜHENDİS MERKEZİ · CANLI TEKNİK VERİ</div>
+                    <h2 style={{ margin: "8px 0 6px", fontSize: "clamp(26px,4vw,39px)", lineHeight: 1.08 }}>Projeyi çizimden sahaya, kontrolden teslime kadar yönetin.</h2>
+                    <p style={{ margin: 0, color: "rgba(255,255,255,.88)", fontSize: 15.5, lineHeight: 1.65 }}>Revizyon, disiplin koordinasyonu, metraj/keşif, saha uygunsuzlukları, teknik kontroller ve teslim hazırlığını tek merkezde izleyin.</p>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(100px,1fr))", gap: 7 }}>
+                    {[["TEKNİK SAĞLIK",`${technicalCenterIntelligence.technicalHealth}/100`],["TESLİM HAZIRLIĞI",`${technicalCenterIntelligence.handoverScore}/100`],["KRİTİK KONU",technicalCenterIntelligence.criticalIssues]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 13, background: "rgba(255,255,255,.09)", border: "1px solid rgba(255,255,255,.11)" }}><span style={{ display: "block", color: "rgba(255,255,255,.82)", fontSize: 15.5, fontWeight: 900 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, fontSize: 17 }}>{String(value)}</strong></div>)}
+                  </div>
+                </div>
+              </article>
+
+              <div style={{ marginTop: 9, padding: "10px 12px", borderRadius: 12, background: "#f3f8fb", border: "1px solid #d9e7ef", color: "#425968", fontSize: 13.5, lineHeight: 1.55 }}>
+                Teknik ekranlarda açıklama, durum ve yardımcı metinler okunabilirlik önceliğiyle büyütülmüştür; kritik bilgiler daha yüksek kontrastla gösterilir.
+              </div>
+
+              {technicalNotice ? <div style={{ marginTop: 9, padding: "10px 12px", borderRadius: 11, background: "#fff8e8", border: "1px solid #eed6a6", color: "#77591d", fontSize: 14.5, fontWeight: 800 }}>{technicalNotice}</div> : null}
+
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(315px,.68fr) minmax(0,1.32fr)", gap: 12, marginTop: 12 }}>
+                <article style={{ padding: 16, borderRadius: 19, background: "#fff", border: "1px solid #dce8ef" }}>
+                  <div style={{ ...eyebrow, color: "#0b6f9c" }}>TEKNİK PROJE PORTFÖYÜ</div>
+                  <h3 style={{ margin: "5px 0 8px", color: "#153a65", fontSize: 18 }}>Yeni proje ekle</h3>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+                    <input value={technicalProjectForm.name} onChange={(e) => setTechnicalProjectForm((c) => ({ ...c, name: e.target.value }))} placeholder="Proje adı *" style={{ ...inputStyle, gridColumn: "1 / -1", fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                    <input value={technicalProjectForm.clientName} onChange={(e) => setTechnicalProjectForm((c) => ({ ...c, clientName: e.target.value }))} placeholder="İşveren / müşteri" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                    <input value={technicalProjectForm.projectType} onChange={(e) => setTechnicalProjectForm((c) => ({ ...c, projectType: e.target.value }))} placeholder="Proje türü" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                    <input value={technicalProjectForm.city} onChange={(e) => setTechnicalProjectForm((c) => ({ ...c, city: e.target.value }))} placeholder="İl" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                    <input value={technicalProjectForm.district} onChange={(e) => setTechnicalProjectForm((c) => ({ ...c, district: e.target.value }))} placeholder="İlçe" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                    <input value={technicalProjectForm.totalArea} onChange={(e) => setTechnicalProjectForm((c) => ({ ...c, totalArea: e.target.value }))} placeholder="Toplam alan m²" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                    <select value={technicalProjectForm.status} onChange={(e) => setTechnicalProjectForm((c) => ({ ...c, status: e.target.value as TechnicalProject["status"] }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }}><option value="design">Tasarım</option><option value="coordination">Koordinasyon</option><option value="construction">Uygulama / Şantiye</option><option value="handover">Teslim</option><option value="completed">Tamamlandı</option><option value="paused">Beklemede</option></select>
+                    <input type="date" value={technicalProjectForm.targetDate} onChange={(e) => setTechnicalProjectForm((c) => ({ ...c, targetDate: e.target.value }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                    <textarea value={technicalProjectForm.notes} onChange={(e) => setTechnicalProjectForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Teknik proje notu" style={{ ...inputStyle, gridColumn: "1 / -1", minHeight: 76, fontSize: 14, color: "#223b4d" }} />
+                  </div>
+                  <button type="button" disabled={technicalSaving || technicalReady === false} onClick={() => void saveTechnicalProject()} style={{ width: "100%", marginTop: 8, padding: "11px 12px", borderRadius: 12, border: 0, background: "linear-gradient(135deg,#0b6f9c,#0f8065)", color: "#fff", fontWeight: 950, cursor: "pointer" }}>{technicalSaving ? "Kaydediliyor…" : "+ Teknik Projeyi Ekle"}</button>
+                </article>
+
+                <article style={{ padding: 16, borderRadius: 19, background: "#fff", border: "1px solid #dce8ef" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><div><div style={{ ...eyebrow, color: "#0f8065" }}>AKTİF TEKNİK PROJELER</div><h3 style={{ margin: "5px 0 0", color: "#153a65", fontSize: 18 }}>Projeyi seç, tüm teknik veriyi birlikte yönet.</h3></div><span style={{ color: technicalReady === true ? "#087b5e" : "#8193a1", fontSize: 13.5, fontWeight: 950 }}>{technicalReady === true ? "● Veritabanı canlı" : technicalReady === false ? "SQL kurulumu gerekli" : "Kontrol ediliyor"}</span></div>
+                  <div style={{ display: "grid", gap: 7, marginTop: 10, maxHeight: 310, overflowY: "auto" }}>
+                    {technicalProjects.length ? technicalProjects.map((project) => {
+                      const active = (selectedTechnicalProjectId || technicalProjects[0]?.id) === project.id;
+                      return <button key={project.id} type="button" onClick={() => setSelectedTechnicalProjectId(project.id)} style={{ padding: 12, borderRadius: 13, border: active ? "1px solid #0f8065" : "1px solid #e0e9ef", background: active ? "#eff9f5" : "#f9fbfd", textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 14.5 }}>{project.name}</strong><span style={{ color: active ? "#087b5e" : "#7b90a0", fontSize: 15.5, fontWeight: 950 }}>{project.status.toLocaleUpperCase("tr-TR")}</span></div><span style={{ display: "block", marginTop: 3, color: "#52697a", fontSize: 15.5 }}>{[project.city,project.district].filter(Boolean).join(" / ") || "Konum girilmedi"} · {Number(project.total_area_m2 || 0).toLocaleString("tr-TR")} m² · {project.client_name || "İşveren girilmedi"}</span></button>;
+                    }) : <div style={{ padding: 15, borderRadius: 12, background: "#f8fbfd", color: "#566b79", fontSize: 13.5 }}>{technicalReady === false ? "FAZ 5 SQL migration'ını çalıştırın." : technicalLoading ? "Teknik projeler yükleniyor…" : "Henüz teknik proje yok."}</div>}
+                  </div>
+                </article>
+              </div>
+
+              {technicalCenterIntelligence.selected ? <>
+                <article style={{ marginTop: 12, padding: 16, borderRadius: 19, background: "linear-gradient(145deg,#f7fbfd,#fff)", border: "1px solid #dce8ef" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}>
+                    <div><div style={{ ...eyebrow, color: "#0b6f9c" }}>TEKNİK YÖNETİCİ KOKPİTİ</div><h3 style={{ margin: "5px 0 3px", color: "#153a65", fontSize: 20 }}>{technicalCenterIntelligence.selected.name}</h3><span style={{ color: "#566b79", fontSize: 13.5 }}>{technicalCenterIntelligence.selected.project_type || "Proje"} · {[technicalCenterIntelligence.selected.city,technicalCenterIntelligence.selected.district].filter(Boolean).join(" / ") || "Konum yok"}</span></div>
+                    <button type="button" onClick={() => void copyTechnicalWeeklyReport()} style={{ padding: "9px 11px", borderRadius: 10, border: "1px solid #cbdde7", background: "#fff", color: "#315b76", fontSize: 13, fontWeight: 950, cursor: "pointer" }}>Haftalık Teknik Özeti Kopyala</button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+                    {[["TEKNİK SAĞLIK",`${technicalCenterIntelligence.technicalHealth}/100`],["VERİ TAMAM",`%${technicalCenterIntelligence.dataCompleteness}`],["DOKÜMAN ONAY",`%${technicalCenterIntelligence.documentApprovalRate}`],["AÇIK KONU",technicalCenterIntelligence.openIssues],["KRİTİK",technicalCenterIntelligence.criticalIssues],["TESLİM",`${technicalCenterIntelligence.handoverScore}/100`]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 13, background: "#fff", border: "1px solid #e0e9ef" }}><span style={{ color: "#52697a", fontSize: 12, fontWeight: 950 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: String(label)==="KRİTİK" && Number(value)>0 ? "#b24d34" : "#153a65", fontSize: 15 }}>{String(value)}</strong></div>)}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
+                    {[
+                      ["GECİKEN DOKÜMAN", technicalCenterIntelligence.overdueDocuments],
+                      ["GECİKEN TEKNİK KONU", technicalCenterIntelligence.overdueIssues],
+                      ["DİSİPLİN VERİSİ", `${technicalCenterIntelligence.disciplinesWithData}/6`],
+                      ["AI KONTROL", technicalCenterIntelligence.aiReady ? "Hazır" : "Veri bekliyor"],
+                    ].map(([label,value]) => {
+                      const overdue = String(label).startsWith("GECİKEN") && Number(value) > 0;
+                      return <div key={String(label)} style={{ padding: 10, borderRadius: 12, background: overdue ? "#fff5f2" : "#f8fbfd", border: overdue ? "1px solid #efc9c0" : "1px solid #e0e9ef" }}><span style={{ color: "#52697a", fontSize: 12, fontWeight: 900 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, color: overdue ? "#b24d34" : "#153a65", fontSize: 14 }}>{String(value)}</strong></div>;
+                    })}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 6, marginTop: 9 }}>
+                    {technicalCenterIntelligence.disciplineReadiness.map((item) => <div key={item.discipline} style={{ padding: 11, borderRadius: 11, background: item.score >= 75 ? "#eff9f5" : item.docs ? "#fff9ea" : "#f8fbfd", border: "1px solid #e0e9ef" }}><span style={{ color: "#4f6574", fontSize: 12, fontWeight: 900 }}>{item.label}</span><strong style={{ display: "block", marginTop: 3, color: item.score >= 75 ? "#087b5e" : "#34556c", fontSize: 13 }}>{item.score}/100</strong><span style={{ display: "block", marginTop: 2, color: "#91a1ad", fontSize: 11.5 }}>{item.approved}/{item.docs} onay · {item.open} açık</span></div>)}
+                  </div>
+                </article>
+
+                <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                  {([["overview","Yönetici Özeti"],["boq","Metraj & Keşif"],["documents","Revizyon & Doküman"],["issues","Saha Uygunsuzlukları"],["inspection","Teknik Kontrol"],["ai","AI Teknik Kontrol"]] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setTechnicalMode(id)} style={{ padding: "7px 10px", borderRadius: 999, border: technicalMode===id ? "1px solid #0f8065" : "1px solid #dce6ed", background: technicalMode===id ? "#eaf8f3" : "#fff", color: technicalMode===id ? "#087b5e" : "#667f90", fontSize: 13, fontWeight: 900, cursor: "pointer" }}>{label}</button>)}
+                </div>
+
+                {technicalMode === "overview" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(300px,.8fr)", gap: 12, marginTop: 10 }}>
+                  <article style={{ padding: 16, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                    <div style={{ ...eyebrow, color: "#0f8065" }}>KOORDİNASYON & TESLİM HAZIRLIĞI</div>
+                    <h3 style={{ margin: "5px 0 9px", color: "#153a65", fontSize: 20 }}>Disiplinlerin birlikte ilerleme durumu</h3>
+                    <div style={{ display: "grid", gap: 7 }}>
+                      {technicalCenterIntelligence.disciplineReadiness.map((item) => <div key={item.discipline}><div style={{ display: "flex", justifyContent: "space-between", color: "#425968", fontSize: 13.5 }}><span>{item.label} · {item.docs} doküman · {item.open} açık konu</span><strong style={{ color: item.score>=75 ? "#087b5e" : "#9a6700" }}>%{item.score}</strong></div><div style={{ height: 7, borderRadius: 999, background: "#e7eef2", overflow: "hidden", marginTop: 4 }}><div style={{ width: `${item.score}%`, height: "100%", borderRadius: 999, background: item.score>=75 ? "#0f8065" : "#c7902e" }} /></div></div>)}
+                    </div>
+                    <div style={{ marginTop: 10, padding: 11, borderRadius: 13, background: "#f8fbfd", color: "#425968", fontSize: 13.5, lineHeight: 1.6 }}><strong style={{ color: "#34556c" }}>BIM / clash notu:</strong> Bu sürüm disiplin dokümanı ve açık konu koordinasyonunu izler. IFC/BIM modelini gerçekten parse edip geometrik çakışma tespiti yapmaz; böyle bir bağlantı kurulmadan “çakışma yok” sonucu üretmez.</div>
+                  </article>
+                  <article style={{ padding: 16, borderRadius: 18, color: "#fff", background: "linear-gradient(145deg,#0b3045,#0f8065)" }}>
+                    <div style={{ color: "#c8f2e8", fontSize: 13, fontWeight: 950, letterSpacing: 1 }}>TEKNİK AKSİYONLAR</div>
+                    <strong style={{ display: "block", marginTop: 6, fontSize: 17 }}>Bugün neyi kapatmalıyız?</strong>
+                    <div style={{ display: "grid", gap: 6, marginTop: 9 }}>{technicalCenterIntelligence.alerts.map((item,index) => <div key={`${item}-${index}`} style={{ padding: 9, borderRadius: 10, background: "rgba(255,255,255,.09)", fontSize: 13.5, lineHeight: 1.65 }}><strong>{index+1}.</strong> {item}</div>)}</div>
+                    <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid rgba(255,255,255,.15)", color: "rgba(255,255,255,.84)", fontSize: 12.8, lineHeight: 1.6 }}>Skorlar yalnızca sisteme girilen gerçek kayıtların tamamlanma durumundan hesaplanır; mühendislik onayı yerine geçmez.</div>
+                  </article>
+                </div> : null}
+
+                {technicalMode === "boq" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(300px,.68fr) minmax(0,1.32fr)", gap: 12, marginTop: 10 }}>
+                  <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                    <div style={{ ...eyebrow, color: "#0b6f9c" }}>METRAJ & KEŞİF</div><h3 style={{ margin: "5px 0 8px", color: "#153a65", fontSize: 17 }}>Yeni iş kalemi</h3>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+                      <select value={technicalBoqForm.discipline} onChange={(e) => setTechnicalBoqForm((c) => ({ ...c, discipline: e.target.value as TechnicalBoqItem["discipline"] }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }}><option value="architecture">Mimari</option><option value="structural">Statik</option><option value="mechanical">Mekanik</option><option value="electrical">Elektrik</option><option value="fire">Yangın</option><option value="landscape">Peyzaj</option><option value="other">Diğer</option></select>
+                      <input value={technicalBoqForm.itemName} onChange={(e) => setTechnicalBoqForm((c) => ({ ...c, itemName: e.target.value }))} placeholder="İş kalemi *" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input value={technicalBoqForm.unit} onChange={(e) => setTechnicalBoqForm((c) => ({ ...c, unit: e.target.value }))} placeholder="Birim" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input value={technicalBoqForm.quantity} onChange={(e) => setTechnicalBoqForm((c) => ({ ...c, quantity: e.target.value }))} placeholder="Miktar" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input value={technicalBoqForm.unitCost} onChange={(e) => setTechnicalBoqForm((c) => ({ ...c, unitCost: e.target.value }))} placeholder="Birim maliyet TL" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input value={technicalBoqForm.note} onChange={(e) => setTechnicalBoqForm((c) => ({ ...c, note: e.target.value }))} placeholder="Not" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                    </div>
+                    <button type="button" onClick={() => void saveTechnicalBoqItem()} style={{ width: "100%", marginTop: 8, padding: "10px 11px", borderRadius: 11, border: 0, background: "#0b6f9c", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Metraj Kalemi Ekle</button>
+                  </article>
+                  <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><div style={{ ...eyebrow, color: "#0f8065" }}>KEŞİF ÖZETİ</div><h3 style={{ margin: "5px 0 0", color: "#153a65", fontSize: 17 }}>{technicalCenterIntelligence.boqItems.length} kalem</h3></div><strong style={{ color: "#0f8065", fontSize: 17 }}>{technicalCenterIntelligence.boqTotal.toLocaleString("tr-TR")} ₺</strong></div>
+                    <div style={{ display: "grid", gap: 6, marginTop: 9, maxHeight: 310, overflowY: "auto" }}>{technicalCenterIntelligence.boqItems.length ? technicalCenterIntelligence.boqItems.map((item) => <div key={item.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 80px 110px", gap: 7, padding: 12, borderRadius: 11, background: "#f8fbfd", border: "1px solid #e3ebf0" }}><div><strong style={{ color: "#34556c", fontSize: 13.5 }}>{item.item_name}</strong><span style={{ display: "block", marginTop: 2, color: "#52697a", fontSize: 8 }}>{technicalCenterIntelligence.disciplineLabels[item.discipline]} · {item.quantity} {item.unit}</span></div><span style={{ color: "#6f8391", fontSize: 15.5 }}>{Number(item.unit_cost).toLocaleString("tr-TR")} ₺/{item.unit}</span><strong style={{ color: "#153a65", fontSize: 13.5, textAlign: "right" }}>{(Number(item.quantity)*Number(item.unit_cost)).toLocaleString("tr-TR")} ₺</strong></div>) : <div style={{ padding: 15, borderRadius: 12, background: "#f8fbfd", color: "#566b79", fontSize: 13.5 }}>Metraj / keşif kalemi henüz yok.</div>}</div>
+                  </article>
+                </div> : null}
+
+                {technicalMode === "documents" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(300px,.68fr) minmax(0,1.32fr)", gap: 12, marginTop: 10 }}>
+                  <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                    <div style={{ ...eyebrow, color: "#0b6f9c" }}>REVİZYON & DOKÜMAN KONTROLÜ</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 8 }}>
+                      <select value={technicalDocumentForm.discipline} onChange={(e) => setTechnicalDocumentForm((c) => ({ ...c, discipline: e.target.value as TechnicalDocument["discipline"] }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }}><option value="architecture">Mimari</option><option value="structural">Statik</option><option value="mechanical">Mekanik</option><option value="electrical">Elektrik</option><option value="fire">Yangın</option><option value="landscape">Peyzaj</option><option value="other">Diğer</option></select>
+                      <input value={technicalDocumentForm.documentType} onChange={(e) => setTechnicalDocumentForm((c) => ({ ...c, documentType: e.target.value }))} placeholder="Doküman türü" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input value={technicalDocumentForm.title} onChange={(e) => setTechnicalDocumentForm((c) => ({ ...c, title: e.target.value }))} placeholder="Doküman başlığı *" style={{ ...inputStyle, gridColumn: "1 / -1", fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input value={technicalDocumentForm.revision} onChange={(e) => setTechnicalDocumentForm((c) => ({ ...c, revision: e.target.value }))} placeholder="Revizyon R00" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <select value={technicalDocumentForm.status} onChange={(e) => setTechnicalDocumentForm((c) => ({ ...c, status: e.target.value as TechnicalDocument["status"] }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }}><option value="draft">Taslak</option><option value="review">Kontrolde</option><option value="approved">Onaylı</option><option value="superseded">Geçersiz / Eski</option></select>
+                      <input type="date" value={technicalDocumentForm.dueDate} onChange={(e) => setTechnicalDocumentForm((c) => ({ ...c, dueDate: e.target.value }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input value={technicalDocumentForm.note} onChange={(e) => setTechnicalDocumentForm((c) => ({ ...c, note: e.target.value }))} placeholder="Not" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                    </div>
+                    <button type="button" onClick={() => void saveTechnicalDocument()} style={{ width: "100%", marginTop: 8, padding: "10px 11px", borderRadius: 11, border: 0, background: "#0b6f9c", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Doküman / Revizyon Ekle</button>
+                  </article>
+                  <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 11 }}>Doküman Kuyruğu</strong><span style={{ color: "#087b5e", fontSize: 13, fontWeight: 950 }}>%{technicalCenterIntelligence.documentApprovalRate} onay</span></div>
+                    <div style={{ display: "grid", gap: 6, marginTop: 8, maxHeight: 330, overflowY: "auto" }}>{technicalCenterIntelligence.documents.map((doc) => <div key={doc.id} style={{ padding: 12, borderRadius: 11, background: "#f8fbfd", border: "1px solid #e3ebf0" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ color: "#34556c", fontSize: 13.5 }}>{doc.title}</strong><span style={{ display: "block", marginTop: 2, color: "#52697a", fontSize: 8 }}>{technicalCenterIntelligence.disciplineLabels[doc.discipline]} · {doc.document_type} · {doc.revision}</span></div><span style={{ color: doc.status==="approved" ? "#087b5e" : doc.status==="review" ? "#9a6700" : "#60798a", fontSize: 15.5, fontWeight: 950 }}>{doc.status.toLocaleUpperCase("tr-TR")}</span></div><div style={{ display: "flex", gap: 5, marginTop: 6, flexWrap: "wrap" }}>{(["draft","review","approved","superseded"] as const).map((status) => <button key={status} type="button" onClick={() => void updateTechnicalDocumentStatus(doc,status)} style={{ padding: "5px 7px", borderRadius: 8, border: doc.status===status ? "1px solid #0f8065" : "1px solid #dce6ed", background: doc.status===status ? "#eaf8f3" : "#fff", color: doc.status===status ? "#087b5e" : "#6d8291", fontSize: 11.5, fontWeight: 900, cursor: "pointer" }}>{status==="draft"?"Taslak":status==="review"?"Kontrolde":status==="approved"?"Onaylı":"Eski"}</button>)}</div></div>)}</div>
+                  </article>
+                </div> : null}
+
+                {technicalMode === "issues" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(300px,.68fr) minmax(0,1.32fr)", gap: 12, marginTop: 10 }}>
+                  <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                    <div style={{ ...eyebrow, color: "#b24d34" }}>SAHA UYGUNSUZLUKLARI & TEKNİK KONULAR</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 8 }}>
+                      <select value={technicalIssueForm.discipline} onChange={(e) => setTechnicalIssueForm((c) => ({ ...c, discipline: e.target.value as TechnicalIssue["discipline"] }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }}><option value="architecture">Mimari</option><option value="structural">Statik</option><option value="mechanical">Mekanik</option><option value="electrical">Elektrik</option><option value="fire">Yangın</option><option value="landscape">Peyzaj</option><option value="other">Diğer</option></select>
+                      <select value={technicalIssueForm.severity} onChange={(e) => setTechnicalIssueForm((c) => ({ ...c, severity: e.target.value as TechnicalIssue["severity"] }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }}><option value="low">Düşük</option><option value="medium">Orta</option><option value="high">Yüksek</option><option value="critical">Kritik</option></select>
+                      <input value={technicalIssueForm.title} onChange={(e) => setTechnicalIssueForm((c) => ({ ...c, title: e.target.value }))} placeholder="Teknik konu / uygunsuzluk *" style={{ ...inputStyle, gridColumn: "1 / -1", fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input value={technicalIssueForm.locationText} onChange={(e) => setTechnicalIssueForm((c) => ({ ...c, locationText: e.target.value }))} placeholder="Konum / kat / aks" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input value={technicalIssueForm.ownerName} onChange={(e) => setTechnicalIssueForm((c) => ({ ...c, ownerName: e.target.value }))} placeholder="Sorumlu" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input type="date" value={technicalIssueForm.dueDate} onChange={(e) => setTechnicalIssueForm((c) => ({ ...c, dueDate: e.target.value }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <textarea value={technicalIssueForm.description} onChange={(e) => setTechnicalIssueForm((c) => ({ ...c, description: e.target.value }))} placeholder="Açıklama / düzeltme beklentisi" style={{ ...inputStyle, gridColumn: "1 / -1", minHeight: 72, fontSize: 14, color: "#223b4d" }} />
+                    </div>
+                    <button type="button" onClick={() => void saveTechnicalIssue()} style={{ width: "100%", marginTop: 8, padding: "10px 11px", borderRadius: 11, border: 0, background: "#b24d34", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Teknik Konu Ekle</button>
+                  </article>
+                  <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>{[["AÇIK",technicalCenterIntelligence.openIssues],["YÜKSEK",technicalCenterIntelligence.highIssues],["KRİTİK",technicalCenterIntelligence.criticalIssues]].map(([label,value]) => <div key={String(label)} style={{ padding: 11, borderRadius: 11, background: "#f8fbfd", border: "1px solid #e3ebf0" }}><span style={{ color: "#52697a", fontSize: 8 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 3, color: String(label)==="KRİTİK" && Number(value)>0 ? "#b24d34" : "#153a65", fontSize: 14 }}>{String(value)}</strong></div>)}</div>
+                    <div style={{ display: "grid", gap: 6, marginTop: 8, maxHeight: 325, overflowY: "auto" }}>{technicalCenterIntelligence.issues.map((issue) => <div key={issue.id} style={{ padding: 12, borderRadius: 11, background: issue.severity==="critical" && issue.status!=="resolved" ? "#fff4f1" : "#f8fbfd", border: issue.severity==="critical" && issue.status!=="resolved" ? "1px solid #efc9c0" : "1px solid #e3ebf0" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ color: "#34556c", fontSize: 13.5 }}>{issue.title}</strong><span style={{ display: "block", marginTop: 2, color: "#52697a", fontSize: 8 }}>{technicalCenterIntelligence.disciplineLabels[issue.discipline]} · {issue.location_text || "Konum yok"} · {issue.owner_name || "Sorumlu yok"}</span></div><span style={{ color: issue.severity==="critical"?"#b24d34":issue.severity==="high"?"#9a6700":"#60798a", fontSize: 15.5, fontWeight: 950 }}>{issue.severity.toLocaleUpperCase("tr-TR")}</span></div><div style={{ display: "flex", gap: 5, marginTop: 6 }}>{(["open","in_review","resolved"] as const).map((status) => <button key={status} type="button" onClick={() => void updateTechnicalIssueStatus(issue,status)} style={{ padding: "5px 7px", borderRadius: 8, border: issue.status===status ? "1px solid #0f8065" : "1px solid #dce6ed", background: issue.status===status ? "#eaf8f3" : "#fff", color: issue.status===status ? "#087b5e" : "#6d8291", fontSize: 11.5, fontWeight: 900, cursor: "pointer" }}>{status==="open"?"Açık":status==="in_review"?"Kontrolde":"Çözüldü"}</button>)}</div></div>)}</div>
+                  </article>
+                </div> : null}
+
+                {technicalMode === "inspection" ? <div style={{ display: "grid", gridTemplateColumns: "minmax(300px,.68fr) minmax(0,1.32fr)", gap: 12, marginTop: 10 }}>
+                  <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                    <div style={{ ...eyebrow, color: "#0f8065" }}>TEKNİK KONTROL & İMALAT KABULÜ</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 8 }}>
+                      <input value={technicalInspectionForm.inspectionType} onChange={(e) => setTechnicalInspectionForm((c) => ({ ...c, inspectionType: e.target.value }))} placeholder="Kontrol türü" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <select value={technicalInspectionForm.result} onChange={(e) => setTechnicalInspectionForm((c) => ({ ...c, result: e.target.value as TechnicalInspection["result"] }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }}><option value="pending">Bekliyor</option><option value="pass">Uygun</option><option value="conditional">Şartlı uygun</option><option value="fail">Uygun değil</option></select>
+                      <input value={technicalInspectionForm.title} onChange={(e) => setTechnicalInspectionForm((c) => ({ ...c, title: e.target.value }))} placeholder="Kontrol başlığı *" style={{ ...inputStyle, gridColumn: "1 / -1", fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input type="date" value={technicalInspectionForm.inspectionDate} onChange={(e) => setTechnicalInspectionForm((c) => ({ ...c, inspectionDate: e.target.value }))} style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <input value={technicalInspectionForm.inspectorName} onChange={(e) => setTechnicalInspectionForm((c) => ({ ...c, inspectorName: e.target.value }))} placeholder="Kontrol eden" style={{ ...inputStyle, fontSize: 14, color: "#223b4d", minHeight: 42 }} />
+                      <textarea value={technicalInspectionForm.note} onChange={(e) => setTechnicalInspectionForm((c) => ({ ...c, note: e.target.value }))} placeholder="Kontrol notu" style={{ ...inputStyle, gridColumn: "1 / -1", minHeight: 72, fontSize: 14, color: "#223b4d" }} />
+                    </div>
+                    <button type="button" onClick={() => void saveTechnicalInspection()} style={{ width: "100%", marginTop: 8, padding: "10px 11px", borderRadius: 11, border: 0, background: "#0f8065", color: "#fff", fontWeight: 950, cursor: "pointer" }}>+ Teknik Kontrol Ekle</button>
+                  </article>
+                  <article style={{ padding: 15, borderRadius: 18, background: "#fff", border: "1px solid #dce8ef" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#34556c", fontSize: 11 }}>Kontrol Geçmişi</strong><span style={{ color: "#087b5e", fontSize: 13, fontWeight: 950 }}>%{technicalCenterIntelligence.inspectionPassRate} başarı</span></div>
+                    <div style={{ display: "grid", gap: 6, marginTop: 8, maxHeight: 330, overflowY: "auto" }}>{technicalCenterIntelligence.inspections.map((item) => <div key={item.id} style={{ padding: 12, borderRadius: 11, background: item.result==="fail" ? "#fff4f1" : "#f8fbfd", border: item.result==="fail" ? "1px solid #efc9c0" : "1px solid #e3ebf0" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ color: "#34556c", fontSize: 13.5 }}>{item.title}</strong><span style={{ display: "block", marginTop: 2, color: "#52697a", fontSize: 8 }}>{item.inspection_type} · {item.inspection_date || "Tarih yok"} · {item.inspector_name || "Kontrol eden yok"}</span></div><span style={{ color: item.result==="pass"?"#087b5e":item.result==="conditional"?"#9a6700":item.result==="fail"?"#b24d34":"#60798a", fontSize: 15.5, fontWeight: 950 }}>{item.result==="pass"?"UYGUN":item.result==="conditional"?"ŞARTLI":item.result==="fail"?"UYGUN DEĞİL":"BEKLİYOR"}</span></div>{item.note ? <span style={{ display: "block", marginTop: 4, color: "#425968", fontSize: 15.5 }}>{item.note}</span> : null}</div>)}</div>
+                  </article>
+                </div> : null}
+
+                {technicalMode === "ai" ? <article style={{ marginTop: 10, padding: 17, borderRadius: 19, background: "linear-gradient(145deg,#0b3045,#0f8065)", color: "#fff" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", flexWrap: "wrap" }}><div><div style={{ color: "#c8f2e8", fontSize: 13, fontWeight: 950, letterSpacing: 1 }}>AI TEKNİK KONTROL MERKEZİ</div><h3 style={{ margin: "6px 0 4px", fontSize: 19 }}>Kayıtlı teknik verilerden öncelik ve teslim riski çıkarın.</h3><p style={{ margin: 0, color: "rgba(255,255,255,.84)", fontSize: 13.5, lineHeight: 1.6 }}>AI çizim veya hesap dosyasını görmeden onay vermez; yalnızca sisteme girilmiş doküman, konu, metraj ve kontrol kayıtlarını yorumlar. AI kontrol eşiği: en az 3 gerçek teknik kayıt.</p></div><button type="button" disabled={technicalAiLoading || !technicalCenterIntelligence.aiReady} onClick={() => void runTechnicalAiReview()} style={{ padding: "10px 12px", borderRadius: 11, border: 0, background: "#fff", color: "#0b5f74", fontSize: 13.5, fontWeight: 950, cursor: "pointer" }}>{technicalAiLoading ? "AI inceliyor…" : technicalCenterIntelligence.aiReady ? "AI Teknik Kontrolü Başlat" : "Önce Teknik Veri Ekleyin"}</button></div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginTop: 11 }}>{[["TEKNİK SAĞLIK",`${technicalCenterIntelligence.technicalHealth}/100`],["TESLİM",`${technicalCenterIntelligence.handoverScore}/100`],["AÇIK KONU",technicalCenterIntelligence.openIssues],["KEŞİF",`${technicalCenterIntelligence.boqTotal.toLocaleString("tr-TR")} ₺`]].map(([label,value]) => <div key={String(label)} style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.1)" }}><span style={{ color: "rgba(255,255,255,.62)", fontSize: 8 }}>{String(label)}</span><strong style={{ display: "block", marginTop: 4, fontSize: 14 }}>{String(value)}</strong></div>)}</div>
+                  {technicalAiResult ? <pre style={{ margin: "11px 0 0", padding: 13, borderRadius: 13, background: "rgba(0,0,0,.14)", whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 13.5, lineHeight: 1.65, color: "#fff" }}>{technicalAiResult}</pre> : <div style={{ marginTop: 11, padding: 12, borderRadius: 13, background: "rgba(255,255,255,.08)", color: "rgba(255,255,255,.74)", fontSize: 13.3, lineHeight: 1.6 }}>AI kontrolü çalıştırdığınızda disiplinler arası koordinasyon, revizyon öncelikleri, saha kontrolleri ve teslim eksikleri burada özetlenir.</div>}
+                </article> : null}
+              </> : null}
+            </section>
+          ) : null}
+
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginTop: 14 }}>
             {[["🔒","Kontrollü Erişim","Rol ve yetkiye göre görünürlük"],["🧠","Açıklanabilir AI","Kararın nedenleri izlenebilir"],["🇹🇷","Türkiye Veri Motoru","Bölgesel karar altyapısı"],["📄","Kurumsal PDF","Standart ve doğrulanabilir rapor"],["🛡️","KVKK Yaklaşımı","Veri minimizasyonu ve kayıt disiplini"]].map(([icon,title,text]) => <article key={title} style={{ padding: 15, borderRadius: 16, border: "1px solid #dce8f3", background: "linear-gradient(145deg,#fff,#f8fbfe)" }}><span style={{ fontSize: 21 }}>{icon}</span><strong style={{ display: "block", color: "#153a65", marginTop: 7, fontSize: 12 }}>{title}</strong><span style={{ display: "block", color: "#74899e", marginTop: 3, fontSize: 11, lineHeight: 1.4 }}>{text}</span></article>)}
