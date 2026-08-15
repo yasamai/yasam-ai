@@ -3098,6 +3098,19 @@ type ListingInquiry = {
   recipient_user_id: string;
   message: string;
   status: "new" | "read" | "closed";
+  lead_status: "new" | "contacted" | "qualified" | "visit" | "offer" | "won" | "lost";
+  priority: "low" | "normal" | "high" | "urgent";
+  owner_note: string | null;
+  follow_up_at: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+type ListingInquiryMessage = {
+  id: string;
+  inquiry_id: string;
+  sender_user_id: string;
+  message: string;
   created_at: string;
 };
 
@@ -3190,6 +3203,17 @@ function StrategicExpansionCenter({
   const [listingAnalyticsReady, setListingAnalyticsReady] = useState<boolean | null>(null);
   const [listingOwnerStats, setListingOwnerStats] = useState({ uniqueViewers: 0, totalViews: 0, favorites: 0, inquiries: 0, unreadInquiries: 0 });
   const [listingOwnerStatsLoading, setListingOwnerStatsLoading] = useState(false);
+  const [listingCrmReady, setListingCrmReady] = useState<boolean | null>(null);
+  const [listingCrmOpen, setListingCrmOpen] = useState(false);
+  const [listingInbox, setListingInbox] = useState<ListingInquiry[]>([]);
+  const [listingInboxLoading, setListingInboxLoading] = useState(false);
+  const [listingInboxFilter, setListingInboxFilter] = useState<"all" | "new" | "qualified" | "followup">("all");
+  const [selectedInquiryId, setSelectedInquiryId] = useState("");
+  const [listingThread, setListingThread] = useState<ListingInquiryMessage[]>([]);
+  const [listingReply, setListingReply] = useState("");
+  const [listingReplySending, setListingReplySending] = useState(false);
+  const [listingLeadAiLoading, setListingLeadAiLoading] = useState(false);
+  const [listingLeadAiResult, setListingLeadAiResult] = useState("");
 
 
 
@@ -3227,6 +3251,12 @@ function StrategicExpansionCenter({
   useEffect(() => {
     void loadListingEngagement();
     // Favoriler yalnızca oturumdaki kullanıcı için RLS üzerinden okunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    void loadListingInbox();
+    // İlan sahibinin alıcı talepleri oturum değiştiğinde RLS üzerinden yeniden okunur.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -3447,6 +3477,98 @@ function StrategicExpansionCenter({
       });
     }
     setListingOwnerStatsLoading(false);
+  }
+
+  async function loadListingInbox() {
+    if (!user) {
+      setListingInbox([]);
+      setListingCrmReady(null);
+      return;
+    }
+    setListingInboxLoading(true);
+    const { data, error } = await supabase
+      .from("listing_inquiries")
+      .select("id,listing_id,sender_user_id,recipient_user_id,message,status,lead_status,priority,owner_note,follow_up_at,created_at,updated_at")
+      .eq("recipient_user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(250);
+    if (error) {
+      const missing = /lead_status|owner_note|follow_up_at|schema cache|column .* does not exist/i.test(error.message);
+      setListingCrmReady(missing ? false : null);
+      if (!missing) setListingInquiryNotice(`CRM mesaj kutusu okunamadı: ${error.message}`);
+      setListingInbox([]);
+    } else {
+      setListingCrmReady(true);
+      setListingInbox((data ?? []) as ListingInquiry[]);
+    }
+    setListingInboxLoading(false);
+  }
+
+  async function openListingInquiry(inquiry: ListingInquiry) {
+    setSelectedInquiryId(inquiry.id);
+    setListingLeadAiResult("");
+    setListingReply("");
+    if (inquiry.status === "new") {
+      const { error } = await supabase.from("listing_inquiries").update({ status: "read", updated_at: new Date().toISOString() }).eq("id", inquiry.id).eq("recipient_user_id", user?.id ?? "");
+      if (!error) setListingInbox((current) => current.map((item) => item.id === inquiry.id ? { ...item, status: "read" } : item));
+    }
+    const { data, error } = await supabase
+      .from("listing_inquiry_messages")
+      .select("id,inquiry_id,sender_user_id,message,created_at")
+      .eq("inquiry_id", inquiry.id)
+      .order("created_at", { ascending: true });
+    if (error) {
+      const missing = /listing_inquiry_messages|relation .* does not exist|schema cache/i.test(error.message);
+      setListingCrmReady(missing ? false : null);
+      if (!missing) setListingInquiryNotice(`Mesaj geçmişi okunamadı: ${error.message}`);
+      setListingThread([]);
+    } else {
+      setListingCrmReady(true);
+      setListingThread((data ?? []) as ListingInquiryMessage[]);
+    }
+  }
+
+  async function updateListingLead(inquiryId: string, changes: Partial<Pick<ListingInquiry, "lead_status" | "priority" | "owner_note" | "follow_up_at" | "status">>) {
+    if (!user) return;
+    const { error } = await supabase.from("listing_inquiries").update({ ...changes, updated_at: new Date().toISOString() }).eq("id", inquiryId).eq("recipient_user_id", user.id);
+    if (error) { setListingInquiryNotice(`CRM kaydı güncellenemedi: ${error.message}`); return; }
+    setListingInbox((current) => current.map((item) => item.id === inquiryId ? { ...item, ...changes } : item));
+    setListingInquiryNotice("Alıcı talebi CRM içinde güncellendi.");
+  }
+
+  async function sendListingInquiryReply(inquiry: ListingInquiry) {
+    if (!user) return;
+    const message = listingReply.trim();
+    if (message.length < 2) { setListingInquiryNotice("Yanıt en az 2 karakter olmalıdır."); return; }
+    if (inquiry.status === "closed") { setListingInquiryNotice("Kapalı talebe yanıt gönderilemez. Önce talebi yeniden açın."); return; }
+    setListingReplySending(true);
+    const { error } = await supabase.from("listing_inquiry_messages").insert({ inquiry_id: inquiry.id, sender_user_id: user.id, message });
+    if (error) setListingInquiryNotice(`Yanıt gönderilemedi: ${error.message}`);
+    else {
+      setListingReply("");
+      await updateListingLead(inquiry.id, { lead_status: inquiry.lead_status === "new" ? "contacted" : inquiry.lead_status, status: "read" });
+      await openListingInquiry({ ...inquiry, status: "read", lead_status: inquiry.lead_status === "new" ? "contacted" : inquiry.lead_status });
+      setListingInquiryNotice("Yanıt güvenli mesaj kanalı üzerinden gönderildi.");
+    }
+    setListingReplySending(false);
+  }
+
+  async function runListingLeadAi(inquiry: ListingInquiry) {
+    const listing = liveListings.find((item) => item.id === inquiry.listing_id) ?? null;
+    setListingLeadAiLoading(true);
+    setListingLeadAiResult("");
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: `Sen Yaşam AI Gayrimenkul Lead Ko-Pilotusun. İlan sahibine gelen alıcı mesajını satış baskısı kurmadan, kısa ve açıklanabilir biçimde özetle. Verilmeyen bütçe, finansman, telefon veya kişisel bilgiyi uydurma.\n\nİLAN\n${listing ? `Başlık: ${listing.title}\nKonum: ${[listing.city,listing.district,listing.neighborhood].filter(Boolean).join(" / ")}\nFiyat: ${listing.price} TL\nTür: ${listing.property_type}` : "İlan bilgisi sınırlı"}\n\nALICI MESAJI\n${inquiry.message}\n\nCRM DURUMU\nAşama: ${inquiry.lead_status}\nÖncelik: ${inquiry.priority}\n\nYanıtı MUTLAKA şu başlıklarla ver:\nTALEP ÖZETİ: tek cümle\nALICI NİYETİ: Güçlü / Orta / Erken aşama / Belirsiz ve kısa gerekçe\nEKSİK BİLGİ: karar için sorulması gereken en fazla 3 bilgi\nÖNERİLEN SONRAKİ ADIM: tek net aksiyon\nÖNERİLEN YANIT: kullanıcıya gönderilebilecek kısa, nazik mesaj taslağı` })
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) throw new Error(extractText(data) || "AI lead özeti üretilemedi.");
+      setListingLeadAiResult(extractText(data).trim());
+    } catch (error) {
+      setListingInquiryNotice(error instanceof Error ? error.message : "AI lead özeti çalıştırılamadı.");
+    } finally { setListingLeadAiLoading(false); }
   }
 
   async function toggleListingFavorite(listingId: string) {
@@ -3789,6 +3911,26 @@ ${currentText}`
     // İlan değiştiğinde tekil görüntülenme ve ilan sahibi performansı güncellenir.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLiveListing?.id, user?.id]);
+
+  const selectedInquiry = useMemo(() => listingInbox.find((item) => item.id === selectedInquiryId) ?? null, [listingInbox, selectedInquiryId]);
+  const filteredListingInbox = useMemo(() => {
+    const now = Date.now();
+    return listingInbox.filter((item) => {
+      if (listingInboxFilter === "new") return item.status === "new" || item.lead_status === "new";
+      if (listingInboxFilter === "qualified") return ["qualified","visit","offer"].includes(item.lead_status);
+      if (listingInboxFilter === "followup") return Boolean(item.follow_up_at && new Date(item.follow_up_at).getTime() <= now + 24 * 60 * 60 * 1000 && !["won","lost"].includes(item.lead_status));
+      return true;
+    });
+  }, [listingInbox, listingInboxFilter]);
+  const listingCrmSummary = useMemo(() => {
+    const now = Date.now();
+    return {
+      newCount: listingInbox.filter((item) => item.status === "new" || item.lead_status === "new").length,
+      hotCount: listingInbox.filter((item) => item.priority === "urgent" || item.priority === "high" || ["qualified","visit","offer"].includes(item.lead_status)).length,
+      followUpCount: listingInbox.filter((item) => item.follow_up_at && new Date(item.follow_up_at).getTime() <= now + 24 * 60 * 60 * 1000 && !["won","lost"].includes(item.lead_status)).length,
+      wonCount: listingInbox.filter((item) => item.lead_status === "won").length,
+    };
+  }, [listingInbox]);
 
   const filteredMarketplaceDrafts = useMemo(() => {
     const q = listingQuery.trim().toLocaleLowerCase("tr-TR");
@@ -5397,6 +5539,45 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
           </article>
 
           {listingNotice ? <div style={{ marginTop: 10, padding: "11px 13px", borderRadius: 13, border: "1px solid #cfe4f4", background: "#f0f9ff", color: "#285c86", fontSize: 11, fontWeight: 800 }}>{listingNotice}</div> : null}
+
+          <article style={{ marginTop: 13, borderRadius: 22, overflow: "hidden", border: "1px solid #cfe1ed", background: "linear-gradient(145deg,#071d35,#0b4264)", boxShadow: "0 16px 38px rgba(7,46,75,.14)" }}>
+            <div style={{ padding: "15px 17px", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 14, alignItems: "center", color: "#fff" }}>
+              <div><div style={{ color: "#72e5ff", fontSize: 8.5, fontWeight: 950, letterSpacing: 1.2 }}>ALICI TALEPLERİ · CRM</div><h3 style={{ margin: "5px 0 3px", fontSize: 19 }}>Mesajı satış fırsatına dönüştürün.</h3><p style={{ margin: 0, color: "rgba(255,255,255,.60)", fontSize: 8.5 }}>Gelen talepleri okuyun, önceliklendirin, takip tarihi koyun ve AI ile sonraki adımı netleştirin.</p></div>
+              <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {[['Yeni',listingCrmSummary.newCount,'#6ee7ff'],['Sıcak',listingCrmSummary.hotCount,'#ffbd69'],['Takip',listingCrmSummary.followUpCount,'#cab7ff'],['Kazanıldı',listingCrmSummary.wonCount,'#75e6b4']].map(([label,value,color]) => <div key={String(label)} style={{ minWidth: 58, padding: "7px 9px", borderRadius: 11, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.09)" }}><strong style={{ display: "block", color: String(color), fontSize: 15 }}>{String(value)}</strong><span style={{ color: "rgba(255,255,255,.52)", fontSize: 6.8 }}>{label}</span></div>)}
+                <button type="button" onClick={() => { setListingCrmOpen((current) => !current); if (!listingCrmOpen) void loadListingInbox(); }} style={{ padding: "10px 13px", borderRadius: 12, border: "1px solid rgba(255,255,255,.14)", background: listingCrmOpen ? "#fff" : "rgba(255,255,255,.08)", color: listingCrmOpen ? "#0b4264" : "#fff", fontSize: 8.5, fontWeight: 950, cursor: "pointer" }}>{listingCrmOpen ? "CRM'yi Kapat" : "Mesaj Kutusu & CRM"}</button>
+              </div>
+            </div>
+            {listingCrmOpen ? <div style={{ padding: 14, borderTop: "1px solid rgba(255,255,255,.09)", background: "linear-gradient(145deg,#f8fcff,#eef6fb)" }}>
+              {listingCrmReady === false ? <div style={{ padding: 12, borderRadius: 13, background: "#fff7e7", border: "1px solid #f1d39b", color: "#8a5a00", fontSize: 9 }}>CRM için FAZ 2 v6 SQL migration dosyasını Supabase'de çalıştırın.</div> : null}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
+                {([['all','Tümü'],['new','Yeni'],['qualified','Nitelikli'],['followup','Takip zamanı']] as const).map(([id,label]) => <button key={id} type="button" onClick={() => setListingInboxFilter(id)} style={{ padding: "7px 10px", borderRadius: 999, border: listingInboxFilter===id ? "1px solid #0b6e9c" : "1px solid #d4e1eb", background: listingInboxFilter===id ? "#e8f7ff" : "#fff", color: listingInboxFilter===id ? "#0b6e9c" : "#6c8194", fontSize: 7.5, fontWeight: 900, cursor: "pointer" }}>{label}</button>)}
+                <button type="button" onClick={() => void loadListingInbox()} style={{ marginLeft: "auto", padding: "7px 10px", borderRadius: 10, border: "1px solid #d4e1eb", background: "#fff", color: "#48677f", fontSize: 7.5, fontWeight: 900, cursor: "pointer" }}>{listingInboxLoading ? "Yükleniyor…" : "Yenile"}</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(260px,.72fr) minmax(0,1.28fr)", gap: 10, minHeight: 310 }}>
+                <div style={{ display: "grid", gap: 7, alignContent: "start", maxHeight: 470, overflowY: "auto", paddingRight: 3 }}>
+                  {filteredListingInbox.map((inquiry) => { const l=liveListings.find((item)=>item.id===inquiry.listing_id); const active=selectedInquiryId===inquiry.id; const buyer=`Alıcı · ${inquiry.sender_user_id.slice(0,6).toUpperCase()}`; return <button key={inquiry.id} type="button" onClick={() => void openListingInquiry(inquiry)} style={{ padding: 11, borderRadius: 14, border: active ? "1px solid #0a82b5" : "1px solid #dce6ee", background: active ? "linear-gradient(145deg,#edfaff,#fff)" : "#fff", textAlign: "left", cursor: "pointer", boxShadow: active ? "0 8px 20px rgba(10,130,181,.10)" : "none" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: "#24445f", fontSize: 9.3 }}>{buyer}</strong><span style={{ color: inquiry.status==='new' ? '#d75e32' : '#8092a2', fontSize: 6.8, fontWeight: 950 }}>{inquiry.status==='new' ? 'YENİ' : inquiry.lead_status.toLocaleUpperCase('tr-TR')}</span></div><span style={{ display: "block", marginTop: 4, color: "#6f8395", fontSize: 7.5 }}>{l?.title || 'İlan'}</span><span style={{ display: "block", marginTop: 5, color: "#445f74", fontSize: 8, lineHeight: 1.4 }}>{inquiry.message.slice(0,92)}{inquiry.message.length>92?'…':''}</span><div style={{ display: "flex", gap: 5, marginTop: 7, alignItems: "center" }}><span style={{ padding: "3px 6px", borderRadius: 999, background: inquiry.priority==='urgent'||inquiry.priority==='high' ? '#fff0e7' : '#f1f6fa', color: inquiry.priority==='urgent'||inquiry.priority==='high' ? '#b65424' : '#6c8194', fontSize: 6.5, fontWeight: 900 }}>{inquiry.priority==='urgent'?'ACİL':inquiry.priority==='high'?'YÜKSEK':inquiry.priority==='low'?'DÜŞÜK':'NORMAL'}</span><span style={{ color: "#9aabb8", fontSize: 6.5 }}>{new Date(inquiry.created_at).toLocaleDateString('tr-TR')}</span></div></button>})}
+                  {!filteredListingInbox.length ? <div style={{ padding: 18, borderRadius: 14, border: "1px dashed #ccdbe6", background: "#fff", color: "#8294a5", textAlign: "center", fontSize: 8.5 }}>{listingInboxLoading ? "Alıcı talepleri yükleniyor…" : "Bu filtrede henüz alıcı talebi yok."}</div> : null}
+                </div>
+                <div style={{ padding: 13, borderRadius: 16, border: "1px solid #dce6ee", background: "#fff" }}>
+                  {selectedInquiry ? (() => { const listing=liveListings.find((item)=>item.id===selectedInquiry.listing_id); return <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "start", flexWrap: "wrap" }}><div><div style={{ color: "#0b739f", fontSize: 7.5, fontWeight: 950, letterSpacing: .7 }}>AKTİF ALICI TALEBİ</div><h4 style={{ margin: "4px 0 2px", color: "#24445f", fontSize: 15 }}>{listing?.title || 'İlan talebi'}</h4><span style={{ color: "#8395a5", fontSize: 7.5 }}>Alıcı · {selectedInquiry.sender_user_id.slice(0,6).toUpperCase()} · {new Date(selectedInquiry.created_at).toLocaleString('tr-TR')}</span></div><button type="button" disabled={listingLeadAiLoading} onClick={() => void runListingLeadAi(selectedInquiry)} style={{ padding: "9px 11px", borderRadius: 10, border: 0, background: "linear-gradient(135deg,#0aa0c8,#0b6c9e)", color: "#fff", fontSize: 7.5, fontWeight: 950, cursor: "pointer" }}>{listingLeadAiLoading ? 'AI inceliyor…' : '✦ AI Talebi Özetle'}</button></div>
+                    <div style={{ marginTop: 9, padding: 10, borderRadius: 12, background: "#f6fafc", color: "#3e5c73", fontSize: 8.5, lineHeight: 1.5 }}><strong style={{ display: "block", color: "#24445f", marginBottom: 3 }}>İlk mesaj</strong>{selectedInquiry.message}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
+                      <label style={{ color: "#667f93", fontSize: 7, fontWeight: 900 }}>AŞAMA<select value={selectedInquiry.lead_status} onChange={(e)=>void updateListingLead(selectedInquiry.id,{lead_status:e.target.value as ListingInquiry['lead_status']})} style={{ ...inputStyle, marginTop: 4, padding: "8px 9px", fontSize: 8 }}><option value="new">Yeni</option><option value="contacted">İletişim kuruldu</option><option value="qualified">Nitelikli</option><option value="visit">Randevu / ziyaret</option><option value="offer">Teklif</option><option value="won">Kazanıldı</option><option value="lost">Kaybedildi</option></select></label>
+                      <label style={{ color: "#667f93", fontSize: 7, fontWeight: 900 }}>ÖNCELİK<select value={selectedInquiry.priority} onChange={(e)=>void updateListingLead(selectedInquiry.id,{priority:e.target.value as ListingInquiry['priority']})} style={{ ...inputStyle, marginTop: 4, padding: "8px 9px", fontSize: 8 }}><option value="low">Düşük</option><option value="normal">Normal</option><option value="high">Yüksek</option><option value="urgent">Acil</option></select></label>
+                      <label style={{ color: "#667f93", fontSize: 7, fontWeight: 900 }}>TAKİP TARİHİ<input type="datetime-local" value={selectedInquiry.follow_up_at ? selectedInquiry.follow_up_at.slice(0,16) : ''} onChange={(e)=>void updateListingLead(selectedInquiry.id,{follow_up_at:e.target.value || null})} style={{ ...inputStyle, marginTop: 4, padding: "8px 9px", fontSize: 8 }} /></label>
+                    </div>
+                    <label style={{ display: "block", marginTop: 8, color: "#667f93", fontSize: 7, fontWeight: 900 }}>ÖZEL CRM NOTU<textarea defaultValue={selectedInquiry.owner_note || ''} onBlur={(e)=>void updateListingLead(selectedInquiry.id,{owner_note:e.target.value.trim() || null})} placeholder="Örn. Peşin alım düşünüyor; cuma günü tekrar ara." style={{ width: "100%", minHeight: 56, marginTop: 4, resize: "vertical", padding: 9, borderRadius: 10, border: "1px solid #d5e1eb", background: "#fbfdff", color: "#294b67", fontSize: 8, lineHeight: 1.45 }} /></label>
+                    {listingLeadAiResult ? <pre style={{ margin: "9px 0 0", whiteSpace: "pre-wrap", padding: 10, borderRadius: 12, background: "linear-gradient(145deg,#edfaff,#f7f3ff)", border: "1px solid #cfe8f5", color: "#2d5069", fontFamily: "inherit", fontSize: 8, lineHeight: 1.55 }}>{listingLeadAiResult}</pre> : null}
+                    <div style={{ marginTop: 10, borderTop: "1px solid #e4ebf1", paddingTop: 9 }}><strong style={{ color: "#24445f", fontSize: 8.5 }}>Güvenli mesaj geçmişi</strong><div style={{ display: "grid", gap: 6, marginTop: 7, maxHeight: 150, overflowY: "auto" }}><div style={{ justifySelf: "start", maxWidth: "82%", padding: "7px 9px", borderRadius: "11px 11px 11px 3px", background: "#eef5fa", color: "#3f5e74", fontSize: 7.7, lineHeight: 1.4 }}>{selectedInquiry.message}</div>{listingThread.map((msg)=><div key={msg.id} style={{ justifySelf: msg.sender_user_id===user?.id ? 'end' : 'start', maxWidth: "82%", padding: "7px 9px", borderRadius: msg.sender_user_id===user?.id ? "11px 11px 3px 11px" : "11px 11px 11px 3px", background: msg.sender_user_id===user?.id ? "#0b729e" : "#eef5fa", color: msg.sender_user_id===user?.id ? "#fff" : "#3f5e74", fontSize: 7.7, lineHeight: 1.4 }}>{msg.message}<span style={{ display: "block", marginTop: 3, opacity: .55, fontSize: 6 }}>{new Date(msg.created_at).toLocaleString('tr-TR')}</span></div>)}</div></div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, marginTop: 8 }}><input value={listingReply} onChange={(e)=>setListingReply(e.target.value)} onKeyDown={(e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); void sendListingInquiryReply(selectedInquiry); } }} placeholder="Alıcıya güvenli yanıt yazın…" style={{ ...inputStyle, padding: "9px 10px", fontSize: 8 }} /><button type="button" disabled={listingReplySending || selectedInquiry.status==='closed'} onClick={()=>void sendListingInquiryReply(selectedInquiry)} style={{ padding: "9px 12px", borderRadius: 10, border: 0, background: selectedInquiry.status==='closed' ? '#c8d2da' : 'linear-gradient(135deg,#0e9f79,#087b5e)', color: '#fff', fontSize: 7.5, fontWeight: 950, cursor: selectedInquiry.status==='closed' ? 'not-allowed' : 'pointer' }}>{listingReplySending?'Gönderiliyor…':'Gönder'}</button></div>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 7 }}><button type="button" onClick={()=>void updateListingLead(selectedInquiry.id,{status:selectedInquiry.status==='closed'?'read':'closed'})} style={{ padding: "7px 9px", borderRadius: 9, border: "1px solid #d9e3eb", background: "#fff", color: "#607890", fontSize: 6.8, fontWeight: 900, cursor: "pointer" }}>{selectedInquiry.status==='closed'?'Talebi Yeniden Aç':'Talebi Kapat'}</button></div>
+                  </div>; })() : <div style={{ height: "100%", minHeight: 280, display: "grid", placeItems: "center", textAlign: "center", color: "#8798a7" }}><div><div style={{ fontSize: 28 }}>✉</div><strong style={{ display: "block", marginTop: 7, color: "#48677f", fontSize: 10 }}>Bir alıcı talebi seçin</strong><span style={{ display: "block", marginTop: 4, fontSize: 8 }}>Mesajı okuyun, CRM aşamasını belirleyin ve takip aksiyonunu yönetin.</span></div></div>}
+                </div>
+              </div>
+            </div> : null}
+          </article>
 
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(330px,.65fr)", gap: 14, marginTop: 14, alignItems: "start" }}>
             <div>
