@@ -1,0 +1,260 @@
+"use client";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { supabase } from "../../../lib/supabase";
+
+type Plan = "standard" | "premium" | "gold";
+type RoomStatus = "draft" | "negotiation" | "agreement" | "due_diligence" | "closing" | "completed" | "cancelled" | "archived";
+type TransactionType = "purchase" | "sale" | "lease" | "development" | "commercial" | "other";
+type ParticipantRole = "buyer" | "seller" | "agent" | "legal_reviewer" | "technical_reviewer" | "financial_reviewer" | "viewer";
+type AccessLevel = "read" | "comment" | "manage";
+type OfferStatus = "pending" | "accepted" | "rejected" | "withdrawn" | "expired" | "superseded";
+type DocumentCategory = "offer" | "contract" | "title_deed" | "valuation" | "legal" | "technical" | "financial" | "identity_supporting" | "closing" | "other";
+
+type Organization = { id: string; name: string; status: string };
+type LegalMatter = { id: string; title: string; status: string };
+type Room = {
+  id: string;
+  owner_user_id: string;
+  organization_id: string | null;
+  legal_matter_id: string | null;
+  title: string;
+  transaction_type: TransactionType;
+  property_reference: string | null;
+  asking_price: number | null;
+  currency: string;
+  status: RoomStatus;
+  confidentiality: string;
+  summary: string | null;
+  created_at: string;
+};
+type Participant = { id: string; user_id: string; role: ParticipantRole; access_level: AccessLevel; status: string; expires_at: string | null; created_at: string };
+type Offer = { id: string; parent_offer_id: string | null; created_by: string; offer_kind: "offer" | "counter_offer"; amount: number; currency: string; valid_until: string | null; terms: string | null; status: OfferStatus; created_at: string };
+type DocumentRow = { id: string; category: DocumentCategory; file_name: string; visibility: string; status: string; created_at: string };
+type Activity = { id: string; action_type: string; summary: string | null; created_at: string };
+
+const card: React.CSSProperties = { background: "#fff", border: "1px solid #dbe6ef", borderRadius: 18, padding: 16, boxShadow: "0 8px 24px rgba(15,23,42,.06)" };
+const input: React.CSSProperties = { width: "100%", border: "1px solid #cbd5e1", borderRadius: 12, padding: "11px 12px", fontSize: 14, background: "#fff", color: "#0f172a" };
+const button: React.CSSProperties = { width: "100%", border: 0, borderRadius: 12, padding: "12px 14px", fontWeight: 800, cursor: "pointer", background: "linear-gradient(90deg,#0f766e,#0891b2)", color: "#fff" };
+const label: React.CSSProperties = { fontSize: 12, fontWeight: 800, color: "#475569", marginBottom: 6, display: "block" };
+const muted: React.CSSProperties = { fontSize: 12, color: "#64748b", lineHeight: 1.45 };
+
+function fmtMoney(value: number | null, currency = "TRY") {
+  if (value == null) return "—";
+  try { return new Intl.NumberFormat("tr-TR", { style: "currency", currency, maximumFractionDigits: 0 }).format(value); }
+  catch { return `${value.toLocaleString("tr-TR")} ${currency}`; }
+}
+function fmtDate(value: string | null) { return value ? new Date(value).toLocaleString("tr-TR") : "—"; }
+function nil(value: string) { const v = value.trim(); return v ? v : null; }
+
+export default function SecureTransactionCenter({ userId, plan }: { userId: string | null; plan: Plan }) {
+  const entitled = plan === "premium" || plan === "gold";
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [legalMatters, setLegalMatters] = useState<LegalMatter[]>([]);
+  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [documents, setDocuments] = useState<DocumentRow[]>([]);
+  const [activity, setActivity] = useState<Activity[]>([]);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const [title, setTitle] = useState("");
+  const [transactionType, setTransactionType] = useState<TransactionType>("purchase");
+  const [organizationId, setOrganizationId] = useState("");
+  const [legalMatterId, setLegalMatterId] = useState("");
+  const [propertyReference, setPropertyReference] = useState("");
+  const [askingPrice, setAskingPrice] = useState("");
+  const [summary, setSummary] = useState("");
+
+  const [offerAmount, setOfferAmount] = useState("");
+  const [offerTerms, setOfferTerms] = useState("");
+  const [offerKind, setOfferKind] = useState<"offer" | "counter_offer">("offer");
+
+  const [participantUserId, setParticipantUserId] = useState("");
+  const [participantRole, setParticipantRole] = useState<ParticipantRole>("buyer");
+  const [accessLevel, setAccessLevel] = useState<AccessLevel>("read");
+
+  const [documentCategory, setDocumentCategory] = useState<DocumentCategory>("contract");
+  const [documentName, setDocumentName] = useState("");
+
+  const selectedRoom = useMemo(() => rooms.find((r) => r.id === selectedRoomId) ?? null, [rooms, selectedRoomId]);
+  const openOffers = offers.filter((o) => o.status === "pending").length;
+
+  async function loadBase() {
+    if (!userId || !entitled) return;
+    const [roomRes, orgRes, legalRes] = await Promise.all([
+      supabase.from("transaction_rooms").select("*").order("created_at", { ascending: false }),
+      supabase.from("organizations").select("id,name,status").eq("status", "active").order("name"),
+      supabase.from("legal_matters").select("id,title,status").order("created_at", { ascending: false }),
+    ]);
+    if (roomRes.error) setError(roomRes.error.message); else {
+      const data = (roomRes.data ?? []) as Room[];
+      setRooms(data);
+      if (!selectedRoomId && data[0]?.id) setSelectedRoomId(data[0].id);
+    }
+    if (!orgRes.error) setOrganizations((orgRes.data ?? []) as Organization[]);
+    if (!legalRes.error) setLegalMatters((legalRes.data ?? []) as LegalMatter[]);
+  }
+
+  async function loadRoomData(roomId: string) {
+    if (!roomId) { setParticipants([]); setOffers([]); setDocuments([]); setActivity([]); return; }
+    const [p, o, d, a] = await Promise.all([
+      supabase.from("transaction_participants").select("*").eq("room_id", roomId).order("created_at"),
+      supabase.from("transaction_offers").select("*").eq("room_id", roomId).order("created_at", { ascending: false }),
+      supabase.from("transaction_documents").select("*").eq("room_id", roomId).order("created_at", { ascending: false }),
+      supabase.from("transaction_activity").select("id,action_type,summary,created_at").eq("room_id", roomId).order("created_at", { ascending: false }).limit(12),
+    ]);
+    if (!p.error) setParticipants((p.data ?? []) as Participant[]);
+    if (!o.error) setOffers((o.data ?? []) as Offer[]);
+    if (!d.error) setDocuments((d.data ?? []) as DocumentRow[]);
+    if (!a.error) setActivity((a.data ?? []) as Activity[]);
+  }
+
+  useEffect(() => { void loadBase(); }, [userId, plan]);
+  useEffect(() => { void loadRoomData(selectedRoomId); }, [selectedRoomId]);
+
+  async function log(roomId: string, actionType: string, summaryText: string, entityType?: string, entityId?: string) {
+    if (!userId) return;
+    await supabase.from("transaction_activity").insert({ room_id: roomId, actor_user_id: userId, action_type: actionType, entity_type: entityType ?? null, entity_id: entityId ?? null, summary: summaryText });
+  }
+
+  async function createRoom(event: FormEvent) {
+    event.preventDefault();
+    if (!userId || !entitled || !title.trim()) return;
+    setSaving(true); setError(""); setNotice("");
+    const numericPrice = askingPrice.trim() ? Number(askingPrice.replace(/\./g, "").replace(",", ".")) : null;
+    const { data, error: rpcError } = await supabase.rpc("create_transaction_room", {
+      p_title: title.trim(),
+      p_transaction_type: transactionType,
+      p_organization_id: nil(organizationId),
+      p_legal_matter_id: nil(legalMatterId),
+      p_property_reference: nil(propertyReference),
+      p_asking_price: Number.isFinite(numericPrice as number) ? numericPrice : null,
+      p_currency: "TRY",
+      p_summary: nil(summary),
+    });
+    if (rpcError) setError(`İşlem odası oluşturulamadı: ${rpcError.message}`);
+    else {
+      const roomId = String(data);
+      setTitle(""); setPropertyReference(""); setAskingPrice(""); setSummary("");
+      setNotice("Güvenli işlem odası oluşturuldu.");
+      await loadBase(); setSelectedRoomId(roomId);
+    }
+    setSaving(false);
+  }
+
+  async function addOffer(event: FormEvent) {
+    event.preventDefault();
+    if (!userId || !selectedRoomId || !offerAmount.trim()) return;
+    setSaving(true); setError(""); setNotice("");
+    const amount = Number(offerAmount.replace(/\./g, "").replace(",", "."));
+    const { data, error: e } = await supabase.from("transaction_offers").insert({ room_id: selectedRoomId, created_by: userId, offer_kind: offerKind, amount, currency: selectedRoom?.currency ?? "TRY", terms: nil(offerTerms) }).select("id").single();
+    if (e) setError(`Teklif kaydedilemedi: ${e.message}`); else {
+      setOfferAmount(""); setOfferTerms(""); setNotice("Teklif işlem odasına kaydedildi.");
+      await log(selectedRoomId, "offer_created", offerKind === "offer" ? "Yeni teklif oluşturuldu." : "Karşı teklif oluşturuldu.", "transaction_offer", data.id);
+      await loadRoomData(selectedRoomId);
+    }
+    setSaving(false);
+  }
+
+  async function updateOffer(offer: Offer, status: "accepted" | "rejected") {
+    if (!selectedRoomId) return;
+    setError("");
+    const { error: e } = await supabase.from("transaction_offers").update({ status, responded_at: new Date().toISOString() }).eq("id", offer.id);
+    if (e) setError(`Teklif güncellenemedi: ${e.message}`); else {
+      await log(selectedRoomId, `offer_${status}`, status === "accepted" ? "Teklif kabul edildi." : "Teklif reddedildi.", "transaction_offer", offer.id);
+      await loadRoomData(selectedRoomId);
+    }
+  }
+
+  async function addParticipant(event: FormEvent) {
+    event.preventDefault();
+    if (!userId || !selectedRoomId || !participantUserId.trim()) return;
+    setSaving(true); setError(""); setNotice("");
+    const { data, error: e } = await supabase.from("transaction_participants").insert({ room_id: selectedRoomId, user_id: participantUserId.trim(), added_by: userId, role: participantRole, access_level: accessLevel }).select("id").single();
+    if (e) setError(`Katılımcı eklenemedi: ${e.message}`); else {
+      setParticipantUserId(""); setNotice("Katılımcı erişimi verildi.");
+      await log(selectedRoomId, "participant_added", `${participantRole} rolü ile erişim verildi.`, "transaction_participant", data.id);
+      await loadRoomData(selectedRoomId);
+    }
+    setSaving(false);
+  }
+
+  async function addDocument(event: FormEvent) {
+    event.preventDefault();
+    if (!userId || !selectedRoomId || !documentName.trim()) return;
+    setSaving(true); setError(""); setNotice("");
+    const { data, error: e } = await supabase.from("transaction_documents").insert({ room_id: selectedRoomId, uploaded_by: userId, category: documentCategory, file_name: documentName.trim(), visibility: "participants" }).select("id").single();
+    if (e) setError(`Dosya odası kaydı eklenemedi: ${e.message}`); else {
+      setDocumentName(""); setNotice("Dosya odası kaydı eklendi.");
+      await log(selectedRoomId, "document_added", `Dosya eklendi: ${documentName.trim()}`, "transaction_document", data.id);
+      await loadRoomData(selectedRoomId);
+    }
+    setSaving(false);
+  }
+
+  async function updateRoomStatus(status: RoomStatus) {
+    if (!selectedRoomId) return;
+    setError("");
+    const { error: e } = await supabase.from("transaction_rooms").update({ status }).eq("id", selectedRoomId);
+    if (e) setError(`İşlem durumu güncellenemedi: ${e.message}`); else {
+      await log(selectedRoomId, "room_status_changed", `İşlem durumu: ${status}`);
+      await loadBase(); await loadRoomData(selectedRoomId);
+    }
+  }
+
+  return <section id="secure-transaction-center" style={{ marginTop: 18, border: "1px solid #b9d9df", borderRadius: 24, padding: 18, background: "linear-gradient(180deg,#f7feff,#eef9fb)" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div><div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 1.4, color: "#0f766e" }}>v23 · GÜVENLİ İŞLEM MERKEZİ</div><h2 style={{ margin: "6px 0 4px", fontSize: 26, color: "#0f172a" }}>Teklif, pazarlık ve dosya odası tek işlem akışında.</h2><p style={{ ...muted, maxWidth: 760, margin: 0 }}>Taraf erişimi, teklif ve karşı teklifler, işlem belgeleri ve kapanış adımları denetlenebilir bir işlem odasında tutulur. Bu modül ödeme/emanet hesabı hizmeti değildir; finansal transferler lisanslı sağlayıcılar üzerinden yürütülmelidir.</p></div>
+      <div style={{ padding: "9px 12px", borderRadius: 999, fontSize: 12, fontWeight: 900, background: entitled ? "#dcfce7" : "#fff7ed", color: entitled ? "#166534" : "#9a3412" }}>{entitled ? "✓ PREMIUM / GOLD ERİŞİM" : "🔒 PREMIUM / GOLD GEREKLİ"}</div>
+    </div>
+
+    {!!error && <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca" }}>{error}</div>}
+    {!!notice && <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "#ecfdf5", color: "#166534", border: "1px solid #bbf7d0" }}>{notice}</div>}
+
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 10, marginTop: 14 }}>
+      {[['İşlem odası',rooms.length],['Katılımcı',participants.filter(p=>p.status==='active').length],['Açık teklif',openOffers],['Dosya',documents.filter(d=>d.status==='active').length],['Faaliyet',activity.length]].map(([k,v]) => <div key={String(k)} style={card}><div style={muted}>{k}</div><div style={{ fontSize: 24, fontWeight: 900, color: "#0f172a", marginTop: 4 }}>{v}</div></div>)}
+    </div>
+
+    {!entitled ? <div style={{ ...card, marginTop: 14 }}>Bu merkez Premium veya Gold plan ile açılır.</div> : <>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1.35fr)", gap: 12, marginTop: 14 }}>
+        <form onSubmit={createRoom} style={card}>
+          <h3 style={{ margin: "0 0 12px", color: "#0f172a" }}>Yeni işlem odası</h3>
+          <div style={{ display: "grid", gap: 9 }}>
+            <input style={input} placeholder="İşlem başlığı" value={title} onChange={e=>setTitle(e.target.value)} />
+            <select style={input} value={transactionType} onChange={e=>setTransactionType(e.target.value as TransactionType)}><option value="purchase">Satın alma</option><option value="sale">Satış</option><option value="lease">Kiralama</option><option value="development">Proje / geliştirme</option><option value="commercial">Ticari işlem</option><option value="other">Diğer</option></select>
+            <select style={input} value={organizationId} onChange={e=>setOrganizationId(e.target.value)}><option value="">Bireysel işlem</option>{organizations.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>
+            <select style={input} value={legalMatterId} onChange={e=>setLegalMatterId(e.target.value)}><option value="">Hukuk dosyası bağlama (opsiyonel)</option>{legalMatters.map(m=><option key={m.id} value={m.id}>{m.title}</option>)}</select>
+            <input style={input} placeholder="Taşınmaz / proje referansı" value={propertyReference} onChange={e=>setPropertyReference(e.target.value)} />
+            <input style={input} placeholder="Talep fiyatı (TL)" value={askingPrice} onChange={e=>setAskingPrice(e.target.value)} inputMode="decimal" />
+            <textarea style={{...input,minHeight:80}} placeholder="Kısa işlem özeti" value={summary} onChange={e=>setSummary(e.target.value)} />
+            <button style={button} disabled={saving}>{saving ? "Kaydediliyor..." : "Güvenli İşlem Odası Oluştur"}</button>
+          </div>
+        </form>
+
+        <div style={card}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}><h3 style={{ margin: 0, color: "#0f172a" }}>Aktif işlem</h3><span style={muted}>{rooms.length} oda</span></div>
+          <select style={input} value={selectedRoomId} onChange={e=>setSelectedRoomId(e.target.value)}><option value="">İşlem odası seçin</option>{rooms.map(r=><option key={r.id} value={r.id}>{r.title}</option>)}</select>
+          {selectedRoom ? <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}><div><div style={{ fontSize: 20, fontWeight: 900, color: "#0f172a" }}>{selectedRoom.title}</div><div style={muted}>{selectedRoom.property_reference || "Referans yok"} · {fmtMoney(selectedRoom.asking_price, selectedRoom.currency)}</div></div><strong style={{ color: "#0f766e", fontSize: 12 }}>{selectedRoom.status.toUpperCase()}</strong></div>
+            <div style={{ marginTop: 12 }}><label style={label}>İşlem durumu</label><select style={input} value={selectedRoom.status} onChange={e=>void updateRoomStatus(e.target.value as RoomStatus)}><option value="draft">Taslak</option><option value="negotiation">Pazarlık</option><option value="agreement">Mutabakat</option><option value="due_diligence">İnceleme</option><option value="closing">Kapanış</option><option value="completed">Tamamlandı</option><option value="cancelled">İptal</option><option value="archived">Arşiv</option></select></div>
+            {selectedRoom.legal_matter_id && <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: "#f8fafc", fontSize: 12, color: "#475569" }}>✓ Hukuk & Uyum dosyasına bağlı</div>}
+          </div> : <p style={muted}>Henüz işlem odası yok.</p>}
+        </div>
+      </div>
+
+      {selectedRoom && <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 12, marginTop: 12 }}>
+        <form onSubmit={addOffer} style={card}><h3 style={{ margin: "0 0 10px", color: "#0f172a" }}>Teklif / karşı teklif</h3><div style={{ display:"grid",gap:8 }}><select style={input} value={offerKind} onChange={e=>setOfferKind(e.target.value as "offer"|"counter_offer")}><option value="offer">Teklif</option><option value="counter_offer">Karşı teklif</option></select><input style={input} placeholder="Tutar (TL)" value={offerAmount} onChange={e=>setOfferAmount(e.target.value)} /><textarea style={{...input,minHeight:70}} placeholder="Şartlar / notlar" value={offerTerms} onChange={e=>setOfferTerms(e.target.value)} /><button style={button}>Teklifi Kaydet</button></div><div style={{ marginTop:12, display:"grid", gap:8 }}>{offers.slice(0,5).map(o=><div key={o.id} style={{ padding:10,border:"1px solid #e2e8f0",borderRadius:12 }}><div style={{display:"flex",justifyContent:"space-between",gap:8}}><strong>{o.offer_kind === "offer" ? "Teklif" : "Karşı teklif"} · {fmtMoney(Number(o.amount),o.currency)}</strong><span style={muted}>{o.status}</span></div>{o.terms && <div style={{...muted,marginTop:5}}>{o.terms}</div>}{o.status==='pending' && <div style={{display:"flex",gap:6,marginTop:8}}><button type="button" onClick={()=>void updateOffer(o,"accepted")} style={{...button,width:"auto",padding:"7px 10px"}}>Kabul</button><button type="button" onClick={()=>void updateOffer(o,"rejected")} style={{...button,width:"auto",padding:"7px 10px",background:"#64748b"}}>Reddet</button></div>}</div>)}</div></form>
+
+        <form onSubmit={addParticipant} style={card}><h3 style={{ margin: "0 0 10px", color: "#0f172a" }}>Taraf / uzman erişimi</h3><div style={{ display:"grid",gap:8 }}><input style={input} placeholder="Kullanıcı UUID" value={participantUserId} onChange={e=>setParticipantUserId(e.target.value)} /><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><select style={input} value={participantRole} onChange={e=>setParticipantRole(e.target.value as ParticipantRole)}><option value="buyer">Alıcı</option><option value="seller">Satıcı</option><option value="agent">Emlak danışmanı</option><option value="legal_reviewer">Hukuk uzmanı</option><option value="technical_reviewer">Teknik uzman</option><option value="financial_reviewer">Finans uzmanı</option><option value="viewer">Görüntüleyici</option></select><select style={input} value={accessLevel} onChange={e=>setAccessLevel(e.target.value as AccessLevel)}><option value="read">Görüntüleme</option><option value="comment">Katkı / yorum</option><option value="manage">Yönetim</option></select></div><button style={button}>Erişim Ver</button></div><div style={{marginTop:12,display:"grid",gap:7}}>{participants.map(p=><div key={p.id} style={{padding:9,border:"1px solid #e2e8f0",borderRadius:10}}><strong style={{fontSize:12}}>{p.role}</strong><div style={muted}>{p.user_id.slice(0,8)}… · {p.access_level}</div></div>)}</div></form>
+
+        <form onSubmit={addDocument} style={card}><h3 style={{ margin: "0 0 10px", color: "#0f172a" }}>Güvenli dosya odası</h3><div style={{ display:"grid",gap:8 }}><select style={input} value={documentCategory} onChange={e=>setDocumentCategory(e.target.value as DocumentCategory)}><option value="contract">Sözleşme</option><option value="offer">Teklif</option><option value="title_deed">Tapu</option><option value="valuation">Değerleme</option><option value="legal">Hukuk</option><option value="technical">Teknik</option><option value="financial">Finans</option><option value="closing">Kapanış</option><option value="other">Diğer</option></select><input style={input} placeholder="Dosya adı (ör. teklif-v1.pdf)" value={documentName} onChange={e=>setDocumentName(e.target.value)} /><button style={button}>Dosya Kaydı Ekle</button></div><p style={{...muted,marginBottom:0}}>Bu sürüm metadata akışını test eder. Gerçek binary yükleme private Storage bucket + imzalı URL katmanında açılacaktır.</p><div style={{marginTop:10,display:"grid",gap:7}}>{documents.map(d=><div key={d.id} style={{padding:9,border:"1px solid #e2e8f0",borderRadius:10}}><strong style={{fontSize:12}}>{d.file_name}</strong><div style={muted}>{d.category} · {d.visibility}</div></div>)}</div></form>
+
+        <div style={card}><h3 style={{ margin: "0 0 10px", color: "#0f172a" }}>İşlem faaliyet akışı</h3><div style={{display:"grid",gap:8}}>{activity.length ? activity.map(a=><div key={a.id} style={{paddingBottom:8,borderBottom:"1px solid #eef2f7"}}><strong style={{fontSize:12,color:"#0f172a"}}>{a.summary || a.action_type}</strong><div style={muted}>{fmtDate(a.created_at)}</div></div>) : <span style={muted}>Henüz faaliyet yok.</span>}</div></div>
+      </div>}
+    </>}
+  </section>;
+}
