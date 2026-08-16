@@ -9,6 +9,7 @@ import { calculateOfferStrategy } from "../../lib/report/offer-engine";
 import { buildReportTrustProfile } from "../../lib/report/trust-profile";
 import type { DecisionMetrics, RegionalMarketContext } from "../../lib/decision-engine";
 import TurkiyeDataCenter from "../components/data-center/TurkiyeDataCenter";
+import TeamRoleCenter from "../components/membership/TeamRoleCenter";
 import type { MarketDataRecord, VerificationStatus } from "../../lib/data-center/types";
 import { TURKIYE_DATA_SEED, emptyScores, initialForm } from "./model/constants";
 import type {
@@ -8771,7 +8772,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
 
             <article style={{ position: "relative", overflow: "hidden", padding: 20, borderRadius: 20, color: "#fff", background: "linear-gradient(145deg,#0e0d09,#2a210e)", border: "1px solid rgba(241,201,107,.55)", boxShadow: "0 18px 40px rgba(65,48,10,.18)" }}>
               <div style={{ color: "#f1c96b", fontSize: 11, fontWeight: 950, letterSpacing: 1.5 }}>GOLD ELITE CLUB</div><h3 style={{ fontSize: 25, margin: "8px 0" }}>Kurumsal ayrıcalığın yeni standardı.</h3><p style={{ color: "#d9c99d", lineHeight: 1.6, fontSize: 13 }}>VIP destek, ekip rolleri, kurumsal CRM, gelişmiş veri erişimi ve yeni özelliklere öncelikli erişim.</p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 16 }}>{["VIP destek","Ekip yönetimi","Beta erişimi","Kurumsal rozet"].map(x => <div key={x} style={{ padding: 11, borderRadius: 13, background: "rgba(255,255,255,.06)", border: "1px solid rgba(241,201,107,.18)", color: "#f6e6b6", fontSize: 12, fontWeight: 850 }}>♛ {x}</div>)}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 16 }}>{["VIP destek","Ekip yönetimi","Beta erişimi","Kurumsal rozet"].map(x => x === "Ekip yönetimi" ? <button key={x} type="button" onClick={() => document.getElementById("team-role-center")?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ padding: 11, borderRadius: 13, background: "rgba(255,255,255,.06)", border: "1px solid rgba(241,201,107,.28)", color: "#f6e6b6", fontSize: 12, fontWeight: 850, textAlign: "left", cursor: "pointer" }}>♛ {x} →</button> : <div key={x} style={{ padding: 11, borderRadius: 13, background: "rgba(255,255,255,.06)", border: "1px solid rgba(241,201,107,.18)", color: "#f6e6b6", fontSize: 12, fontWeight: 850 }}>♛ {x}</div>)}</div>
             </article>
           </div>
 
@@ -8819,6 +8820,13 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
               {[["🏦","Bankalar"],["📊","Değerleme"],["🏗️","Müteahhitler"],["🏠","Emlak Ofisleri"],["📐","Mimar & Mühendis"],["💼","Yatırımcılar"]].map(([icon,name]) => <div key={name} className="membership-enterprise-card" style={{ padding: 14, borderRadius: 15, border: "1px solid rgba(255,255,255,.13)", background: "rgba(255,255,255,.07)", backdropFilter: "blur(10px)" }}><span style={{ fontSize: 20 }}>{icon}</span><strong style={{ display: "block", marginTop: 7, fontSize: 12, color: "#fff" }}>{name}</strong><span style={{ display: "block", marginTop: 3, fontSize: 10, color: "rgba(255,255,255,.58)" }}>Özel çalışma alanı</span></div>)}
             </div>
           </article>
+
+
+          <TeamRoleCenter
+            userId={user?.id ?? null}
+            userEmail={user?.email ?? null}
+            plan={(subscriptionProfile?.plan || membershipPlan) as "standard" | "premium" | "gold"}
+          />
 
           <article style={{ ...qualityRuleStyle, padding: 18, marginTop: 14 }}><div style={eyebrow}>YETKİ KARŞILAŞTIRMASI</div><div style={{ overflowX: "auto", marginTop: 10 }}><table style={tableStyle}><thead><tr><th style={thStyle}>Özellik</th><th style={thStyle}>Standart</th><th style={{ ...thStyle, background: "#0876c9" }}>Premium</th><th style={{ ...thStyle, background: "#2b220f", color: "#f4d278" }}>Gold Elite</th></tr></thead><tbody>{[["Temel analiz","✓","✓","✓"],["AI Karar Motoru","—","✓","✓"],["Türkiye Zekâ Motoru","Ön görünüm","✓","✓"],["Premium PDF / paylaşım","—","✓","✓"],["AI Pazarlık Asistanı","—","✓","✓"],["Kurumsal merkez","—","—","✓"],["CRM ve ekip rolleri","—","—","✓"],["API hazırlığı","—","—","✓"],["Destek seviyesi","Standart","Öncelikli","VIP / Kurumsal"]].map((row) => <tr key={row[0]}>{row.map((cell,index) => <td key={`${row[0]}-${index}`} style={{ ...tdStyle, fontWeight: index === 0 ? 800 : 700, color: index === 3 && cell !== "—" ? "#8b6512" : tdStyle.color }}>{cell}</td>)}</tr>)}</tbody></table></div></article>
 
