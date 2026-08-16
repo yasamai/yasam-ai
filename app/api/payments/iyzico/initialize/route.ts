@@ -1,0 +1,107 @@
+import crypto from "node:crypto";
+import { NextResponse } from "next/server";
+import { iyzicoPost } from "../../../../../lib/iyzico-server";
+import { getUserFromBearer, supabaseAdmin } from "../../../../../lib/supabase-admin";
+
+type Plan = "premium" | "gold";
+type Billing = "monthly" | "yearly";
+
+const planReference = (plan: Plan, billing: Billing) => {
+  const key = `IYZICO_${plan.toUpperCase()}_${billing.toUpperCase()}_PLAN`;
+  return process.env[key] || "";
+};
+
+export async function POST(request: Request) {
+  const user = await getUserFromBearer(request);
+  if (!user) return NextResponse.json({ error: "Oturum doğrulanamadı." }, { status: 401 });
+
+  const body = await request.json().catch(() => ({}));
+  const plan = body.plan as Plan;
+  const billingCycle = body.billingCycle as Billing;
+  if (!(["premium", "gold"] as string[]).includes(plan) || !(["monthly", "yearly"] as string[]).includes(billingCycle)) {
+    return NextResponse.json({ error: "Geçersiz plan veya ödeme dönemi." }, { status: 400 });
+  }
+
+  const pricingPlanReferenceCode = planReference(plan, billingCycle);
+  if (!pricingPlanReferenceCode) {
+    return NextResponse.json({ error: "iyzico abonelik plan kodu henüz tanımlanmadı. Sandbox abonelik aktivasyonunun tamamlanması bekleniyor." }, { status: 503 });
+  }
+
+  const customer = body.customer || {};
+  const billing = customer.billingAddress || {};
+  const required = [customer.name, customer.surname, customer.email || user.email, customer.gsmNumber, customer.identityNumber, billing.address, billing.contactName, billing.city, billing.country];
+  if (required.some((value) => !String(value || "").trim())) {
+    return NextResponse.json({ error: "Müşteri ve fatura bilgilerinde zorunlu alan eksik." }, { status: 400 });
+  }
+
+  const conversationId = `yasam-${user.id.slice(0, 8)}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const callbackUrl = `${appUrl}/api/payments/iyzico/callback`;
+
+  const { error: ledgerError } = await supabaseAdmin.from("payment_transactions").insert({
+    user_id: user.id,
+    provider: "iyzico",
+    environment: (process.env.IYZICO_BASE_URL || "").includes("sandbox") ? "sandbox" : "production",
+    plan,
+    billing_cycle: billingCycle,
+    status: "created",
+    conversation_id: conversationId,
+    pricing_plan_reference_code: pricingPlanReferenceCode,
+  });
+  if (ledgerError) return NextResponse.json({ error: `Ödeme kaydı açılamadı: ${ledgerError.message}` }, { status: 500 });
+
+  const payload = {
+    locale: "tr",
+    callbackUrl,
+    pricingPlanReferenceCode,
+    subscriptionInitialStatus: "ACTIVE",
+    conversationId,
+    customer: {
+      name: String(customer.name).trim(),
+      surname: String(customer.surname).trim(),
+      email: String(customer.email || user.email).trim(),
+      gsmNumber: String(customer.gsmNumber).trim(),
+      identityNumber: String(customer.identityNumber).trim(),
+      billingAddress: {
+        address: String(billing.address).trim(),
+        zipCode: String(billing.zipCode || "").trim(),
+        contactName: String(billing.contactName).trim(),
+        city: String(billing.city).trim(),
+        country: String(billing.country).trim(),
+      },
+      shippingAddress: {
+        address: String((customer.shippingAddress || billing).address).trim(),
+        zipCode: String((customer.shippingAddress || billing).zipCode || "").trim(),
+        contactName: String((customer.shippingAddress || billing).contactName).trim(),
+        city: String((customer.shippingAddress || billing).city).trim(),
+        country: String((customer.shippingAddress || billing).country).trim(),
+      },
+    },
+  };
+
+  const { response, data } = await iyzicoPost("/v2/subscription/checkoutform/initialize", payload);
+  if (!response.ok || data?.status !== "success" || !data?.token || !data?.checkoutFormContent) {
+    await supabaseAdmin.from("payment_transactions").update({
+      status: "failure",
+      failure_code: data?.errorCode || null,
+      failure_message: data?.errorMessage || "iyzico Checkout Form başlatılamadı.",
+      provider_response: data,
+      updated_at: new Date().toISOString(),
+    }).eq("conversation_id", conversationId);
+    return NextResponse.json({ error: data?.errorMessage || "iyzico Checkout Form başlatılamadı." }, { status: 400 });
+  }
+
+  await supabaseAdmin.from("payment_transactions").update({
+    status: "checkout_initialized",
+    checkout_token: data.token,
+    provider_response: { status: data.status, conversationId: data.conversationId, tokenExpireTime: data.tokenExpireTime },
+    updated_at: new Date().toISOString(),
+  }).eq("conversation_id", conversationId);
+
+  return NextResponse.json({
+    ok: true,
+    token: data.token,
+    checkoutFormContent: data.checkoutFormContent,
+    tokenExpireTime: data.tokenExpireTime,
+  });
+}

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -3534,6 +3534,7 @@ function StrategicExpansionCenter({
   const [adminSubscriptionLoading, setAdminSubscriptionLoading] = useState(false);
   const [adminSubscriptionActionId, setAdminSubscriptionActionId] = useState("");
   const [adminSubscriptionNotice, setAdminSubscriptionNotice] = useState("");
+  const [paymentReturnHandled, setPaymentReturnHandled] = useState(false);
   const [pdfRecordId, setPdfRecordId] = useState("");
   const [pdfAudience, setPdfAudience] = useState<"investor" | "bank" | "customer">("investor");
   const [pdfNotice, setPdfNotice] = useState("");
@@ -3953,6 +3954,26 @@ function StrategicExpansionCenter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
+  useEffect(() => {
+    if (paymentReturnHandled || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get("payment");
+    if (payment !== "success" && payment !== "failure") return;
+    setPaymentReturnHandled(true);
+    setSection("membership");
+    setMembershipNotice(
+      payment === "success"
+        ? "iyzico ödeme doğrulaması başarılı. Abonelik profiliniz güvenli şekilde güncellendi."
+        : "iyzico ödeme tamamlanamadı veya doğrulanamadı. Kartınızdan başarılı tahsilat doğrulanmadan plan yetkisi açılmaz."
+    );
+    void loadSubscriptionCenter();
+    params.delete("payment");
+    const nextQuery = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
+    // Callback sonucu yalnızca bir kez ele alınır.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentReturnHandled]);
+
 
   useEffect(() => {
     void loadPlatformAdminCenter();
@@ -4136,7 +4157,7 @@ function StrategicExpansionCenter({
     const photoCount = listingFiles.length;
     const uniquePhotoCount = Math.max(0, photoCount - listingPhotoCoach.duplicateCount);
     const photoQuality = listingPhotoInsights.length ? Math.round(listingPhotoInsights.reduce((sum, row) => sum + row.score, 0) / listingPhotoInsights.length) : 0;
-    const descriptionLength = listingDraft.description.trim().length;
+    const descriptionLength = (listingDraft.description ?? "").trim().length;
     const basicsReady = Boolean(listingDraft.title.trim() && listingDraft.city.trim() && listingDraft.district.trim() && listingDraft.price && listingDraft.area);
     const score = Math.max(0, Math.min(100, Math.round(
       Math.min(40, uniquePhotoCount * 5) +
@@ -5652,6 +5673,15 @@ KURALLAR
       }
     }
     setSubscriptionLoading(false);
+  }
+
+  function startIyzicoCheckout(plan: "premium" | "gold") {
+    if (!user) {
+      setMembershipNotice("Ödeme için oturum açmış kullanıcı gerekli.");
+      return;
+    }
+    const params = new URLSearchParams({ plan, billing: billingCycle });
+    window.location.href = `/odeme/iyzico?${params.toString()}`;
   }
 
   async function saveSubscriptionSelection(plan: "standard" | "premium" | "gold") {
@@ -8613,7 +8643,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
               <div>
                 <div style={{ ...eyebrow, color: "#0f8065" }}>ABONELİK OPERASYON MERKEZİ</div>
                 <h3 style={{ margin: "6px 0 4px", color: "#153a65", fontSize: 21 }}>Plan, yetki ve kullanım limitleri tek ekranda</h3>
-                <p style={{ margin: 0, color: "#52697a", fontSize: 13, lineHeight: 1.55 }}>Bu katman gerçek üyelik kaydını ve kullanım sayaçlarını yönetir. Ödeme sağlayıcısı bağlanana kadar Premium/Gold seçimleri ücret tahsil etmez.</p>
+                <p style={{ margin: 0, color: "#52697a", fontSize: 13, lineHeight: 1.55 }}>Bu katman gerçek üyelik kaydını ve kullanım sayaçlarını yönetir. Premium ve Gold ödemeleri iyzico Checkout Form üzerinden başlatılır; başarılı sonuç server-side doğrulanmadan ücretli yetki açılmaz.</p>
               </div>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                 <span style={{ ...secureBadge, background: subscriptionReady === true ? "#eef9f5" : "#fff6e6", color: subscriptionReady === true ? "#087b5e" : "#8a681d", borderColor: subscriptionReady === true ? "#cce7dc" : "#ead7a7" }}>{subscriptionReady === true ? "Üyelik DB canlı" : subscriptionReady === false ? "SQL kurulumu gerekli" : "Kontrol ediliyor"}</span>
@@ -8712,8 +8742,8 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                   <div style={{ minHeight: 24, color: plan.id === "gold" ? "#f1d98f" : plan.id === "premium" ? "#9fddff" : "#238a62", fontSize: 11, fontWeight: 900 }}>{billingCycle === "yearly" && amount > 0 ? `Aylık karşılığı yaklaşık ${monthlyEquivalent.toLocaleString("tr-TR")} TL` : amount > 0 ? "İstediğiniz zaman plan değiştirin" : "Kredi kartı gerekmez"}</div>
                   <div style={{ marginTop: 16, padding: 13, borderRadius: 15, background: plan.id === "standard" ? "#f1f5f8" : "rgba(255,255,255,.08)", border: `1px solid ${plan.id === "standard" ? "#dce5ed" : "rgba(255,255,255,.12)"}` }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 900 }}><span>AI GÜÇ SEVİYESİ</span><span style={{ color: plan.accent }}>%{plan.power}</span></div><div style={{ height: 8, marginTop: 8, background: plan.id === "standard" ? "#dfe7ee" : "rgba(255,255,255,.12)", borderRadius: 999, overflow: "hidden" }}><div style={{ height: "100%", width: `${plan.power}%`, borderRadius: 999, background: plan.id === "gold" ? "linear-gradient(90deg,#a87719,#ffe49a)" : plan.id === "premium" ? "linear-gradient(90deg,#23a8ff,#9fe2ff)" : "linear-gradient(90deg,#7e91a3,#a9b8c5)" }} /></div></div>
                   <div className="membership-feature-list" style={{ display: "grid", alignContent: "start", gap: 10, marginTop: 18 }}>{plan.items.map((item) => <div key={item} style={{ display: "flex", gap: 9, alignItems: "flex-start", color: plan.muted, fontSize: 13, lineHeight: 1.35 }}><span style={{ width: 20, height: 20, borderRadius: 999, display: "grid", placeItems: "center", flex: "0 0 auto", background: plan.id === "standard" ? "#eaf0f5" : "rgba(255,255,255,.10)", color: plan.accent, fontWeight: 950 }}>✓</span><span>{item}</span></div>)}</div>
-                  <button className="membership-cta" type="button" onClick={() => void saveSubscriptionSelection(plan.id)} disabled={subscriptionSaving} style={{ width: "100%", marginTop: 21, padding: "13px 15px", border: 0, borderRadius: 14, cursor: "pointer", fontWeight: 950, color: plan.id === "standard" ? "#153a65" : plan.id === "gold" ? "#1b1609" : "#06406c", background: selected ? plan.id === "gold" ? "linear-gradient(90deg,#d8a83e,#ffe39a)" : plan.id === "premium" ? "linear-gradient(90deg,#e7f7ff,#fff)" : "#e8eef3" : plan.id === "gold" ? "linear-gradient(90deg,#c99a35,#f6d780)" : plan.id === "premium" ? "#fff" : "#eef3f7", boxShadow: plan.id === "gold" ? "0 10px 25px rgba(235,190,83,.22)" : plan.id === "premium" ? "0 10px 25px rgba(0,0,0,.18)" : "none" }}>{selected ? "✓ Aktif Plan" : subscriptionPlanRequest?.requested_plan === plan.id && subscriptionPlanRequest.status === "pending" ? "⏳ Talep Bekliyor" : plan.id === "standard" ? "Standart'a Geçiş Talebi" : `${plan.name} Talebi Gönder`}</button>
-                  <div style={{ marginTop: 11, textAlign: "center", fontSize: 10, color: plan.muted }}>Ödeme sağlayıcısı bağlanana kadar kart bilgisi istenmez veya işlenmez.</div>
+                  <button className="membership-cta" type="button" onClick={() => plan.id === "standard" ? void saveSubscriptionSelection(plan.id) : startIyzicoCheckout(plan.id)} disabled={subscriptionSaving || selected} style={{ width: "100%", marginTop: 21, padding: "13px 15px", border: 0, borderRadius: 14, cursor: selected ? "default" : "pointer", fontWeight: 950, color: plan.id === "standard" ? "#153a65" : plan.id === "gold" ? "#1b1609" : "#06406c", background: selected ? plan.id === "gold" ? "linear-gradient(90deg,#d8a83e,#ffe39a)" : plan.id === "premium" ? "linear-gradient(90deg,#e7f7ff,#fff)" : "#e8eef3" : plan.id === "gold" ? "linear-gradient(90deg,#c99a35,#f6d780)" : plan.id === "premium" ? "#fff" : "#eef3f7", boxShadow: plan.id === "gold" ? "0 10px 25px rgba(235,190,83,.22)" : plan.id === "premium" ? "0 10px 25px rgba(0,0,0,.18)" : "none", opacity: selected ? .82 : 1 }}>{selected ? "✓ Aktif Plan" : plan.id === "standard" ? "Standart'a Geçiş Talebi" : `iyzico ile ${plan.name} Ödemesine Geç`}</button>
+                  <div style={{ marginTop: 11, textAlign: "center", fontSize: 10.5, color: plan.muted }}>{plan.id === "standard" ? "Standart geçişi kontrollü plan talebi olarak işlenir." : "Kart bilgileri Yaşam AI sunucularında tutulmaz; ödeme iyzico Checkout Form üzerinden yürütülür."}</div>
                 </div>
               </article>;
             })}
@@ -9065,7 +9095,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                       </div>})}
                     </div> : null}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
-                      {[{icon:"📷",label:"Fotoğraf",value:Math.min(100,listingDraftQuality.uniquePhotoCount*10),text:listingFiles.length ? `${listingDraftQuality.uniquePhotoCount}/10 benzersiz kare · ${listingPhotoCoach.duplicateCount ? `${listingPhotoCoach.duplicateCount} benzer kare var` : listingFiles.length >= 6 ? "güçlü set" : "daha fazla kare ekleyin"}` : "Henüz fotoğraf yok"},{icon:"✨",label:"Görsel kalite",value:listingFiles.length?listingDraftQuality.photoQuality:0,text:listingFiles.length ? (listingDraftQuality.photoQuality >= 75 ? "ışık + kadraj güçlü" : "ışık / kadraj geliştirilebilir") : "Fotoğraf eklenince hesaplanır"},{icon:"✍️",label:"Açıklama",value:Math.min(100,Math.round(listingDraft.description.trim().length/1.2)),text:listingDraft.description.trim().length >= 80 ? "Açıklama güçlü" : "AI ile güçlendirebilirsiniz"},{icon:"✓",label:"Temel veri",value:listingDraftQuality.basicsReady?100:45,text:listingDraftQuality.basicsReady?"Başlık, konum, fiyat ve m² hazır":"Eksik zorunlu alan var"}].map((item) => <div key={item.label} style={{ padding: "11px 12px", minHeight: 82, borderRadius: 14, background: "linear-gradient(145deg,#ffffff,#f7fafc)", border: "1px solid #dfe8ef", boxShadow: "0 7px 18px rgba(26,62,94,.05)" }}><div style={{ display: "grid", gridTemplateColumns: "30px minmax(0,1fr) auto", alignItems: "center", gap: 8 }}><span style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 10, background: item.value >= 75 ? "#e8f8f1" : item.value >= 50 ? "#eaf5fd" : "#fff5df", fontSize: 13 }}>{item.icon}</span><strong style={{ color: "#294b67", fontSize: 8.8 }}>{item.label}</strong><span style={{ color: "#506b82", fontSize: 9, fontWeight: 950 }}>{item.value}%</span></div><div style={{ height: 6, marginTop: 9, borderRadius: 999, background: "#e6edf2", overflow: "hidden" }}><div style={{ width: `${item.value}%`, height: "100%", borderRadius: 999, background: item.value >= 75 ? "linear-gradient(90deg,#10b981,#53d5ad)" : item.value >= 50 ? "linear-gradient(90deg,#159ed4,#62c8ef)" : "linear-gradient(90deg,#f0a52b,#ffd166)" }} /></div><span style={{ display: "block", marginTop: 6, color: "#8394a3", fontSize: 7.1, lineHeight: 1.35 }}>{item.text}</span></div>)}
+                      {[{icon:"📷",label:"Fotoğraf",value:Math.min(100,listingDraftQuality.uniquePhotoCount*10),text:listingFiles.length ? `${listingDraftQuality.uniquePhotoCount}/10 benzersiz kare · ${listingPhotoCoach.duplicateCount ? `${listingPhotoCoach.duplicateCount} benzer kare var` : listingFiles.length >= 6 ? "güçlü set" : "daha fazla kare ekleyin"}` : "Henüz fotoğraf yok"},{icon:"✨",label:"Görsel kalite",value:listingFiles.length?listingDraftQuality.photoQuality:0,text:listingFiles.length ? (listingDraftQuality.photoQuality >= 75 ? "ışık + kadraj güçlü" : "ışık / kadraj geliştirilebilir") : "Fotoğraf eklenince hesaplanır"},{icon:"✍️",label:"Açıklama",value:Math.min(100,Math.round((listingDraft.description ?? "").trim().length/1.2)),text:(listingDraft.description ?? "").trim().length >= 80 ? "Açıklama güçlü" : "AI ile güçlendirebilirsiniz"},{icon:"✓",label:"Temel veri",value:listingDraftQuality.basicsReady?100:45,text:listingDraftQuality.basicsReady?"Başlık, konum, fiyat ve m² hazır":"Eksik zorunlu alan var"}].map((item) => <div key={item.label} style={{ padding: "11px 12px", minHeight: 82, borderRadius: 14, background: "linear-gradient(145deg,#ffffff,#f7fafc)", border: "1px solid #dfe8ef", boxShadow: "0 7px 18px rgba(26,62,94,.05)" }}><div style={{ display: "grid", gridTemplateColumns: "30px minmax(0,1fr) auto", alignItems: "center", gap: 8 }}><span style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 10, background: item.value >= 75 ? "#e8f8f1" : item.value >= 50 ? "#eaf5fd" : "#fff5df", fontSize: 13 }}>{item.icon}</span><strong style={{ color: "#294b67", fontSize: 8.8 }}>{item.label}</strong><span style={{ color: "#506b82", fontSize: 9, fontWeight: 950 }}>{item.value}%</span></div><div style={{ height: 6, marginTop: 9, borderRadius: 999, background: "#e6edf2", overflow: "hidden" }}><div style={{ width: `${item.value}%`, height: "100%", borderRadius: 999, background: item.value >= 75 ? "linear-gradient(90deg,#10b981,#53d5ad)" : item.value >= 50 ? "linear-gradient(90deg,#159ed4,#62c8ef)" : "linear-gradient(90deg,#f0a52b,#ffd166)" }} /></div><span style={{ display: "block", marginTop: 6, color: "#8394a3", fontSize: 7.1, lineHeight: 1.35 }}>{item.text}</span></div>)}
                     </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button type="button" disabled={listingSaving} onClick={() => listingBackendReady ? void saveLiveListing("draft") : saveMarketplaceDraft()} style={{ ...softButton, padding: "11px 12px" }}>{listingSaving ? "Kaydediliyor…" : listingBackendReady ? "Bulut Taslağı" : "Yerel Taslak"}</button><button type="button" disabled={listingSaving || listingBackendReady === false} onClick={() => void saveLiveListing("published")} style={{ ...blueButton, marginTop: 0, background: "linear-gradient(135deg,#ff9a4b,#ff6b35)", boxShadow: "0 10px 22px rgba(255,107,53,.20)", opacity: listingBackendReady === false ? .5 : 1 }}>{listingSaving ? "Yayınlanıyor…" : "İlanı Yayınla"}</button></div>
