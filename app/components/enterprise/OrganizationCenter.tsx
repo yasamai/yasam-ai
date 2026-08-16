@@ -1,0 +1,433 @@
+"use client";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { supabase } from "../../../lib/supabase";
+
+type Plan = "standard" | "premium" | "gold";
+type OrgRole = "owner" | "admin" | "manager" | "analyst" | "member" | "viewer";
+type TaskStatus = "todo" | "in_progress" | "blocked" | "done" | "cancelled";
+type TaskPriority = "low" | "normal" | "high" | "critical";
+type WorkspaceType = "analysis_report" | "listing" | "developer_project" | "technical_project" | "document" | "note" | "other";
+
+type Organization = {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  organization_type: string;
+  status: string;
+};
+
+type OrganizationProfile = {
+  organization_id: string;
+  legal_name: string | null;
+  tax_office: string | null;
+  tax_number: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  city: string | null;
+  district: string | null;
+  address: string | null;
+  logo_url: string | null;
+  description: string | null;
+};
+
+type Member = {
+  id: string;
+  organization_id: string;
+  user_id: string | null;
+  email: string;
+  role: OrgRole;
+  status: string;
+};
+
+type Task = {
+  id: string;
+  organization_id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assigned_user_id: string | null;
+  created_by: string;
+  due_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
+type WorkspaceItem = {
+  id: string;
+  organization_id: string;
+  item_type: WorkspaceType;
+  resource_id: string | null;
+  title: string;
+  description: string | null;
+  status: "active" | "archived";
+  created_by: string;
+  assigned_user_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+type Activity = {
+  id: string;
+  organization_id: string;
+  actor_user_id: string | null;
+  action_type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  summary: string;
+  created_at: string;
+};
+
+const taskStatusLabels: Record<TaskStatus, string> = {
+  todo: "Yapılacak",
+  in_progress: "Devam ediyor",
+  blocked: "Beklemede",
+  done: "Tamamlandı",
+  cancelled: "İptal",
+};
+
+const priorityLabels: Record<TaskPriority, string> = {
+  low: "Düşük",
+  normal: "Normal",
+  high: "Yüksek",
+  critical: "Kritik",
+};
+
+const workspaceLabels: Record<WorkspaceType, string> = {
+  analysis_report: "Analiz Raporu",
+  listing: "İlan",
+  developer_project: "Müteahhit Projesi",
+  technical_project: "Teknik Proje",
+  document: "Belge",
+  note: "Not",
+  other: "Diğer",
+};
+
+function clean(value: string) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+export default function OrganizationCenter({ userId, plan }: { userId: string | null; plan: Plan }) {
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState("");
+  const [profile, setProfile] = useState<OrganizationProfile | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [workspace, setWorkspace] = useState<WorkspaceItem[]>([]);
+  const [activity, setActivity] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+
+  const [legalName, setLegalName] = useState("");
+  const [taxOffice, setTaxOffice] = useState("");
+  const [taxNumber, setTaxNumber] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [website, setWebsite] = useState("");
+  const [city, setCity] = useState("");
+  const [district, setDistrict] = useState("");
+  const [address, setAddress] = useState("");
+  const [description, setDescription] = useState("");
+
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDescription, setTaskDescription] = useState("");
+  const [taskPriority, setTaskPriority] = useState<TaskPriority>("normal");
+  const [taskAssignee, setTaskAssignee] = useState("");
+  const [taskDueAt, setTaskDueAt] = useState("");
+
+  const [workspaceType, setWorkspaceType] = useState<WorkspaceType>("analysis_report");
+  const [workspaceTitle, setWorkspaceTitle] = useState("");
+  const [workspaceDescription, setWorkspaceDescription] = useState("");
+  const [workspaceResourceId, setWorkspaceResourceId] = useState("");
+
+  const gold = plan === "gold";
+  const selectedOrg = useMemo(() => organizations.find((org) => org.id === selectedOrgId) ?? organizations[0] ?? null, [organizations, selectedOrgId]);
+  const currentMember = useMemo(() => members.find((member) => member.user_id === userId && member.status === "active") ?? null, [members, userId]);
+  const manager = Boolean(selectedOrg && userId && (selectedOrg.owner_user_id === userId || ["owner", "admin", "manager"].includes(currentMember?.role || "")));
+  const openTasks = tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
+  const overdueTasks = openTasks.filter((task) => task.due_at && new Date(task.due_at).getTime() < Date.now());
+  const activeWorkspace = workspace.filter((item) => item.status === "active");
+
+  function syncProfileForm(next: OrganizationProfile | null) {
+    setLegalName(next?.legal_name ?? "");
+    setTaxOffice(next?.tax_office ?? "");
+    setTaxNumber(next?.tax_number ?? "");
+    setPhone(next?.phone ?? "");
+    setEmail(next?.email ?? "");
+    setWebsite(next?.website ?? "");
+    setCity(next?.city ?? "");
+    setDistrict(next?.district ?? "");
+    setAddress(next?.address ?? "");
+    setDescription(next?.description ?? "");
+  }
+
+  async function loadOrganizations() {
+    if (!userId) return;
+    setLoading(true);
+    setError("");
+    const { data, error: loadError } = await supabase.from("organizations").select("id,owner_user_id,name,organization_type,status").order("created_at", { ascending: false });
+    if (loadError) {
+      setError(`Kurumsal merkez yüklenemedi: ${loadError.message}`);
+      setLoading(false);
+      return;
+    }
+    const next = (data ?? []) as Organization[];
+    setOrganizations(next);
+    setSelectedOrgId((current) => current && next.some((org) => org.id === current) ? current : next[0]?.id ?? "");
+    setLoading(false);
+  }
+
+  async function loadOrganizationDetail(orgId: string) {
+    if (!orgId || !userId) {
+      setProfile(null); setMembers([]); setTasks([]); setWorkspace([]); setActivity([]); syncProfileForm(null);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const [profileResult, memberResult, taskResult, workspaceResult, activityResult] = await Promise.all([
+      supabase.from("organization_profiles").select("organization_id,legal_name,tax_office,tax_number,phone,email,website,city,district,address,logo_url,description").eq("organization_id", orgId).maybeSingle(),
+      supabase.from("organization_members").select("id,organization_id,user_id,email,role,status").eq("organization_id", orgId).order("created_at", { ascending: true }),
+      supabase.from("organization_tasks").select("id,organization_id,title,description,status,priority,assigned_user_id,created_by,due_at,completed_at,created_at").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(50),
+      supabase.from("organization_workspace_items").select("id,organization_id,item_type,resource_id,title,description,status,created_by,assigned_user_id,metadata,created_at").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(50),
+      supabase.from("organization_activity").select("id,organization_id,actor_user_id,action_type,entity_type,entity_id,summary,created_at").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(30),
+    ]);
+    const firstError = profileResult.error || memberResult.error || taskResult.error || workspaceResult.error || activityResult.error;
+    if (firstError) setError(`Kurumsal veriler yüklenemedi: ${firstError.message}`);
+    const nextProfile = (profileResult.data ?? null) as OrganizationProfile | null;
+    setProfile(nextProfile);
+    syncProfileForm(nextProfile);
+    setMembers((memberResult.data ?? []) as Member[]);
+    setTasks((taskResult.data ?? []) as Task[]);
+    setWorkspace((workspaceResult.data ?? []) as WorkspaceItem[]);
+    setActivity((activityResult.data ?? []) as Activity[]);
+    setLoading(false);
+  }
+
+  useEffect(() => { void loadOrganizations(); }, [userId]);
+  useEffect(() => { void loadOrganizationDetail(selectedOrgId); }, [selectedOrgId, userId]);
+
+  async function logActivity(actionType: string, entityType: string, entityId: string | null, summary: string) {
+    if (!selectedOrg || !userId || !gold) return;
+    await supabase.from("organization_activity").insert({
+      organization_id: selectedOrg.id,
+      actor_user_id: userId,
+      action_type: actionType,
+      entity_type: entityType,
+      entity_id: entityId,
+      summary,
+    });
+  }
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedOrg || !userId || !gold || !manager) return;
+    setSaving(true); setError(""); setNotice("");
+    const payload = {
+      organization_id: selectedOrg.id,
+      legal_name: clean(legalName),
+      tax_office: clean(taxOffice),
+      tax_number: clean(taxNumber),
+      phone: clean(phone),
+      email: clean(email),
+      website: clean(website),
+      city: clean(city),
+      district: clean(district),
+      address: clean(address),
+      description: clean(description),
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error: saveError } = await supabase.from("organization_profiles").upsert(payload, { onConflict: "organization_id" }).select("organization_id,legal_name,tax_office,tax_number,phone,email,website,city,district,address,logo_url,description").single();
+    if (saveError) setError(`Şirket profili kaydedilemedi: ${saveError.message}`);
+    else {
+      setProfile(data as OrganizationProfile);
+      setNotice("Şirket profili güncellendi.");
+      await logActivity("profile_updated", "organization_profile", selectedOrg.id, "Şirket profili güncellendi.");
+      await loadOrganizationDetail(selectedOrg.id);
+    }
+    setSaving(false);
+  }
+
+  async function createTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedOrg || !userId || !gold || !manager || !taskTitle.trim()) return;
+    setSaving(true); setError(""); setNotice("");
+    const { data, error: taskError } = await supabase.from("organization_tasks").insert({
+      organization_id: selectedOrg.id,
+      title: taskTitle.trim(),
+      description: clean(taskDescription),
+      priority: taskPriority,
+      assigned_user_id: taskAssignee || null,
+      created_by: userId,
+      due_at: taskDueAt ? new Date(taskDueAt).toISOString() : null,
+    }).select("id").single();
+    if (taskError) setError(`Görev oluşturulamadı: ${taskError.message}`);
+    else {
+      setTaskTitle(""); setTaskDescription(""); setTaskPriority("normal"); setTaskAssignee(""); setTaskDueAt("");
+      setNotice("Yeni kurumsal görev oluşturuldu.");
+      await logActivity("task_created", "task", data.id, `Görev oluşturuldu: ${taskTitle.trim()}`);
+      await loadOrganizationDetail(selectedOrg.id);
+    }
+    setSaving(false);
+  }
+
+  async function updateTaskStatus(task: Task, status: TaskStatus) {
+    if (!selectedOrg || !userId || !gold) return;
+    setSaving(true); setError(""); setNotice("");
+    const { error: updateError } = await supabase.from("organization_tasks").update({
+      status,
+      completed_at: status === "done" ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", task.id);
+    if (updateError) setError(`Görev güncellenemedi: ${updateError.message}`);
+    else {
+      setNotice(`Görev durumu: ${taskStatusLabels[status]}.`);
+      await logActivity("task_status_changed", "task", task.id, `${task.title} → ${taskStatusLabels[status]}`);
+      await loadOrganizationDetail(selectedOrg.id);
+    }
+    setSaving(false);
+  }
+
+  async function createWorkspaceItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedOrg || !userId || !gold || !workspaceTitle.trim()) return;
+    setSaving(true); setError(""); setNotice("");
+    const { data, error: itemError } = await supabase.from("organization_workspace_items").insert({
+      organization_id: selectedOrg.id,
+      item_type: workspaceType,
+      resource_id: clean(workspaceResourceId),
+      title: workspaceTitle.trim(),
+      description: clean(workspaceDescription),
+      created_by: userId,
+    }).select("id").single();
+    if (itemError) setError(`Çalışma alanına eklenemedi: ${itemError.message}`);
+    else {
+      setWorkspaceTitle(""); setWorkspaceDescription(""); setWorkspaceResourceId("");
+      setNotice("Kaynak şirket çalışma alanına eklendi.");
+      await logActivity("workspace_item_created", "workspace_item", data.id, `Çalışma alanına eklendi: ${workspaceTitle.trim()}`);
+      await loadOrganizationDetail(selectedOrg.id);
+    }
+    setSaving(false);
+  }
+
+  async function archiveWorkspaceItem(item: WorkspaceItem) {
+    if (!selectedOrg || !userId || !gold) return;
+    setSaving(true); setError(""); setNotice("");
+    const { error: archiveError } = await supabase.from("organization_workspace_items").update({ status: "archived", updated_at: new Date().toISOString() }).eq("id", item.id);
+    if (archiveError) setError(`Kaynak arşivlenemedi: ${archiveError.message}`);
+    else {
+      setNotice("Kaynak arşive taşındı.");
+      await logActivity("workspace_item_archived", "workspace_item", item.id, `Kaynak arşivlendi: ${item.title}`);
+      await loadOrganizationDetail(selectedOrg.id);
+    }
+    setSaving(false);
+  }
+
+  const card = { border: "1px solid #dbe7f3", borderRadius: 18, background: "#fff", padding: 16, boxShadow: "0 10px 28px rgba(31,64,97,.06)" } as const;
+  const input = { width: "100%", padding: "10px 11px", borderRadius: 11, border: "1px solid #cdddea", background: "#fff", color: "#153a65", fontSize: 12.5, outline: "none", boxSizing: "border-box" as const };
+  const button = { padding: "10px 12px", borderRadius: 10, border: 0, fontSize: 11.5, fontWeight: 900, cursor: "pointer" } as const;
+  const enabledWrite = gold && Boolean(selectedOrg);
+
+  return <article id="organization-center" style={{ scrollMarginTop: 22, marginTop: 16, padding: 20, borderRadius: 24, border: "1px solid #d8e6f2", background: "linear-gradient(145deg,#f7fbff 0%,#ffffff 58%,#f4fbf8 100%)", boxShadow: "0 16px 40px rgba(31,64,97,.08)" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div style={{ maxWidth: 800 }}>
+        <div style={{ color: "#0876c9", fontSize: 10.5, fontWeight: 950, letterSpacing: 1.45 }}>v21 · KURUMSAL ŞİRKET MERKEZİ</div>
+        <h3 style={{ margin: "6px 0 5px", color: "#153a65", fontSize: 23 }}>Şirket verisi, görevler ve ortak çalışma alanı tek merkezde.</h3>
+        <p style={{ margin: 0, color: "#607890", fontSize: 13, lineHeight: 1.6 }}>Kurumsal profilinizi yönetin, ekip görevlerini takip edin, analiz ve proje kaynaklarını şirket alanında toplayın. Yetkiler ekip rolleri ve Gold planla sunucu tarafında korunur.</p>
+      </div>
+      <span style={{ padding: "7px 10px", borderRadius: 999, border: `1px solid ${gold ? "#cce4d8" : "#d8e3ec"}`, background: gold ? "#edf9f3" : "#eef3f7", color: gold ? "#087b5e" : "#607890", fontSize: 10.5, fontWeight: 950 }}>{gold ? "✓ GOLD KURUMSAL ERİŞİM" : "🔒 GOLD ELITE GEREKLİ"}</span>
+    </div>
+
+    {!gold ? <div style={{ marginTop: 14, padding: 14, borderRadius: 14, background: "#f6f8fa", border: "1px solid #dbe3e9", color: "#52697a", fontSize: 12.5, lineHeight: 1.55 }}><strong style={{ color: "#153a65" }}>Kurumsal yazma işlemleri kilitli.</strong> Gold Elite aktif olduğunda şirket profili, görev ve çalışma alanı işlemleri açılır. RLS bu kontrolü veritabanı seviyesinde de uygular.</div> : null}
+
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginTop: 14 }}>
+      {[["Kurumsal alan", organizations.length],["Aktif ekip", members.filter((m) => m.status === "active").length],["Açık görev", openTasks.length],["Geciken", overdueTasks.length],["Çalışma kaynağı", activeWorkspace.length],["Faaliyet", activity.length]].map(([label,value]) => <div key={String(label)} style={{ ...card, padding: 13 }}><span style={{ color: "#74899e", fontSize: 10, fontWeight: 850 }}>{label}</span><strong style={{ display: "block", marginTop: 4, color: "#153a65", fontSize: 22 }}>{String(value)}</strong></div>)}
+    </div>
+
+    {error ? <div style={{ marginTop: 12, padding: 11, borderRadius: 12, background: "#fff0f0", border: "1px solid #f0caca", color: "#9b3030", fontSize: 12 }}>{error}</div> : null}
+    {notice ? <div style={{ marginTop: 12, padding: 11, borderRadius: 12, background: "#eef9f5", border: "1px solid #cce7dc", color: "#087b5e", fontSize: 12 }}>{notice}</div> : null}
+
+    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 14, ...card }}>
+      <div style={{ minWidth: 210, flex: "1 1 280px" }}><span style={{ display: "block", color: "#74899e", fontSize: 10, fontWeight: 850, marginBottom: 5 }}>AKTİF ŞİRKET ALANI</span><select value={selectedOrg?.id ?? ""} onChange={(e) => setSelectedOrgId(e.target.value)} style={input} disabled={!organizations.length}>{organizations.length ? organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>) : <option value="">{loading ? "Yükleniyor…" : "Önce Ekip & Rol Merkezi'nden şirket oluşturun"}</option>}</select></div>
+      {selectedOrg ? <div style={{ padding: "9px 12px", borderRadius: 12, background: "#edf8ff", color: "#0b6f9c", fontSize: 11, fontWeight: 850 }}>{selectedOrg.organization_type} · {manager ? "Yönetici yetkisi" : currentMember?.role || "Üye"}</div> : null}
+    </div>
+
+    {selectedOrg ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 14, marginTop: 14 }}>
+      <form onSubmit={saveProfile} style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><div><strong style={{ color: "#153a65", fontSize: 15 }}>Şirket profili</strong><span style={{ display: "block", color: "#8395a5", fontSize: 10, marginTop: 2 }}>{profile ? "Kayıtlı kurumsal profil" : "İlk kurumsal profil kaydı"}</span></div><span style={{ fontSize: 9.5, fontWeight: 900, color: manager ? "#087b5e" : "#9a7318" }}>{manager ? "YÖNETİCİ" : "GÖRÜNTÜLEME"}</span></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8, marginTop: 11 }}>
+          <input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="Ticari unvan" style={input} disabled={!gold || !manager || saving} />
+          <input value={taxOffice} onChange={(e) => setTaxOffice(e.target.value)} placeholder="Vergi dairesi" style={input} disabled={!gold || !manager || saving} />
+          <input value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} placeholder="Vergi numarası" style={input} disabled={!gold || !manager || saving} />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Telefon" style={input} disabled={!gold || !manager || saving} />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Kurumsal e-posta" style={input} disabled={!gold || !manager || saving} />
+          <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Web sitesi" style={input} disabled={!gold || !manager || saving} />
+          <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="İl" style={input} disabled={!gold || !manager || saving} />
+          <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="İlçe" style={input} disabled={!gold || !manager || saving} />
+        </div>
+        <textarea value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Adres" style={{ ...input, minHeight: 64, resize: "vertical", marginTop: 8 }} disabled={!gold || !manager || saving} />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Şirket açıklaması / çalışma notu" style={{ ...input, minHeight: 72, resize: "vertical", marginTop: 8 }} disabled={!gold || !manager || saving} />
+        <button type="submit" disabled={!gold || !manager || saving} style={{ ...button, marginTop: 9, width: "100%", background: gold && manager ? "#0876c9" : "#e6ebef", color: gold && manager ? "#fff" : "#8192a0", cursor: gold && manager ? "pointer" : "not-allowed" }}>{saving ? "Kaydediliyor…" : "Şirket Profilini Kaydet"}</button>
+      </form>
+
+      <form onSubmit={createTask} style={card}>
+        <strong style={{ color: "#153a65", fontSize: 15 }}>Yeni görev</strong>
+        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+          <input value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Görev başlığı" style={input} disabled={!gold || !manager || saving} />
+          <textarea value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} placeholder="Görev açıklaması" style={{ ...input, minHeight: 70, resize: "vertical" }} disabled={!gold || !manager || saving} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8 }}>
+            <select value={taskPriority} onChange={(e) => setTaskPriority(e.target.value as TaskPriority)} style={input} disabled={!gold || !manager || saving}>{Object.entries(priorityLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
+            <select value={taskAssignee} onChange={(e) => setTaskAssignee(e.target.value)} style={input} disabled={!gold || !manager || saving}><option value="">Atanmamış</option>{members.filter((m) => m.status === "active" && m.user_id).map((member) => <option key={member.id} value={member.user_id || ""}>{member.email}</option>)}</select>
+            <input type="datetime-local" value={taskDueAt} onChange={(e) => setTaskDueAt(e.target.value)} style={input} disabled={!gold || !manager || saving} />
+          </div>
+          <button type="submit" disabled={!gold || !manager || saving || !taskTitle.trim()} style={{ ...button, background: gold && manager ? "linear-gradient(135deg,#0c8d78,#0a6f8b)" : "#e6ebef", color: gold && manager ? "#fff" : "#8192a0", cursor: gold && manager ? "pointer" : "not-allowed" }}>Görev Oluştur</button>
+        </div>
+      </form>
+
+      <div style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><strong style={{ color: "#153a65", fontSize: 15 }}>Görev panosu</strong><span style={{ color: "#74899e", fontSize: 10 }}>{openTasks.length} açık görev</span></div>
+        <div style={{ display: "grid", gap: 8, marginTop: 10, maxHeight: 430, overflowY: "auto" }}>
+          {tasks.length ? tasks.map((task) => <div key={task.id} style={{ padding: 11, borderRadius: 13, border: "1px solid #e1eaf1", background: task.status === "done" ? "#f1faf6" : task.status === "blocked" ? "#fff8ec" : "#fff" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><div><strong style={{ color: "#2c506d", fontSize: 12.5 }}>{task.title}</strong><div style={{ marginTop: 3, color: "#8294a4", fontSize: 9.5 }}>{priorityLabels[task.priority]} · Son tarih {formatDate(task.due_at)}</div></div><span style={{ padding: "4px 7px", borderRadius: 999, background: task.priority === "critical" ? "#fff0f0" : "#edf8ff", color: task.priority === "critical" ? "#a43b3b" : "#0876c9", fontSize: 9, fontWeight: 900 }}>{taskStatusLabels[task.status]}</span></div>
+            {task.description ? <p style={{ margin: "7px 0 0", color: "#607890", fontSize: 10.5, lineHeight: 1.45 }}>{task.description}</p> : null}
+            <select value={task.status} onChange={(e) => void updateTaskStatus(task, e.target.value as TaskStatus)} disabled={!enabledWrite || saving} style={{ ...input, marginTop: 8, padding: "7px 8px", fontSize: 10.5 }}>{Object.entries(taskStatusLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
+          </div>) : <div style={{ color: "#8395a5", fontSize: 12 }}>{loading ? "Yükleniyor…" : "Henüz görev yok."}</div>}
+        </div>
+      </div>
+
+      <form onSubmit={createWorkspaceItem} style={card}>
+        <strong style={{ color: "#153a65", fontSize: 15 }}>Ortak çalışma alanı</strong>
+        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+          <select value={workspaceType} onChange={(e) => setWorkspaceType(e.target.value as WorkspaceType)} style={input} disabled={!enabledWrite || saving}>{Object.entries(workspaceLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
+          <input value={workspaceTitle} onChange={(e) => setWorkspaceTitle(e.target.value)} placeholder="Kaynak başlığı" style={input} disabled={!enabledWrite || saving} />
+          <input value={workspaceResourceId} onChange={(e) => setWorkspaceResourceId(e.target.value)} placeholder="Kaynak ID (varsa UUID)" style={input} disabled={!enabledWrite || saving} />
+          <textarea value={workspaceDescription} onChange={(e) => setWorkspaceDescription(e.target.value)} placeholder="Kısa açıklama" style={{ ...input, minHeight: 65, resize: "vertical" }} disabled={!enabledWrite || saving} />
+          <button type="submit" disabled={!enabledWrite || saving || !workspaceTitle.trim()} style={{ ...button, background: enabledWrite ? "#153a65" : "#e6ebef", color: enabledWrite ? "#fff" : "#8192a0", cursor: enabledWrite ? "pointer" : "not-allowed" }}>Çalışma Alanına Ekle</button>
+        </div>
+      </form>
+
+      <div style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><strong style={{ color: "#153a65", fontSize: 15 }}>Paylaşılan kaynaklar</strong><span style={{ color: "#74899e", fontSize: 10 }}>{activeWorkspace.length} aktif</span></div>
+        <div style={{ display: "grid", gap: 8, marginTop: 10, maxHeight: 430, overflowY: "auto" }}>
+          {activeWorkspace.length ? activeWorkspace.map((item) => <div key={item.id} style={{ padding: 11, borderRadius: 13, border: "1px solid #e1eaf1", background: "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><div><span style={{ color: "#0876c9", fontSize: 9, fontWeight: 900 }}>{workspaceLabels[item.item_type].toUpperCase()}</span><strong style={{ display: "block", marginTop: 3, color: "#2c506d", fontSize: 12.5 }}>{item.title}</strong></div><button type="button" onClick={() => void archiveWorkspaceItem(item)} disabled={!enabledWrite || saving} style={{ ...button, padding: "6px 8px", background: "#f5f7f9", color: "#607890", border: "1px solid #dbe3e9" }}>Arşivle</button></div>{item.description ? <p style={{ margin: "7px 0 0", color: "#607890", fontSize: 10.5, lineHeight: 1.45 }}>{item.description}</p> : null}<span style={{ display: "block", marginTop: 6, color: "#91a2b2", fontSize: 9 }}>{formatDate(item.created_at)}{item.resource_id ? ` · ${item.resource_id.slice(0,8)}…` : ""}</span></div>) : <div style={{ color: "#8395a5", fontSize: 12 }}>Aktif paylaşılan kaynak yok.</div>}
+        </div>
+      </div>
+
+      <div style={{ ...card, gridColumn: "1 / -1" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><div><strong style={{ color: "#153a65", fontSize: 15 }}>Kurumsal faaliyet akışı</strong><span style={{ display: "block", color: "#8395a5", fontSize: 10, marginTop: 2 }}>Şirket içindeki son kayıt hareketleri</span></div><span style={{ color: "#74899e", fontSize: 10 }}>Son {activity.length} hareket</span></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 8, marginTop: 10 }}>
+          {activity.length ? activity.map((item) => <div key={item.id} style={{ padding: 10, borderRadius: 12, border: "1px solid #e4ebf1", background: "#fbfdff" }}><strong style={{ display: "block", color: "#365a73", fontSize: 11.5 }}>{item.summary}</strong><span style={{ display: "block", marginTop: 4, color: "#91a2b2", fontSize: 9 }}>{item.action_type} · {new Date(item.created_at).toLocaleString("tr-TR")}</span></div>) : <div style={{ color: "#8395a5", fontSize: 12 }}>Henüz faaliyet kaydı yok.</div>}
+        </div>
+      </div>
+    </div> : <div style={{ ...card, marginTop: 14, color: "#607890", fontSize: 12.5, lineHeight: 1.55 }}><strong style={{ color: "#153a65" }}>Şirket alanı bulunamadı.</strong> Önce yukarıdaki Ekip & Rol Merkezi üzerinden bir kurumsal alan oluşturun. Kurumsal Şirket Merkezi aynı organizasyon altyapısını otomatik kullanır.</div>}
+  </article>;
+}
