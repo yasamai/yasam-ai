@@ -10,6 +10,8 @@ import { buildReportTrustProfile } from "../../lib/report/trust-profile";
 import type { DecisionMetrics, RegionalMarketContext } from "../../lib/decision-engine";
 import TurkiyeDataCenter from "../components/data-center/TurkiyeDataCenter";
 import TeamRoleCenter from "../components/membership/TeamRoleCenter";
+import OrganizationCenter from "../components/enterprise/OrganizationCenter";
+import LegalComplianceCenter from "../components/enterprise/LegalComplianceCenter";
 import type { MarketDataRecord, VerificationStatus } from "../../lib/data-center/types";
 import { TURKIYE_DATA_SEED, emptyScores, initialForm } from "./model/constants";
 import type {
@@ -8825,6 +8827,16 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
           <TeamRoleCenter
             userId={user?.id ?? null}
             userEmail={user?.email ?? null}
+            plan={(subscriptionProfile?.plan || membershipPlan) as "standard" | "premium" | "gold"}
+          />
+
+          <OrganizationCenter
+            userId={user?.id ?? null}
+            plan={(subscriptionProfile?.plan || membershipPlan) as "standard" | "premium" | "gold"}
+          />
+
+          <LegalComplianceCenter
+            userId={user?.id ?? null}
             plan={(subscriptionProfile?.plan || membershipPlan) as "standard" | "premium" | "gold"}
           />
 
