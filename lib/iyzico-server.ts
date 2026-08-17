@@ -17,7 +17,8 @@ function randomKey() {
 function authorization(path: string, body = "") {
   requireIyzicoEnv();
   const rnd = randomKey();
-  const signature = crypto.createHmac("sha256", secretKey).update(rnd + path + body).digest("hex");
+  const pathname = path.split("?")[0];
+  const signature = crypto.createHmac("sha256", secretKey).update(rnd + pathname + body).digest("hex");
   const encoded = Buffer.from(`apiKey:${apiKey}&randomKey:${rnd}&signature:${signature}`, "utf8").toString("base64");
   return { rnd, value: `IYZWSv2 ${encoded}` };
 }

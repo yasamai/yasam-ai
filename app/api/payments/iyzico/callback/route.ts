@@ -34,7 +34,7 @@ async function handle(request: Request) {
   if (!tx) return resultHtml("failure");
   if (tx.status === "success" && tx.verified_at) return resultHtml("success");
 
-  const path = `/v2/subscription/checkoutform/${encodeURIComponent(token)}?conversationId=${encodeURIComponent(tx.conversation_id)}`;
+  const path = `/v2/subscription/checkoutform/${encodeURIComponent(token)}`;
   const { response, data } = await iyzicoGet(path);
   const active = response.ok && data?.status === "success" && data?.data?.subscriptionStatus === "ACTIVE";
   if (!active) {
