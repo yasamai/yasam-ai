@@ -1,0 +1,126 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+type Plan = "standard" | "premium" | "gold";
+type Target = { id: string; short: string; title: string; minPlan: Plan };
+
+const targets: Target[] = [
+  { id: "team-role-center", short: "Ekip", title: "Ekip & Rol", minPlan: "gold" },
+  { id: "organization-center", short: "Şirket", title: "Kurumsal Şirket", minPlan: "gold" },
+  { id: "legal-compliance-center", short: "Hukuk", title: "Hukuk & Uyum", minPlan: "premium" },
+  { id: "secure-transaction-center", short: "İşlem", title: "Güvenli İşlem", minPlan: "premium" },
+  { id: "enterprise-executive-dashboard", short: "Yönetim", title: "Yönetici Dashboard", minPlan: "gold" },
+];
+
+const rank: Record<Plan, number> = { standard: 0, premium: 1, gold: 2 };
+
+export default function PlatformControlDock({ userId, plan }: { userId: string | null; plan: Plan }) {
+  const [online, setOnline] = useState(true);
+  const [host, setHost] = useState("");
+
+  useEffect(() => {
+    setOnline(navigator.onLine);
+    setHost(window.location.hostname);
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  const isProduction = useMemo(
+    () => Boolean(host) && host !== "localhost" && host !== "127.0.0.1",
+    [host]
+  );
+
+  function goTo(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  return (
+    <section
+      id="platform-control-dock"
+      style={{
+        margin: "12px 0 16px",
+        borderRadius: 18,
+        border: "1px solid #cfe0ea",
+        background: "rgba(248,252,255,.96)",
+        boxShadow: "0 12px 34px rgba(15,23,42,.10)",
+        backdropFilter: "blur(14px)",
+        padding: 10,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
+          scrollbarWidth: "thin",
+        }}
+      >
+        <div style={{ minWidth: 154, padding: "7px 10px", borderRight: "1px solid #dbe7ef" }}>
+          <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: ".08em", color: "#0f766e" }}>
+            v25 · HIZLI KONTROL
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", marginTop: 2 }}>
+            Yaşam AI merkezleri
+          </div>
+        </div>
+
+        {targets.map((target) => {
+          const allowed = Boolean(userId) && rank[plan] >= rank[target.minPlan];
+          return (
+            <button
+              key={target.id}
+              type="button"
+              onClick={() => goTo(target.id)}
+              title={target.title}
+              style={{
+                flex: "0 0 auto",
+                border: allowed ? "1px solid #b8ddd9" : "1px solid #e2e8f0",
+                borderRadius: 12,
+                padding: "9px 12px",
+                background: allowed ? "#f0fdfa" : "#f8fafc",
+                color: allowed ? "#0f766e" : "#64748b",
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              {target.short}{!allowed ? " · Kilitli" : ""}
+            </button>
+          );
+        })}
+
+        <div
+          style={{
+            marginLeft: "auto",
+            flex: "0 0 auto",
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            padding: "8px 10px",
+            borderRadius: 12,
+            border: "1px solid #dbe7ef",
+            background: "#fff",
+            fontSize: 11,
+            fontWeight: 850,
+            color: "#475569",
+          }}
+        >
+          <span>{online ? "● Çevrimiçi" : "● Çevrimdışı"}</span>
+          <span>·</span>
+          <span>{isProduction ? "Production" : "Local"}</span>
+          <span>·</span>
+          <span>{plan === "gold" ? "Gold Elite" : plan === "premium" ? "Premium" : "Standart"}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
