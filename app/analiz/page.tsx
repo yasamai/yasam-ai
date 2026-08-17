@@ -13,6 +13,7 @@ import TeamRoleCenter from "../components/membership/TeamRoleCenter";
 import OrganizationCenter from "../components/enterprise/OrganizationCenter";
 import LegalComplianceCenter from "../components/enterprise/LegalComplianceCenter";
 import SecureTransactionCenter from "../components/enterprise/SecureTransactionCenter";
+import EnterpriseExecutiveDashboard from "../components/enterprise/EnterpriseExecutiveDashboard";
 import type { MarketDataRecord, VerificationStatus } from "../../lib/data-center/types";
 import { TURKIYE_DATA_SEED, emptyScores, initialForm } from "./model/constants";
 import type {
@@ -8842,6 +8843,11 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
           />
 
           <SecureTransactionCenter
+            userId={user?.id ?? null}
+            plan={(subscriptionProfile?.plan || membershipPlan) as "standard" | "premium" | "gold"}
+          />
+
+          <EnterpriseExecutiveDashboard
             userId={user?.id ?? null}
             plan={(subscriptionProfile?.plan || membershipPlan) as "standard" | "premium" | "gold"}
           />
