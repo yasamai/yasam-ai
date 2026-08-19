@@ -24,7 +24,28 @@ export default function LoginPage() {
     if (mode === "signup" && !result.data.session) { setMessage("Kayıt oluşturuldu. E-posta doğrulama bağlantısını kontrol edin."); return; }
     router.replace("/analiz"); router.refresh();
   }
+async function resetPassword() {
+  if (!email) {
+    setMessage("Önce e-posta adresinizi girin.");
+    return;
+  }
 
+  setLoading(true);
+  setMessage("");
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: "https://yasam-ai.vercel.app/sifre-yenile",
+  });
+
+  setLoading(false);
+
+  if (error) {
+    setMessage(error.message);
+    return;
+  }
+
+  setMessage("Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.");
+}
   return <main style={{ minHeight:"100vh",display:"grid",placeItems:"center",padding:24,background:"linear-gradient(135deg,#06182f,#16466f)",fontFamily:"Arial,sans-serif" }}>
     <form onSubmit={submit} style={{ width:"min(440px,100%)",background:"white",padding:32,borderRadius:22,boxShadow:"0 24px 70px rgba(0,0,0,.3)" }}>
       <div style={{ color:"#b08b32",fontWeight:900,letterSpacing:2 }}>YAŞAM AI</div>
@@ -34,6 +55,25 @@ export default function LoginPage() {
       <input required type="email" value={email} onChange={e=>setEmail(e.target.value)} style={{ width:"100%",boxSizing:"border-box",padding:14,border:"1px solid #cbd5df",borderRadius:10,marginBottom:16 }} />
       <label style={{ display:"block",fontWeight:700,marginBottom:7 }}>Şifre</label>
       <input required minLength={6} type="password" value={password} onChange={e=>setPassword(e.target.value)} style={{ width:"100%",boxSizing:"border-box",padding:14,border:"1px solid #cbd5df",borderRadius:10,marginBottom:16 }} />
+      {mode === "login" && (
+  <button
+    type="button"
+    onClick={resetPassword}
+    disabled={loading}
+    style={{
+      width: "100%",
+      marginBottom: 12,
+      padding: 10,
+      border: 0,
+      background: "transparent",
+      color: "#2563eb",
+      cursor: "pointer",
+      fontWeight: 700,
+    }}
+  >
+    Şifremi unuttum
+  </button>
+)}
       {message && <p style={{ background:"#fff5e5",padding:12,borderRadius:9,color:"#8a5700" }}>{message}</p>}
       <button disabled={loading} style={{ width:"100%",padding:15,border:0,borderRadius:11,background:"#0d355d",color:"white",fontWeight:800,cursor:"pointer" }}>{loading ? "İşleniyor…" : mode === "login" ? "Giriş Yap" : "Kayıt Ol"}</button>
       <button type="button" onClick={()=>{setMode(mode === "login" ? "signup" : "login");setMessage("");}} style={{ width:"100%",marginTop:12,padding:12,border:0,background:"transparent",color:"#315f88",cursor:"pointer" }}>{mode === "login" ? "Hesabınız yok mu? Kayıt olun" : "Zaten hesabınız var mı? Giriş yapın"}</button>
