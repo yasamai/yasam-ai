@@ -52,7 +52,30 @@ export async function POST(request: Request) {
       verified_at: now,
       updated_at: now,
     }).eq("id", tx.id);
-    await supabaseAdmin.from("subscription_profiles").update({ status: "active", updated_at: now }).eq("user_id", tx.user_id);
+    const { data: currentProfile } = await supabaseAdmin
+      .from("subscription_profiles")
+      .select("pending_plan,pending_change_mode")
+      .eq("user_id", tx.user_id)
+      .maybeSingle();
+
+    const profileUpdate: Record<string, unknown> = {
+      status: "active",
+      updated_at: now,
+    };
+
+    if (
+      currentProfile?.pending_plan &&
+      currentProfile?.pending_change_mode === "next_period"
+    ) {
+      profileUpdate.plan = currentProfile.pending_plan;
+      profileUpdate.pending_plan = null;
+      profileUpdate.pending_change_mode = null;
+    }
+
+    await supabaseAdmin
+      .from("subscription_profiles")
+      .update(profileUpdate)
+      .eq("user_id", tx.user_id);
   } else if (tx && eventType === "subscription.order.failure") {
     await supabaseAdmin.from("payment_transactions").update({
       status: "failure",
