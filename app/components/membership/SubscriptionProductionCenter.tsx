@@ -194,6 +194,18 @@ export default function SubscriptionProductionCenter({
         ))}
       </div>
 
+      <div style={{ marginTop: 12, padding: 12, borderRadius: 14, background: activePaid ? "#eef9f5" : "#f7f9fb", border: activePaid ? "1px solid #bfe7d9" : "1px solid #dce5ec", color: activePaid ? "#087b5e" : "#607890", fontSize: 12.5, lineHeight: 1.5 }}>
+        <strong>V31 · ERİŞİM POLİTİKASI:</strong>{" "}
+        {activePaid
+          ? "Provider doğrulanmış aktif ücretli abonelik. Premium/Gold erişimi açık."
+          : status === "past_due"
+            ? "Tekrarlayan ödeme başarısız. Ücretli erişim güvenlik gereği kapalı; ödeme yenilenince webhook erişimi yeniden açar."
+            : status === "canceled" || status === "cancelled"
+              ? "Abonelik iptal edilmiş. Ücretli erişim kapalı."
+              : status === "paused"
+                ? "Abonelik duraklatılmış. Ücretli erişim kapalı."
+                : "Ücretli erişim yalnız server-side doğrulanmış ACTIVE abonelikte açılır."}
+      </div>
       {pendingPlan ? (
         <div style={{ marginTop: 12, padding: 12, borderRadius: 14, background: "#fff8e6", border: "1px solid #ead7a8", color: "#765a17", fontSize: 12.5, lineHeight: 1.5 }}>
           Bekleyen plan talebi: <strong>{planLabel[pendingPlan]}</strong>{pendingBillingCycle ? ` Â· ${pendingBillingCycle === "yearly" ? "YÄ±llÄ±k" : "AylÄ±k"}` : ""}.
