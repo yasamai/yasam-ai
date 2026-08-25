@@ -36,7 +36,11 @@ function Kpi({ label, value, note }: { label: string; value: string | number; no
 }
 
 export default function EnterpriseExecutiveDashboard({ userId, plan }: { userId: string | null; plan: Plan }) {
-  const gold = plan === "gold";
+  void plan; // UI uyumlulugu icin tutulur; yetki server-side abonelik durumundan gelir.
+  const [membershipChecked, setMembershipChecked] = useState(false);
+  const [goldAllowed, setGoldAllowed] = useState(false);
+  const [membershipReason, setMembershipReason] = useState("");
+  const gold = membershipChecked && goldAllowed;
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [organizationId, setOrganizationId] = useState("");
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -50,6 +54,13 @@ export default function EnterpriseExecutiveDashboard({ userId, plan }: { userId:
 
   const selectedOrg = useMemo(() => organizations.find((o) => o.id === organizationId) ?? organizations[0] ?? null, [organizations, organizationId]);
 
+    useEffect(() => {
+    setMembershipChecked(false);
+    setGoldAllowed(false);
+    setMembershipReason("");
+    void verifyGoldAccess();
+  }, [userId]);
+
   useEffect(() => {
     if (!userId || !gold) return;
     void loadOrganizations();
@@ -61,6 +72,38 @@ export default function EnterpriseExecutiveDashboard({ userId, plan }: { userId:
     void loadDashboard(selectedOrg.id);
   }, [selectedOrg?.id, gold]);
 
+  async function verifyGoldAccess() {
+    if (!userId) {
+      setMembershipChecked(true);
+      setGoldAllowed(false);
+      setMembershipReason("Oturum gerekli");
+      return;
+    }
+
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const token = data.session?.access_token;
+      if (!token) throw new Error("Aktif oturum bulunamadı.");
+
+      const response = await fetch("/api/membership/access", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Üyelik erişimi doğrulanamadı.");
+
+      setGoldAllowed(Boolean(payload?.access?.goldAccess));
+      setMembershipReason(String(payload?.access?.reason || ""));
+      setMembershipChecked(true);
+    } catch (membershipError) {
+      setGoldAllowed(false);
+      setMembershipChecked(true);
+      setMembershipReason("Doğrulama başarısız");
+      setError(membershipError instanceof Error ? membershipError.message : "Gold erişimi doğrulanamadı.");
+    }
+  }
   async function loadOrganizations() {
     const { data, error: orgError } = await supabase.from("organizations").select("id,name,status").eq("status", "active").order("name");
     if (orgError) { setError(`Şirket listesi yüklenemedi: ${orgError.message}`); return; }
@@ -107,6 +150,31 @@ export default function EnterpriseExecutiveDashboard({ userId, plan }: { userId:
   const legal = summary?.legal ?? {};
   const team = summary?.team ?? {};
 
+  const pipelineTotals = useMemo(
+    () =>
+      pipeline.reduce(
+        (acc, row) => ({
+          rooms: acc.rooms + n(row.room_count),
+          asking: acc.asking + n(row.asking_value_try),
+          offers: acc.offers + n(row.pending_offer_value_try),
+        }),
+        { rooms: 0, asking: 0, offers: 0 }
+      ),
+    [pipeline]
+  );
+
+  const offerCoverage =
+    pipelineTotals.asking > 0 ? Math.min(100, Math.round((pipelineTotals.offers / pipelineTotals.asking) * 100)) : 0;
+  const executiveRiskCount = n(tasks.overdue) + n(tasks.critical) + n(legal.high_risk);
+  const executiveRiskLabel =
+    executiveRiskCount >= 8 ? "Yüksek" : executiveRiskCount >= 3 ? "Orta" : "Kontrollü";
+  const executiveReadiness =
+    !summary ? "Veri bekleniyor" :
+    executiveRiskCount >= 8 ? "Müdahale gerekli" :
+    n(transactions.closing) > 0 ? "Kapanış odaklı" :
+    n(transactions.negotiation) > 0 ? "Pazarlık odaklı" :
+    "Operasyon stabil";
+
   return (
     <section id="enterprise-executive-dashboard" style={{ marginTop: 16, borderRadius: 24, border: "1px solid #cfe1ea", background: "linear-gradient(180deg,#f8fcff,#f8fffd)", padding: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -115,7 +183,7 @@ export default function EnterpriseExecutiveDashboard({ userId, plan }: { userId:
           <h2 style={{ margin: "5px 0 5px", fontSize: 24, color: "#0f172a" }}>Şirketin tüm karar akışı tek ekranda.</h2>
           <div style={{ ...muted, maxWidth: 760 }}>Ekip, görev, hukuk, güvenli işlem, teklif hacmi ve faaliyetleri üst yönetim seviyesinde birleştirir.</div>
         </div>
-        <div style={{ borderRadius: 999, padding: "8px 12px", fontSize: 12, fontWeight: 900, background: gold ? "#ecfdf5" : "#fff7ed", color: gold ? "#047857" : "#9a3412", border: `1px solid ${gold ? "#a7f3d0" : "#fed7aa"}` }}>{gold ? "Gold Elite · Yönetici erişimi" : "Gold Elite gerekli"}</div>
+        <div style={{ borderRadius: 999, padding: "8px 12px", fontSize: 12, fontWeight: 900, background: gold ? "#ecfdf5" : "#fff7ed", color: gold ? "#047857" : "#9a3412", border: `1px solid ${gold ? "#a7f3d0" : "#fed7aa"}` }}>{!membershipChecked ? "Üyelik doğrulanıyor..." : gold ? "✓ Server-side doğrulanmış Gold Elite" : `Gold erişimi kapalı${membershipReason ? ` · ${membershipReason}` : ""}`}</div>
       </div>
 
       {!userId ? <div style={{ ...card, marginTop: 14 }}>Dashboard için oturum açmalısınız.</div> : null}
@@ -139,6 +207,37 @@ export default function EnterpriseExecutiveDashboard({ userId, plan }: { userId:
           <Kpi label="Aktif işlem" value={n(transactions.active_rooms)} note={`${n(transactions.negotiation)} pazarlık · ${n(transactions.closing)} kapanış`} />
           <Kpi label="Bekleyen teklif" value={n(transactions.pending_offers)} note={money(transactions.pending_offer_value)} />
           <Kpi label="Tamamlanan işlem" value={n(transactions.completed)} note={`Son güncelleme: ${date(summary?.generated_at)}`} />
+                </div>
+
+        <div style={{ ...card, marginTop: 12, background: "linear-gradient(135deg,#f8fbff,#f4fffb)", borderColor: "#c9e2df" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 950, color: "#0f766e", letterSpacing: ".08em" }}>YÖNETİCİ KARAR NABZI</div>
+              <div style={{ fontSize: 20, fontWeight: 950, color: "#0f172a", marginTop: 5 }}>{executiveReadiness}</div>
+              <div style={{ ...muted, marginTop: 4 }}>Mevcut görev, hukuk ve işlem verilerinden türetilen operasyon özeti.</div>
+            </div>
+            <div style={{ padding: "9px 12px", borderRadius: 999, background: executiveRiskLabel === "Yüksek" ? "#fef2f2" : executiveRiskLabel === "Orta" ? "#fff7ed" : "#ecfdf5", color: executiveRiskLabel === "Yüksek" ? "#991b1b" : executiveRiskLabel === "Orta" ? "#9a3412" : "#047857", fontWeight: 900, fontSize: 12 }}>
+              Yönetim riski: {executiveRiskLabel}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(165px,1fr))", gap: 9, marginTop: 12 }}>
+            <Kpi label="Pipeline hacmi" value={money(pipelineTotals.asking)} note={`${pipelineTotals.rooms} işlem aşaması`} />
+            <Kpi label="Bekleyen teklif hacmi" value={money(pipelineTotals.offers)} note={`Talep değerinin %${offerCoverage}'i`} />
+            <Kpi label="Yönetim risk sayacı" value={executiveRiskCount} note={`${n(tasks.overdue)} gecikmiş · ${n(tasks.critical)} kritik görev · ${n(legal.high_risk)} yüksek risk hukuk`} />
+            <Kpi label="Kapanış odağı" value={n(transactions.closing)} note={`${n(transactions.negotiation)} işlem pazarlıkta`} />
+          </div>
+
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 13, border: "1px solid #dbe8ee", background: "#fff", color: "#475569", fontSize: 12, lineHeight: 1.55 }}>
+            <b style={{ color: "#0f172a" }}>Yönetim notu:</b>{" "}
+            {executiveRiskLabel === "Yüksek"
+              ? "Gecikmiş/kritik görevler ve yüksek riskli hukuk dosyaları öncelikli yönetim incelemesi gerektiriyor."
+              : n(transactions.closing) > 0
+                ? "Kapanış aşamasındaki işlemler için belge, hukuk ve teklif akışını aynı gün kontrol edin."
+                : n(transactions.negotiation) > 0
+                  ? "Pazarlık aşamasındaki işlemlerde teklif hacmi ve bekleyen kararları yakın takip edin."
+                  : "Operasyon görünümü stabil; yeni faaliyet ve risk sinyallerini birleşik akıştan izleyin."}
+          </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.05fr) minmax(0,.95fr)", gap: 12, marginTop: 12 }}>
