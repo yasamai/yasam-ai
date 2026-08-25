@@ -1,0 +1,13 @@
+diff --git a/app/components/enterprise/PlatformControlDock.tsx b/app/components/enterprise/PlatformControlDock.tsx
+--- a/app/components/enterprise/PlatformControlDock.tsx
++++ b/app/components/enterprise/PlatformControlDock.tsx
+@@ -47,9 +47,6 @@ export default function PlatformControlDock({ userId, plan }: { userId: string |
+     <section
+       id="platform-control-dock"
+       style={{
+-        position: "sticky",
+-        top: 8,
+-        zIndex: 40,
+         margin: "12px 0 16px",
+         borderRadius: 18,
+         border: "1px solid #cfe0ea",

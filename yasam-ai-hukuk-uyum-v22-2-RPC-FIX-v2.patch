@@ -1,0 +1,25 @@
+diff --git a/app/components/enterprise/LegalComplianceCenter.tsx b/app/components/enterprise/LegalComplianceCenter.tsx
+--- a/app/components/enterprise/LegalComplianceCenter.tsx
++++ b/app/components/enterprise/LegalComplianceCenter.tsx
+@@ -187,8 +187,19 @@
+   async function createMatter(event: FormEvent) {
+     event.preventDefault(); if (!userId || !entitled || !title.trim()) return;
+     setSaving(true); setError(""); setNotice("");
+-    const { data, error: insertError } = await supabase.from("legal_matters").insert({ owner_user_id: userId, organization_id: asNull(organizationId), title: title.trim(), matter_type: matterType, property_reference: asNull(propertyReference), summary: asNull(summary) }).select("id").single();
++    const { data, error: insertError } = await supabase.rpc("create_legal_matter", {
++      p_title: title.trim(),
++      p_matter_type: matterType,
++      p_organization_id: asNull(organizationId),
++      p_property_reference: asNull(propertyReference),
++      p_summary: asNull(summary),
++    });
+     if (insertError) setError(`Hukuki dosya oluşturulamadı: ${insertError.message}`);
+-    else { setTitle(""); setPropertyReference(""); setSummary(""); setNotice("Hukuki dosya oluşturuldu."); await logActivity(data.id, "matter_created", "Hukuki dosya oluşturuldu.", "legal_matter", data.id); await loadMatters(); setSelectedMatterId(data.id); }
++    else {
++      const matterId = String(data);
++      setTitle(""); setPropertyReference(""); setSummary(""); setNotice("Hukuki dosya oluşturuldu.");
++      await logActivity(matterId, "matter_created", "Hukuki dosya oluşturuldu.", "legal_matter", matterId);
++      await loadMatters(); setSelectedMatterId(matterId);
++    }
+     setSaving(false);
+   }
