@@ -48,7 +48,11 @@ function fmtDate(value: string | null) { return value ? new Date(value).toLocale
 function nil(value: string) { const v = value.trim(); return v ? v : null; }
 
 export default function SecureTransactionCenter({ userId, plan }: { userId: string | null; plan: Plan }) {
-  const entitled = plan === "premium" || plan === "gold";
+  void plan; // UI uyumlulugu icin tutulur; yetki server-side abonelik durumundan gelir.
+  const [membershipChecked, setMembershipChecked] = useState(false);
+  const [membershipAllowed, setMembershipAllowed] = useState(false);
+  const [membershipReason, setMembershipReason] = useState("");
+  const entitled = membershipChecked && membershipAllowed;
   const [rooms, setRooms] = useState<Room[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [legalMatters, setLegalMatters] = useState<LegalMatter[]>([]);
@@ -83,8 +87,48 @@ export default function SecureTransactionCenter({ userId, plan }: { userId: stri
   const selectedRoom = useMemo(() => rooms.find((r) => r.id === selectedRoomId) ?? null, [rooms, selectedRoomId]);
   const openOffers = offers.filter((o) => o.status === "pending").length;
 
-  async function loadBase() {
-    if (!userId || !entitled) return;
+    async function verifyMembershipAccess() {
+    if (!userId) {
+      setMembershipAllowed(false);
+      setMembershipChecked(true);
+      setMembershipReason("Oturum gerekli");
+      return;
+    }
+
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+
+      const token = data.session?.access_token;
+      if (!token) throw new Error("Aktif oturum bulunamadı.");
+
+      const response = await fetch("/api/membership/access", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Üyelik erişimi doğrulanamadı.");
+      }
+
+      setMembershipAllowed(Boolean(payload?.access?.premiumAccess));
+      setMembershipReason(String(payload?.access?.reason || ""));
+      setMembershipChecked(true);
+    } catch (membershipError) {
+      setMembershipAllowed(false);
+      setMembershipChecked(true);
+      setMembershipReason("Doğrulama başarısız");
+      setError(
+        membershipError instanceof Error
+          ? membershipError.message
+          : "Üyelik erişimi doğrulanamadı."
+      );
+    }
+  }
+async function loadBase() {
+    if (!userId || !membershipChecked || !membershipAllowed) return;
     const [roomRes, orgRes, legalRes] = await Promise.all([
       supabase.from("transaction_rooms").select("*").order("created_at", { ascending: false }),
       supabase.from("organizations").select("id,name,status").eq("status", "active").order("name"),
@@ -113,7 +157,16 @@ export default function SecureTransactionCenter({ userId, plan }: { userId: stri
     if (!a.error) setActivity((a.data ?? []) as Activity[]);
   }
 
-  useEffect(() => { void loadBase(); }, [userId, plan]);
+  useEffect(() => {
+    setMembershipChecked(false);
+    setMembershipAllowed(false);
+    setMembershipReason("");
+    void verifyMembershipAccess();
+  }, [userId]);
+
+  useEffect(() => {
+    if (membershipChecked && membershipAllowed) void loadBase();
+  }, [membershipChecked, membershipAllowed]);
   useEffect(() => { void loadRoomData(selectedRoomId); }, [selectedRoomId]);
 
   async function log(roomId: string, actionType: string, summaryText: string, entityType?: string, entityId?: string) {
@@ -123,7 +176,11 @@ export default function SecureTransactionCenter({ userId, plan }: { userId: stri
 
   async function createRoom(event: FormEvent) {
     event.preventDefault();
-    if (!userId || !entitled || !title.trim()) return;
+    if (!userId || !title.trim()) return;
+    if (!membershipChecked || !membershipAllowed) {
+      setError("Güvenli işlem odası için doğrulanmış aktif Premium veya Gold üyelik gerekiyor.");
+      return;
+    }
     setSaving(true); setError(""); setNotice("");
     const numericPrice = askingPrice.trim() ? Number(askingPrice.replace(/\./g, "").replace(",", ".")) : null;
     const { data, error: rpcError } = await supabase.rpc("create_transaction_room", {
@@ -209,7 +266,7 @@ export default function SecureTransactionCenter({ userId, plan }: { userId: stri
   return <section id="secure-transaction-center" style={{ marginTop: 18, border: "1px solid #b9d9df", borderRadius: 24, padding: 18, background: "linear-gradient(180deg,#f7feff,#eef9fb)" }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
       <div><div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 1.4, color: "#0f766e" }}>v23 · GÜVENLİ İŞLEM MERKEZİ</div><h2 style={{ margin: "6px 0 4px", fontSize: 26, color: "#0f172a" }}>Teklif, pazarlık ve dosya odası tek işlem akışında.</h2><p style={{ ...muted, maxWidth: 760, margin: 0 }}>Taraf erişimi, teklif ve karşı teklifler, işlem belgeleri ve kapanış adımları denetlenebilir bir işlem odasında tutulur. Bu modül ödeme/emanet hesabı hizmeti değildir; finansal transferler lisanslı sağlayıcılar üzerinden yürütülmelidir.</p></div>
-      <div style={{ padding: "9px 12px", borderRadius: 999, fontSize: 12, fontWeight: 900, background: entitled ? "#dcfce7" : "#fff7ed", color: entitled ? "#166534" : "#9a3412" }}>{entitled ? "✓ PREMIUM / GOLD ERİŞİM" : "🔒 PREMIUM / GOLD GEREKLİ"}</div>
+      <div style={{ padding: "9px 12px", borderRadius: 999, fontSize: 12, fontWeight: 900, background: entitled ? "#dcfce7" : "#fff7ed", color: entitled ? "#166534" : "#9a3412" }}>{entitled ? "✓ SUNUCU DOĞRULAMALI PREMIUM / GOLD" : "🔒 PREMIUM / GOLD GEREKLİ"}</div>
     </div>
 
     {!!error && <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca" }}>{error}</div>}
@@ -219,7 +276,7 @@ export default function SecureTransactionCenter({ userId, plan }: { userId: stri
       {[['İşlem odası',rooms.length],['Katılımcı',participants.filter(p=>p.status==='active').length],['Açık teklif',openOffers],['Dosya',documents.filter(d=>d.status==='active').length],['Faaliyet',activity.length]].map(([k,v]) => <div key={String(k)} style={card}><div style={muted}>{k}</div><div style={{ fontSize: 24, fontWeight: 900, color: "#0f172a", marginTop: 4 }}>{v}</div></div>)}
     </div>
 
-    {!entitled ? <div style={{ ...card, marginTop: 14 }}>Bu merkez Premium veya Gold plan ile açılır.</div> : <>
+    {!entitled ? <div style={{ ...card, marginTop: 14 }}>Bu merkez yalnızca sunucu tarafında doğrulanmış aktif Premium veya Gold üyelik ile açılır.</div> : <>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1.35fr)", gap: 12, marginTop: 14 }}>
         <form onSubmit={createRoom} style={card}>
           <h3 style={{ margin: "0 0 12px", color: "#0f172a" }}>Yeni işlem odası</h3>
