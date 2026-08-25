@@ -1,0 +1,646 @@
+diff --git a/IYZICO-V19-KURULUM.txt b/IYZICO-V19-KURULUM.txt
+new file mode 100644
+index 0000000..cfee258
+--- /dev/null
++++ b/IYZICO-V19-KURULUM.txt
+@@ -0,0 +1,22 @@
++YAŞAM AI · IYZICO SANDBOX V19
++
++Bu paket mevcut page.tsx yapısına göre hazırlanmıştır. package.json ve lib/supabase.ts değişmez.
++
++Gerekli .env.local satırları:
++IYZICO_API_KEY=...
++IYZICO_SECRET_KEY=...
++IYZICO_BASE_URL=https://sandbox-api.iyzipay.com
++IYZICO_MERCHANT_ID=...
++SUPABASE_SECRET_KEY=...
++NEXT_PUBLIC_APP_URL=http://localhost:3000
++
++iyzico abonelik aktivasyonu sonrasında ayrıca:
++IYZICO_PREMIUM_MONTHLY_PLAN=...
++IYZICO_PREMIUM_YEARLY_PLAN=...
++IYZICO_GOLD_MONTHLY_PLAN=...
++IYZICO_GOLD_YEARLY_PLAN=...
++
++ÖNEMLİ: İlk gerçek sandbox callback/webhook testi için NEXT_PUBLIC_APP_URL dışarıdan erişilebilen HTTPS adres olmalıdır. localhost iyzico tarafından internetten erişilemez.
++
++Webhook URL:
++https://SENIN-PUBLIC-ADRESIN/api/payments/iyzico/webhook
+diff --git a/app/analiz/page.tsx b/app/analiz/page.tsx
+index 97ec4cf..db25d46 100644
+--- a/app/analiz/page.tsx
++++ b/app/analiz/page.tsx
+@@ -3534,6 +3534,7 @@ function StrategicExpansionCenter({
+   const [adminSubscriptionLoading, setAdminSubscriptionLoading] = useState(false);
+   const [adminSubscriptionActionId, setAdminSubscriptionActionId] = useState("");
+   const [adminSubscriptionNotice, setAdminSubscriptionNotice] = useState("");
++  const [paymentReturnHandled, setPaymentReturnHandled] = useState(false);
+   const [pdfRecordId, setPdfRecordId] = useState("");
+   const [pdfAudience, setPdfAudience] = useState<"investor" | "bank" | "customer">("investor");
+   const [pdfNotice, setPdfNotice] = useState("");
+@@ -3953,6 +3954,26 @@ function StrategicExpansionCenter({
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [user?.id]);
+ 
++  useEffect(() => {
++    if (paymentReturnHandled || typeof window === "undefined") return;
++    const params = new URLSearchParams(window.location.search);
++    const payment = params.get("payment");
++    if (payment !== "success" && payment !== "failure") return;
++    setPaymentReturnHandled(true);
++    setSection("membership");
++    setMembershipNotice(
++      payment === "success"
++        ? "iyzico ödeme doğrulaması başarılı. Abonelik profiliniz güvenli şekilde güncellendi."
++        : "iyzico ödeme tamamlanamadı veya doğrulanamadı. Kartınızdan başarılı tahsilat doğrulanmadan plan yetkisi açılmaz."
++    );
++    void loadSubscriptionCenter();
++    params.delete("payment");
++    const nextQuery = params.toString();
++    window.history.replaceState({}, "", `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`);
++    // Callback sonucu yalnızca bir kez ele alınır.
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [paymentReturnHandled]);
++
+ 
+   useEffect(() => {
+     void loadPlatformAdminCenter();
+@@ -5654,6 +5675,15 @@ KURALLAR
+     setSubscriptionLoading(false);
+   }
+ 
++  function startIyzicoCheckout(plan: "premium" | "gold") {
++    if (!user) {
++      setMembershipNotice("Ödeme için oturum açmış kullanıcı gerekli.");
++      return;
++    }
++    const params = new URLSearchParams({ plan, billing: billingCycle });
++    window.location.href = `/odeme/iyzico?${params.toString()}`;
++  }
++
+   async function saveSubscriptionSelection(plan: "standard" | "premium" | "gold") {
+     if (!user) {
+       setMembershipNotice("Plan işlemi için oturum açmış kullanıcı gerekli.");
+@@ -8613,7 +8643,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
+               <div>
+                 <div style={{ ...eyebrow, color: "#0f8065" }}>ABONELİK OPERASYON MERKEZİ</div>
+                 <h3 style={{ margin: "6px 0 4px", color: "#153a65", fontSize: 21 }}>Plan, yetki ve kullanım limitleri tek ekranda</h3>
+-                <p style={{ margin: 0, color: "#52697a", fontSize: 13, lineHeight: 1.55 }}>Bu katman gerçek üyelik kaydını ve kullanım sayaçlarını yönetir. Ödeme sağlayıcısı bağlanana kadar Premium/Gold seçimleri ücret tahsil etmez.</p>
++                <p style={{ margin: 0, color: "#52697a", fontSize: 13, lineHeight: 1.55 }}>Bu katman gerçek üyelik kaydını ve kullanım sayaçlarını yönetir. Premium ve Gold ödemeleri iyzico Checkout Form üzerinden başlatılır; başarılı sonuç server-side doğrulanmadan ücretli yetki açılmaz.</p>
+               </div>
+               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                 <span style={{ ...secureBadge, background: subscriptionReady === true ? "#eef9f5" : "#fff6e6", color: subscriptionReady === true ? "#087b5e" : "#8a681d", borderColor: subscriptionReady === true ? "#cce7dc" : "#ead7a7" }}>{subscriptionReady === true ? "Üyelik DB canlı" : subscriptionReady === false ? "SQL kurulumu gerekli" : "Kontrol ediliyor"}</span>
+@@ -8712,8 +8742,8 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
+                   <div style={{ minHeight: 24, color: plan.id === "gold" ? "#f1d98f" : plan.id === "premium" ? "#9fddff" : "#238a62", fontSize: 11, fontWeight: 900 }}>{billingCycle === "yearly" && amount > 0 ? `Aylık karşılığı yaklaşık ${monthlyEquivalent.toLocaleString("tr-TR")} TL` : amount > 0 ? "İstediğiniz zaman plan değiştirin" : "Kredi kartı gerekmez"}</div>
+                   <div style={{ marginTop: 16, padding: 13, borderRadius: 15, background: plan.id === "standard" ? "#f1f5f8" : "rgba(255,255,255,.08)", border: `1px solid ${plan.id === "standard" ? "#dce5ed" : "rgba(255,255,255,.12)"}` }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 900 }}><span>AI GÜÇ SEVİYESİ</span><span style={{ color: plan.accent }}>%{plan.power}</span></div><div style={{ height: 8, marginTop: 8, background: plan.id === "standard" ? "#dfe7ee" : "rgba(255,255,255,.12)", borderRadius: 999, overflow: "hidden" }}><div style={{ height: "100%", width: `${plan.power}%`, borderRadius: 999, background: plan.id === "gold" ? "linear-gradient(90deg,#a87719,#ffe49a)" : plan.id === "premium" ? "linear-gradient(90deg,#23a8ff,#9fe2ff)" : "linear-gradient(90deg,#7e91a3,#a9b8c5)" }} /></div></div>
+                   <div className="membership-feature-list" style={{ display: "grid", alignContent: "start", gap: 10, marginTop: 18 }}>{plan.items.map((item) => <div key={item} style={{ display: "flex", gap: 9, alignItems: "flex-start", color: plan.muted, fontSize: 13, lineHeight: 1.35 }}><span style={{ width: 20, height: 20, borderRadius: 999, display: "grid", placeItems: "center", flex: "0 0 auto", background: plan.id === "standard" ? "#eaf0f5" : "rgba(255,255,255,.10)", color: plan.accent, fontWeight: 950 }}>✓</span><span>{item}</span></div>)}</div>
+-                  <button className="membership-cta" type="button" onClick={() => void saveSubscriptionSelection(plan.id)} disabled={subscriptionSaving} style={{ width: "100%", marginTop: 21, padding: "13px 15px", border: 0, borderRadius: 14, cursor: "pointer", fontWeight: 950, color: plan.id === "standard" ? "#153a65" : plan.id === "gold" ? "#1b1609" : "#06406c", background: selected ? plan.id === "gold" ? "linear-gradient(90deg,#d8a83e,#ffe39a)" : plan.id === "premium" ? "linear-gradient(90deg,#e7f7ff,#fff)" : "#e8eef3" : plan.id === "gold" ? "linear-gradient(90deg,#c99a35,#f6d780)" : plan.id === "premium" ? "#fff" : "#eef3f7", boxShadow: plan.id === "gold" ? "0 10px 25px rgba(235,190,83,.22)" : plan.id === "premium" ? "0 10px 25px rgba(0,0,0,.18)" : "none" }}>{selected ? "✓ Aktif Plan" : subscriptionPlanRequest?.requested_plan === plan.id && subscriptionPlanRequest.status === "pending" ? "⏳ Talep Bekliyor" : plan.id === "standard" ? "Standart'a Geçiş Talebi" : `${plan.name} Talebi Gönder`}</button>
+-                  <div style={{ marginTop: 11, textAlign: "center", fontSize: 10, color: plan.muted }}>Ödeme sağlayıcısı bağlanana kadar kart bilgisi istenmez veya işlenmez.</div>
++                  <button className="membership-cta" type="button" onClick={() => plan.id === "standard" ? void saveSubscriptionSelection(plan.id) : startIyzicoCheckout(plan.id)} disabled={subscriptionSaving || selected} style={{ width: "100%", marginTop: 21, padding: "13px 15px", border: 0, borderRadius: 14, cursor: selected ? "default" : "pointer", fontWeight: 950, color: plan.id === "standard" ? "#153a65" : plan.id === "gold" ? "#1b1609" : "#06406c", background: selected ? plan.id === "gold" ? "linear-gradient(90deg,#d8a83e,#ffe39a)" : plan.id === "premium" ? "linear-gradient(90deg,#e7f7ff,#fff)" : "#e8eef3" : plan.id === "gold" ? "linear-gradient(90deg,#c99a35,#f6d780)" : plan.id === "premium" ? "#fff" : "#eef3f7", boxShadow: plan.id === "gold" ? "0 10px 25px rgba(235,190,83,.22)" : plan.id === "premium" ? "0 10px 25px rgba(0,0,0,.18)" : "none", opacity: selected ? .82 : 1 }}>{selected ? "✓ Aktif Plan" : plan.id === "standard" ? "Standart'a Geçiş Talebi" : `iyzico ile ${plan.name} Ödemesine Geç`}</button>
++                  <div style={{ marginTop: 11, textAlign: "center", fontSize: 10.5, color: plan.muted }}>{plan.id === "standard" ? "Standart geçişi kontrollü plan talebi olarak işlenir." : "Kart bilgileri Yaşam AI sunucularında tutulmaz; ödeme iyzico Checkout Form üzerinden yürütülür."}</div>
+                 </div>
+               </article>;
+             })}
+diff --git a/app/api/payments/iyzico/callback/route.ts b/app/api/payments/iyzico/callback/route.ts
+new file mode 100644
+index 0000000..02bdec1
+--- /dev/null
++++ b/app/api/payments/iyzico/callback/route.ts
+@@ -0,0 +1,102 @@
++import { iyzicoGet } from "../../../../../lib/iyzico-server";
++import { supabaseAdmin } from "../../../../../lib/supabase-admin";
++
++function resultHtml(status: "success" | "failure") {
++  const base = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
++  const target = `${base}/analiz?payment=${status}`;
++  return new Response(`<!doctype html><html><head><meta charset="utf-8"><title>Yaşam AI Ödeme</title></head><body><script>window.top.location.href=${JSON.stringify(target)};</script><a href=${JSON.stringify(target)}>Yaşam AI'a dön</a></body></html>`, {
++    status: 200,
++    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
++  });
++}
++
++async function tokenFromRequest(request: Request) {
++  const url = new URL(request.url);
++  const queryToken = url.searchParams.get("token");
++  if (queryToken) return queryToken;
++  const contentType = request.headers.get("content-type") || "";
++  if (request.method === "POST" && contentType.includes("application/json")) {
++    const body = await request.json().catch(() => ({}));
++    return String(body?.token || "");
++  }
++  if (request.method === "POST") {
++    const form = await request.formData().catch(() => null);
++    return String(form?.get("token") || "");
++  }
++  return "";
++}
++
++async function handle(request: Request) {
++  const token = await tokenFromRequest(request);
++  if (!token) return resultHtml("failure");
++
++  const { data: tx } = await supabaseAdmin.from("payment_transactions").select("*").eq("checkout_token", token).maybeSingle();
++  if (!tx) return resultHtml("failure");
++  if (tx.status === "success" && tx.verified_at) return resultHtml("success");
++
++  const path = `/v2/subscription/checkoutform/${encodeURIComponent(token)}?conversationId=${encodeURIComponent(tx.conversation_id)}`;
++  const { response, data } = await iyzicoGet(path);
++  const active = response.ok && data?.status === "success" && data?.data?.subscriptionStatus === "ACTIVE";
++  if (!active) {
++    await supabaseAdmin.from("payment_transactions").update({
++      status: "failure",
++      callback_received_at: new Date().toISOString(),
++      failure_code: data?.errorCode || null,
++      failure_message: data?.errorMessage || "Abonelik sonucu iyzico üzerinden doğrulanamadı.",
++      provider_response: data,
++      updated_at: new Date().toISOString(),
++    }).eq("id", tx.id);
++    return resultHtml("failure");
++  }
++
++  const now = new Date().toISOString();
++  const subscriptionRef = String(data.data.referenceCode || "");
++  const customerRef = String(data.data.customerReferenceCode || "");
++  const startMs = Number(data.data.startDate || data.data.createdDate || 0);
++  const endMs = Number(data.data.endDate || 0);
++  const periodStart = startMs > 0 ? new Date(startMs).toISOString() : now;
++  const periodEnd = endMs > 0 ? new Date(endMs).toISOString() : null;
++
++  await supabaseAdmin.from("payment_transactions").update({
++    status: "success",
++    callback_received_at: now,
++    verified_at: now,
++    provider_customer_reference_code: customerRef || null,
++    provider_subscription_reference_code: subscriptionRef || null,
++    provider_response: data,
++    updated_at: now,
++  }).eq("id", tx.id);
++
++  if (customerRef) {
++    await supabaseAdmin.from("payment_customers").upsert({
++      user_id: tx.user_id,
++      provider: "iyzico",
++      provider_customer_reference_code: customerRef,
++      updated_at: now,
++    }, { onConflict: "user_id" });
++  }
++
++  await supabaseAdmin.from("subscription_profiles").upsert({
++    user_id: tx.user_id,
++    plan: tx.plan,
++    billing_cycle: tx.billing_cycle,
++    status: "active",
++    current_period_start: periodStart,
++    current_period_end: periodEnd,
++    cancel_at_period_end: false,
++    payment_provider: "iyzico",
++    provider_customer_ref: customerRef || null,
++    provider_subscription_ref: subscriptionRef || null,
++    updated_at: now,
++  }, { onConflict: "user_id" });
++
++  await supabaseAdmin.from("subscription_plan_requests").update({
++    status: "approved",
++    reviewed_at: now,
++  }).eq("user_id", tx.user_id).eq("requested_plan", tx.plan).eq("requested_billing_cycle", tx.billing_cycle).eq("status", "pending");
++
++  return resultHtml("success");
++}
++
++export async function POST(request: Request) { return handle(request); }
++export async function GET(request: Request) { return handle(request); }
+diff --git a/app/api/payments/iyzico/initialize/route.ts b/app/api/payments/iyzico/initialize/route.ts
+new file mode 100644
+index 0000000..abc795a
+--- /dev/null
++++ b/app/api/payments/iyzico/initialize/route.ts
+@@ -0,0 +1,107 @@
++import crypto from "node:crypto";
++import { NextResponse } from "next/server";
++import { iyzicoPost } from "../../../../../lib/iyzico-server";
++import { getUserFromBearer, supabaseAdmin } from "../../../../../lib/supabase-admin";
++
++type Plan = "premium" | "gold";
++type Billing = "monthly" | "yearly";
++
++const planReference = (plan: Plan, billing: Billing) => {
++  const key = `IYZICO_${plan.toUpperCase()}_${billing.toUpperCase()}_PLAN`;
++  return process.env[key] || "";
++};
++
++export async function POST(request: Request) {
++  const user = await getUserFromBearer(request);
++  if (!user) return NextResponse.json({ error: "Oturum doğrulanamadı." }, { status: 401 });
++
++  const body = await request.json().catch(() => ({}));
++  const plan = body.plan as Plan;
++  const billingCycle = body.billingCycle as Billing;
++  if (!(["premium", "gold"] as string[]).includes(plan) || !(["monthly", "yearly"] as string[]).includes(billingCycle)) {
++    return NextResponse.json({ error: "Geçersiz plan veya ödeme dönemi." }, { status: 400 });
++  }
++
++  const pricingPlanReferenceCode = planReference(plan, billingCycle);
++  if (!pricingPlanReferenceCode) {
++    return NextResponse.json({ error: "iyzico abonelik plan kodu henüz tanımlanmadı. Sandbox abonelik aktivasyonunun tamamlanması bekleniyor." }, { status: 503 });
++  }
++
++  const customer = body.customer || {};
++  const billing = customer.billingAddress || {};
++  const required = [customer.name, customer.surname, customer.email || user.email, customer.gsmNumber, customer.identityNumber, billing.address, billing.contactName, billing.city, billing.country];
++  if (required.some((value) => !String(value || "").trim())) {
++    return NextResponse.json({ error: "Müşteri ve fatura bilgilerinde zorunlu alan eksik." }, { status: 400 });
++  }
++
++  const conversationId = `yasam-${user.id.slice(0, 8)}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
++  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
++  const callbackUrl = `${appUrl}/api/payments/iyzico/callback`;
++
++  const { error: ledgerError } = await supabaseAdmin.from("payment_transactions").insert({
++    user_id: user.id,
++    provider: "iyzico",
++    environment: (process.env.IYZICO_BASE_URL || "").includes("sandbox") ? "sandbox" : "production",
++    plan,
++    billing_cycle: billingCycle,
++    status: "created",
++    conversation_id: conversationId,
++    pricing_plan_reference_code: pricingPlanReferenceCode,
++  });
++  if (ledgerError) return NextResponse.json({ error: `Ödeme kaydı açılamadı: ${ledgerError.message}` }, { status: 500 });
++
++  const payload = {
++    locale: "tr",
++    callbackUrl,
++    pricingPlanReferenceCode,
++    subscriptionInitialStatus: "ACTIVE",
++    conversationId,
++    customer: {
++      name: String(customer.name).trim(),
++      surname: String(customer.surname).trim(),
++      email: String(customer.email || user.email).trim(),
++      gsmNumber: String(customer.gsmNumber).trim(),
++      identityNumber: String(customer.identityNumber).trim(),
++      billingAddress: {
++        address: String(billing.address).trim(),
++        zipCode: String(billing.zipCode || "").trim(),
++        contactName: String(billing.contactName).trim(),
++        city: String(billing.city).trim(),
++        country: String(billing.country).trim(),
++      },
++      shippingAddress: {
++        address: String((customer.shippingAddress || billing).address).trim(),
++        zipCode: String((customer.shippingAddress || billing).zipCode || "").trim(),
++        contactName: String((customer.shippingAddress || billing).contactName).trim(),
++        city: String((customer.shippingAddress || billing).city).trim(),
++        country: String((customer.shippingAddress || billing).country).trim(),
++      },
++    },
++  };
++
++  const { response, data } = await iyzicoPost("/v2/subscription/checkoutform/initialize", payload);
++  if (!response.ok || data?.status !== "success" || !data?.token || !data?.checkoutFormContent) {
++    await supabaseAdmin.from("payment_transactions").update({
++      status: "failure",
++      failure_code: data?.errorCode || null,
++      failure_message: data?.errorMessage || "iyzico Checkout Form başlatılamadı.",
++      provider_response: data,
++      updated_at: new Date().toISOString(),
++    }).eq("conversation_id", conversationId);
++    return NextResponse.json({ error: data?.errorMessage || "iyzico Checkout Form başlatılamadı." }, { status: 400 });
++  }
++
++  await supabaseAdmin.from("payment_transactions").update({
++    status: "checkout_initialized",
++    checkout_token: data.token,
++    provider_response: { status: data.status, conversationId: data.conversationId, tokenExpireTime: data.tokenExpireTime },
++    updated_at: new Date().toISOString(),
++  }).eq("conversation_id", conversationId);
++
++  return NextResponse.json({
++    ok: true,
++    token: data.token,
++    checkoutFormContent: data.checkoutFormContent,
++    tokenExpireTime: data.tokenExpireTime,
++  });
++}
+diff --git a/app/api/payments/iyzico/status/route.ts b/app/api/payments/iyzico/status/route.ts
+new file mode 100644
+index 0000000..0e1c841
+--- /dev/null
++++ b/app/api/payments/iyzico/status/route.ts
+@@ -0,0 +1,26 @@
++import { NextResponse } from "next/server";
++
++const planKeys = {
++  premium_monthly: "IYZICO_PREMIUM_MONTHLY_PLAN",
++  premium_yearly: "IYZICO_PREMIUM_YEARLY_PLAN",
++  gold_monthly: "IYZICO_GOLD_MONTHLY_PLAN",
++  gold_yearly: "IYZICO_GOLD_YEARLY_PLAN",
++} as const;
++
++export async function GET() {
++  const plans = Object.fromEntries(
++    Object.entries(planKeys).map(([key, envName]) => [key, Boolean(process.env[envName])]),
++  );
++  const credentialsReady = Boolean(
++    process.env.IYZICO_API_KEY &&
++    process.env.IYZICO_SECRET_KEY &&
++    process.env.IYZICO_MERCHANT_ID &&
++    process.env.SUPABASE_SECRET_KEY,
++  );
++  return NextResponse.json({
++    provider: "iyzico",
++    environment: (process.env.IYZICO_BASE_URL || "").includes("sandbox") ? "sandbox" : "production",
++    credentialsReady,
++    plans,
++  });
++}
+diff --git a/app/api/payments/iyzico/webhook/route.ts b/app/api/payments/iyzico/webhook/route.ts
+new file mode 100644
+index 0000000..cc3958a
+--- /dev/null
++++ b/app/api/payments/iyzico/webhook/route.ts
+@@ -0,0 +1,69 @@
++import { NextResponse } from "next/server";
++import { verifyIyzicoSubscriptionWebhook } from "../../../../../lib/iyzico-server";
++import { supabaseAdmin } from "../../../../../lib/supabase-admin";
++
++export async function POST(request: Request) {
++  const signature = request.headers.get("x-iyz-signature-v3") || "";
++  const payload = await request.json().catch(() => ({}));
++  const merchantId = String(process.env.IYZICO_MERCHANT_ID || "");
++  const eventType = String(payload.iyziEventType || "");
++  const subscriptionReferenceCode = String(payload.subscriptionReferenceCode || "");
++  const orderReferenceCode = String(payload.orderReferenceCode || "");
++  const customerReferenceCode = String(payload.customerReferenceCode || "");
++  const iyziReferenceCode = String(payload.iyziReferenceCode || "");
++
++  const valid = Boolean(
++    signature && merchantId && eventType && subscriptionReferenceCode && orderReferenceCode && customerReferenceCode &&
++    verifyIyzicoSubscriptionWebhook({ signature, merchantId, eventType, subscriptionReferenceCode, orderReferenceCode, customerReferenceCode }),
++  );
++
++  const eventRow = {
++    provider: "iyzico",
++    environment: (process.env.IYZICO_BASE_URL || "").includes("sandbox") ? "sandbox" : "production",
++    event_type: eventType || "unknown",
++    iyzi_reference_code: iyziReferenceCode || null,
++    merchant_id: merchantId || null,
++    subscription_reference_code: subscriptionReferenceCode || null,
++    order_reference_code: orderReferenceCode || null,
++    customer_reference_code: customerReferenceCode || null,
++    signature_header: signature || null,
++    signature_valid: valid,
++    payload,
++    processing_status: valid ? "received" : "ignored",
++    processing_error: valid ? null : "signature_invalid",
++  };
++
++  if (iyziReferenceCode) {
++    await supabaseAdmin.from("payment_webhook_events").upsert(eventRow, { onConflict: "provider,iyzi_reference_code" });
++  } else {
++    await supabaseAdmin.from("payment_webhook_events").insert(eventRow);
++  }
++  if (!valid) return NextResponse.json({ ok: false }, { status: 401 });
++
++  const { data: tx } = await supabaseAdmin.from("payment_transactions").select("*")
++    .eq("provider_subscription_reference_code", subscriptionReferenceCode)
++    .order("created_at", { ascending: false }).limit(1).maybeSingle();
++  const now = new Date().toISOString();
++
++  if (tx && eventType === "subscription.order.success") {
++    await supabaseAdmin.from("payment_transactions").update({
++      status: "success",
++      provider_order_reference_code: orderReferenceCode,
++      verified_at: now,
++      updated_at: now,
++    }).eq("id", tx.id);
++    await supabaseAdmin.from("subscription_profiles").update({ status: "active", updated_at: now }).eq("user_id", tx.user_id);
++  } else if (tx && eventType === "subscription.order.failure") {
++    await supabaseAdmin.from("payment_transactions").update({
++      status: "failure",
++      provider_order_reference_code: orderReferenceCode,
++      failure_message: "iyzico recurring subscription payment failed",
++      updated_at: now,
++    }).eq("id", tx.id);
++    await supabaseAdmin.from("subscription_profiles").update({ status: "past_due", updated_at: now }).eq("user_id", tx.user_id);
++  }
++
++  const updateEvent = supabaseAdmin.from("payment_webhook_events").update({ processing_status: "processed", processed_at: now });
++  if (iyziReferenceCode) await updateEvent.eq("provider", "iyzico").eq("iyzi_reference_code", iyziReferenceCode);
++  return NextResponse.json({ ok: true });
++}
+diff --git a/app/odeme/iyzico/page.tsx b/app/odeme/iyzico/page.tsx
+new file mode 100644
+index 0000000..fc7a983
+--- /dev/null
++++ b/app/odeme/iyzico/page.tsx
+@@ -0,0 +1,95 @@
++"use client";
++
++import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
++import { supabase } from "../../../lib/supabase";
++
++type Plan = "premium" | "gold";
++type Billing = "monthly" | "yearly";
++
++type CheckoutStatus = {
++  credentialsReady: boolean;
++  environment: "sandbox" | "production";
++  plans: Record<string, boolean>;
++};
++
++export default function IyzicoPaymentPage() {
++  const [plan, setPlan] = useState<Plan>("premium");
++  const [billing, setBilling] = useState<Billing>("monthly");
++  const [status, setStatus] = useState<CheckoutStatus | null>(null);
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState("");
++  const [checkoutHtml, setCheckoutHtml] = useState("");
++  const checkoutRef = useRef<HTMLDivElement | null>(null);
++  const [form, setForm] = useState({
++    name: "", surname: "", email: "", gsmNumber: "+90", identityNumber: "",
++    contactName: "", address: "", zipCode: "", city: "", country: "Turkey",
++  });
++
++  useEffect(() => {
++    const params = new URLSearchParams(window.location.search);
++    const p = params.get("plan");
++    const b = params.get("billing");
++    if (p === "premium" || p === "gold") setPlan(p);
++    if (b === "monthly" || b === "yearly") setBilling(b);
++    void fetch("/api/payments/iyzico/status", { cache: "no-store" }).then((r) => r.json()).then(setStatus).catch(() => setStatus(null));
++    void supabase.auth.getUser().then(({ data }) => setForm((current) => ({ ...current, email: data.user?.email || current.email })));
++  }, []);
++
++  const planReady = useMemo(() => Boolean(status?.credentialsReady && status?.plans?.[`${plan}_${billing}`]), [status, plan, billing]);
++
++  useEffect(() => {
++    if (!checkoutHtml || !checkoutRef.current) return;
++    const host = checkoutRef.current;
++    host.innerHTML = `<div id="iyzipay-checkout-form" class="responsive"></div>`;
++    const wrapper = document.createElement("div");
++    wrapper.innerHTML = checkoutHtml;
++    for (const node of Array.from(wrapper.childNodes)) {
++      if (node.nodeName.toLowerCase() === "script") {
++        const source = node as HTMLScriptElement;
++        const script = document.createElement("script");
++        for (const attr of Array.from(source.attributes)) script.setAttribute(attr.name, attr.value);
++        script.text = source.text;
++        host.appendChild(script);
++      } else host.appendChild(node.cloneNode(true));
++    }
++    return () => { host.innerHTML = ""; };
++  }, [checkoutHtml]);
++
++  async function startCheckout(event: FormEvent) {
++    event.preventDefault();
++    setError("");
++    setLoading(true);
++    try {
++      const { data } = await supabase.auth.getSession();
++      const token = data.session?.access_token;
++      if (!token) throw new Error("Oturum bulunamadı. Lütfen tekrar giriş yapın.");
++      const response = await fetch("/api/payments/iyzico/initialize", {
++        method: "POST",
++        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
++        body: JSON.stringify({
++          plan,
++          billingCycle: billing,
++          customer: {
++            name: form.name,
++            surname: form.surname,
++            email: form.email,
++            gsmNumber: form.gsmNumber,
++            identityNumber: form.identityNumber,
++            billingAddress: { address: form.address, zipCode: form.zipCode, contactName: form.contactName || `${form.name} ${form.surname}`, city: form.city, country: form.country },
++          },
++        }),
++      });
++      const result = await response.json();
++      if (!response.ok) throw new Error(result?.error || "Ödeme formu başlatılamadı.");
++      setCheckoutHtml(String(result.checkoutFormContent || ""));
++    } catch (err) {
++      setError(err instanceof Error ? err.message : "Ödeme formu başlatılamadı.");
++    } finally { setLoading(false); }
++  }
++
++  if (checkoutHtml) {
++    return <main style={{ minHeight: "100vh", background: "#f3f7fa", padding: "32px 16px" }}><div style={{ maxWidth: 760, margin: "0 auto" }}><button onClick={() => setCheckoutHtml("")} style={{ border: 0, background: "transparent", color: "#176ca5", fontWeight: 800, cursor: "pointer", marginBottom: 14 }}>← Bilgilere dön</button><section style={{ background: "#fff", border: "1px solid #dbe7f3", borderRadius: 24, padding: 20, boxShadow: "0 20px 50px rgba(20,60,90,.10)" }}><h1 style={{ color: "#153a65", marginTop: 0 }}>iyzico Güvenli Ödeme</h1><p style={{ color: "#607890" }}>Kart bilgileri Yaşam AI tarafından saklanmaz. Sandbox ortamında test işlemi yapıyorsunuz.</p><div ref={checkoutRef} /></section></div></main>;
++  }
++
++  return <main style={{ minHeight: "100vh", background: "linear-gradient(135deg,#edf7ff,#f7fafc)", padding: "32px 16px" }}><div style={{ maxWidth: 760, margin: "0 auto" }}><a href="/analiz" style={{ color: "#176ca5", fontWeight: 800, textDecoration: "none" }}>← Üyelik merkezine dön</a><section style={{ marginTop: 16, background: "#fff", border: "1px solid #dbe7f3", borderRadius: 26, padding: 24, boxShadow: "0 22px 55px rgba(20,60,90,.10)" }}><div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 1.4, color: "#0b789f" }}>YAŞAM AI · IYZICO</div><h1 style={{ color: "#153a65", margin: "8px 0" }}>{plan === "gold" ? "Gold Elite" : "Premium"} · {billing === "yearly" ? "Yıllık" : "Aylık"}</h1><p style={{ color: "#607890", lineHeight: 1.6 }}>Ödeme sonucu iyzico üzerinden ayrıca doğrulanmadan abonelik yetkisi açılmaz.</p>{status && !planReady ? <div style={{ padding: 14, borderRadius: 14, background: "#fff7e6", border: "1px solid #ead7aa", color: "#715820", lineHeight: 1.5 }}>iyzico Sandbox abonelik plan kodu henüz aktif değil. Destek aktivasyonu tamamlandığında bu ekran otomatik olarak ödeme formunu başlatmaya hazır olacak. Şu an kart bilgisi girmenize gerek yok.</div> : null}{error ? <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "#fff0f0", color: "#a33" }}>{error}</div> : null}{planReady ? <form onSubmit={startCheckout} style={{ display: "grid", gap: 12, marginTop: 18 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>{[["Ad","name"],["Soyad","surname"],["E-posta","email"],["Telefon (+90...)","gsmNumber"],["Kimlik/Vergi No","identityNumber"],["Fatura adı","contactName"],["Şehir","city"],["Posta kodu","zipCode"]].map(([label,key]) => <label key={key} style={{ display: "grid", gap: 6, color: "#34556c", fontWeight: 800, fontSize: 13 }}>{label}<input required={!['zipCode'].includes(key)} value={(form as any)[key]} onChange={(e) => setForm((c) => ({ ...c, [key]: e.target.value }))} style={{ padding: "12px 13px", border: "1px solid #cad9e6", borderRadius: 12, fontSize: 14 }} /></label>)}</div><label style={{ display: "grid", gap: 6, color: "#34556c", fontWeight: 800, fontSize: 13 }}>Fatura adresi<textarea required value={form.address} onChange={(e) => setForm((c) => ({ ...c, address: e.target.value }))} rows={3} style={{ padding: "12px 13px", border: "1px solid #cad9e6", borderRadius: 12, fontSize: 14, resize: "vertical" }} /></label><button disabled={loading} type="submit" style={{ marginTop: 6, padding: "14px 16px", border: 0, borderRadius: 14, background: "linear-gradient(90deg,#0876c9,#0f9de0)", color: "#fff", fontWeight: 900, fontSize: 15, cursor: "pointer" }}>{loading ? "iyzico hazırlanıyor..." : "iyzico Güvenli Ödemeyi Aç"}</button><small style={{ color: "#6d8194", lineHeight: 1.5 }}>Kart numarası, CVV ve kart son kullanma tarihi bu forma girilmez; bu bilgiler yalnızca iyzico Checkout Form içinde işlenir.</small></form> : null}</section></div></main>;
++}
+diff --git a/lib/iyzico-server.ts b/lib/iyzico-server.ts
+new file mode 100644
+index 0000000..386f8b6
+--- /dev/null
++++ b/lib/iyzico-server.ts
+@@ -0,0 +1,79 @@
++import "server-only";
++
++import crypto from "node:crypto";
++
++const apiKey = process.env.IYZICO_API_KEY || "";
++const secretKey = process.env.IYZICO_SECRET_KEY || "";
++const baseUrl = (process.env.IYZICO_BASE_URL || "https://sandbox-api.iyzipay.com").replace(/\/$/, "");
++
++function requireIyzicoEnv() {
++  if (!apiKey || !secretKey) throw new Error("IYZICO_API_KEY veya IYZICO_SECRET_KEY eksik.");
++}
++
++function randomKey() {
++  return `${Date.now()}${crypto.randomBytes(8).toString("hex")}`;
++}
++
++function authorization(path: string, body = "") {
++  requireIyzicoEnv();
++  const rnd = randomKey();
++  const signature = crypto.createHmac("sha256", secretKey).update(rnd + path + body).digest("hex");
++  const encoded = Buffer.from(`apiKey:${apiKey}&randomKey:${rnd}&signature:${signature}`, "utf8").toString("base64");
++  return { rnd, value: `IYZWSv2 ${encoded}` };
++}
++
++async function parseJson(response: Response) {
++  return response.json().catch(() => ({} as Record<string, unknown>));
++}
++
++export async function iyzicoPost(path: string, payload: unknown) {
++  const body = JSON.stringify(payload);
++  const auth = authorization(path, body);
++  const response = await fetch(`${baseUrl}${path}`, {
++    method: "POST",
++    headers: {
++      Authorization: auth.value,
++      "x-iyzi-rnd": auth.rnd,
++      "Content-Type": "application/json",
++    },
++    body,
++    cache: "no-store",
++  });
++  return { response, data: await parseJson(response) as any };
++}
++
++export async function iyzicoGet(path: string) {
++  const auth = authorization(path, "");
++  const response = await fetch(`${baseUrl}${path}`, {
++    method: "GET",
++    headers: {
++      Authorization: auth.value,
++      "x-iyzi-rnd": auth.rnd,
++      "Content-Type": "application/json",
++    },
++    cache: "no-store",
++  });
++  return { response, data: await parseJson(response) as any };
++}
++
++export function verifyIyzicoSubscriptionWebhook(input: {
++  signature: string;
++  merchantId: string;
++  eventType: string;
++  subscriptionReferenceCode: string;
++  orderReferenceCode: string;
++  customerReferenceCode: string;
++}) {
++  requireIyzicoEnv();
++  const message =
++    input.merchantId +
++    secretKey +
++    input.eventType +
++    input.subscriptionReferenceCode +
++    input.orderReferenceCode +
++    input.customerReferenceCode;
++  const expected = crypto.createHmac("sha256", secretKey).update(message).digest("hex").toLowerCase();
++  const received = input.signature.trim().toLowerCase();
++  if (!received || expected.length !== received.length) return false;
++  return crypto.timingSafeEqual(Buffer.from(expected, "utf8"), Buffer.from(received, "utf8"));
++}
+diff --git a/lib/supabase-admin.ts b/lib/supabase-admin.ts
+new file mode 100644
+index 0000000..d1641b3
+--- /dev/null
++++ b/lib/supabase-admin.ts
+@@ -0,0 +1,23 @@
++import "server-only";
++
++import { createClient } from "@supabase/supabase-js";
++
++const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
++const supabaseSecret = process.env.SUPABASE_SECRET_KEY || "";
++
++if (!supabaseUrl || !supabaseSecret) {
++  throw new Error("NEXT_PUBLIC_SUPABASE_URL veya SUPABASE_SECRET_KEY eksik.");
++}
++
++export const supabaseAdmin = createClient(supabaseUrl, supabaseSecret, {
++  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
++});
++
++export async function getUserFromBearer(request: Request) {
++  const header = request.headers.get("authorization") || "";
++  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
++  if (!token) return null;
++  const { data, error } = await supabaseAdmin.auth.getUser(token);
++  if (error) return null;
++  return data.user ?? null;
++}

@@ -1,0 +1,42 @@
+diff --git a/app/api/payments/iyzico/callback/route.ts b/app/api/payments/iyzico/callback/route.ts
+index 3dd15ce..0e199af 100644
+--- a/app/api/payments/iyzico/callback/route.ts
++++ b/app/api/payments/iyzico/callback/route.ts
+@@ -28,7 +28,10 @@ export async function POST(request: Request) {
+ 
+   if (!tx) return NextResponse.redirect(redirectUrl("failure"), 303);
+ 
+-  const path = `/v2/subscription/checkoutform/${encodeURIComponent(token)}?conversationId=${encodeURIComponent(tx.conversation_id)}`;
++  // iyzico subscription checkout result is retrieved with the callback token.
++  // conversationId is optional; omitting it also prevents query parameters
++  // from accidentally being included in the IYZWSv2 signature payload.
++  const path = `/v2/subscription/checkoutform/${encodeURIComponent(token)}`;
+   const { response, data } = await iyzicoGet(path);
+ 
+   const success =
+diff --git a/lib/iyzico-server.ts b/lib/iyzico-server.ts
+index 5ca9759..4ecf9ef 100644
+--- a/lib/iyzico-server.ts
++++ b/lib/iyzico-server.ts
+@@ -16,12 +16,20 @@ function randomKey() {
+   return `${Date.now()}${crypto.randomBytes(8).toString("hex")}`;
+ }
+ 
++function signaturePath(path: string) {
++  // iyzico IYZWSv2 signs URI pathname only; query parameters must not be
++  // included in the HMAC payload.
++  const queryIndex = path.indexOf("?");
++  return queryIndex >= 0 ? path.slice(0, queryIndex) : path;
++}
++
+ export function buildIyzicoHeaders(path: string, body = "") {
+   assertEnv();
+   const rnd = randomKey();
++  const authPath = signaturePath(path);
+   const signature = crypto
+     .createHmac("sha256", SECRET_KEY)
+-    .update(rnd + path + body)
++    .update(rnd + authPath + body)
+     .digest("hex");
+ 
+   const authorization = Buffer.from(

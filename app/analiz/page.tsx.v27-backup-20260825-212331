@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -10,7 +10,6 @@ import { buildReportTrustProfile } from "../../lib/report/trust-profile";
 import type { DecisionMetrics, RegionalMarketContext } from "../../lib/decision-engine";
 import TurkiyeDataCenter from "../components/data-center/TurkiyeDataCenter";
 import TeamRoleCenter from "../components/membership/TeamRoleCenter";
-import SubscriptionProductionCenter from "../components/membership/SubscriptionProductionCenter";
 import OrganizationCenter from "../components/enterprise/OrganizationCenter";
 import LegalComplianceCenter from "../components/enterprise/LegalComplianceCenter";
 import SecureTransactionCenter from "../components/enterprise/SecureTransactionCenter";
@@ -3428,8 +3427,6 @@ type SubscriptionProfile = {
   payment_provider: string | null;
   provider_customer_ref: string | null;
   provider_subscription_ref: string | null;
-  pending_plan?: "premium" | "gold" | null;
-  pending_change_mode?: "next_period" | null;
   created_at: string;
   updated_at: string;
 };
@@ -3529,7 +3526,6 @@ function StrategicExpansionCenter({
   const [subscriptionReady, setSubscriptionReady] = useState<boolean | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [subscriptionSaving, setSubscriptionSaving] = useState(false);
-  const [subscriptionAction, setSubscriptionAction] = useState<"" | "change" | "cancel">("");
   const [subscriptionProfile, setSubscriptionProfile] = useState<SubscriptionProfile | null>(null);
   const [subscriptionUsage, setSubscriptionUsage] = useState<SubscriptionUsage[]>([]);
   const [subscriptionPlanRequest, setSubscriptionPlanRequest] = useState<SubscriptionPlanRequest | null>(null);
@@ -5694,63 +5690,6 @@ KURALLAR
     window.location.href = `/odeme/iyzico?${params.toString()}`;
   }
 
-  async function callSubscriptionApi(path: string, body?: Record<string, unknown>) {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    if (!token) throw new Error("Oturum bulunamadı. Lütfen tekrar giriş yapın.");
-    const response = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result?.error || "Abonelik işlemi tamamlanamadı.");
-    return result;
-  }
-
-  async function changeActiveIyzicoPlan(plan: "premium" | "gold") {
-    if (!subscriptionProfile || subscriptionProfile.status !== "active" || !subscriptionIntelligence.paymentConnected) {
-      startIyzicoCheckout(plan);
-      return;
-    }
-    if (subscriptionProfile.billing_cycle !== billingCycle) {
-      setMembershipNotice("Aylık/yıllık dönem değişikliği yeni abonelik akışı gerektirir. Mevcut aboneliği iptal edip yeni dönemle yeniden başlatabilirsiniz.");
-      return;
-    }
-    setSubscriptionAction("change");
-    setMembershipNotice("");
-    try {
-      const result = await callSubscriptionApi("/api/payments/iyzico/change-plan", { plan, billingCycle });
-      setMembershipNotice(result?.effective === "next_period"
-        ? `${subscriptionIntelligence.planLabels[plan]} geçişi bir sonraki dönem için iyzico üzerinde planlandı.`
-        : `${subscriptionIntelligence.planLabels[plan]} planı iyzico üzerinde başarıyla etkinleştirildi.`);
-      await loadSubscriptionCenter();
-    } catch (error) {
-      setMembershipNotice(error instanceof Error ? error.message : "Plan değişikliği tamamlanamadı.");
-    } finally {
-      setSubscriptionAction("");
-    }
-  }
-
-  async function cancelActiveIyzicoSubscription() {
-    if (!subscriptionProfile || !subscriptionIntelligence.paymentConnected) {
-      await saveSubscriptionSelection("standard");
-      return;
-    }
-    if (!window.confirm("Aktif iyzico aboneliğinizi iptal etmek istediğinizden emin misiniz?")) return;
-    setSubscriptionAction("cancel");
-    setMembershipNotice("");
-    try {
-      await callSubscriptionApi("/api/payments/iyzico/cancel");
-      setMembershipNotice("iyzico aboneliğiniz iptal edildi. Üyelik durumu sunucudan yeniden yüklendi.");
-      await loadSubscriptionCenter();
-    } catch (error) {
-      setMembershipNotice(error instanceof Error ? error.message : "Abonelik iptali tamamlanamadı.");
-    } finally {
-      setSubscriptionAction("");
-    }
-  }
-
   async function saveSubscriptionSelection(plan: "standard" | "premium" | "gold") {
     if (!user) {
       setMembershipNotice("Plan işlemi için oturum açmış kullanıcı gerekli.");
@@ -7004,7 +6943,7 @@ ${currentText}`
 
 
   const subscriptionIntelligence = useMemo(() => {
-    const effectivePlan = subscriptionProfile && !["cancelled", "canceled"].includes(String(subscriptionProfile.status)) ? subscriptionProfile.plan : membershipPlan;
+    const effectivePlan = subscriptionProfile?.plan || membershipPlan;
     const limits = effectivePlan === "gold"
       ? { analysis: Infinity, ai_search: Infinity, pdf: Infinity, listing_publish: Infinity, team_member: 25 }
       : effectivePlan === "premium"
@@ -7027,7 +6966,7 @@ ${currentText}`
     });
 
     const planLabels = { standard: "Standart", premium: "Premium", gold: "Gold Elite" } as const;
-    const statusLabel = subscriptionProfile?.status === "active" ? "Aktif" : subscriptionProfile?.status === "trial" ? "Deneme / Ön Hazırlık" : subscriptionProfile?.status === "past_due" ? "Ödeme Bekliyor" : ["cancelled", "canceled"].includes(String(subscriptionProfile?.status)) ? "İptal" : subscriptionProfile?.status === "paused" ? "Duraklatıldı" : "Yerel Önizleme";
+    const statusLabel = subscriptionProfile?.status === "active" ? "Aktif" : subscriptionProfile?.status === "trial" ? "Deneme / Ön Hazırlık" : subscriptionProfile?.status === "past_due" ? "Ödeme Bekliyor" : subscriptionProfile?.status === "cancelled" ? "İptal" : subscriptionProfile?.status === "paused" ? "Duraklatıldı" : "Yerel Önizleme";
     const paymentConnected = Boolean(subscriptionProfile?.payment_provider && subscriptionProfile?.provider_subscription_ref);
     const daysRemaining = subscriptionProfile?.current_period_end
       ? Math.max(0, Math.ceil((new Date(subscriptionProfile.current_period_end).getTime() - Date.now()) / 86400000))
@@ -8725,12 +8664,6 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
               </div>
             ) : null}
 
-            {subscriptionProfile?.pending_plan ? (
-              <div style={{ marginTop: 12, padding: 11, borderRadius: 12, background: "#eef7ff", border: "1px solid #b9dcf7", color: "#315b78", fontSize: 12.5, lineHeight: 1.5 }}>
-                iyzico üzerinde planlanan değişiklik: <strong>{subscriptionIntelligence.planLabels[subscriptionProfile.pending_plan]}</strong>{subscriptionProfile.pending_change_mode === "next_period" ? " · sonraki ödeme döneminde" : ""}.
-              </div>
-            ) : null}
-
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 13 }}>
               {[
                 ["AKTİF PLAN", subscriptionIntelligence.planLabels[subscriptionIntelligence.effectivePlan]],
@@ -8815,7 +8748,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
                   <div style={{ minHeight: 24, color: plan.id === "gold" ? "#f1d98f" : plan.id === "premium" ? "#9fddff" : "#238a62", fontSize: 11, fontWeight: 900 }}>{billingCycle === "yearly" && amount > 0 ? `Aylık karşılığı yaklaşık ${monthlyEquivalent.toLocaleString("tr-TR")} TL` : amount > 0 ? "İstediğiniz zaman plan değiştirin" : "Kredi kartı gerekmez"}</div>
                   <div style={{ marginTop: 16, padding: 13, borderRadius: 15, background: plan.id === "standard" ? "#f1f5f8" : "rgba(255,255,255,.08)", border: `1px solid ${plan.id === "standard" ? "#dce5ed" : "rgba(255,255,255,.12)"}` }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 900 }}><span>AI GÜÇ SEVİYESİ</span><span style={{ color: plan.accent }}>%{plan.power}</span></div><div style={{ height: 8, marginTop: 8, background: plan.id === "standard" ? "#dfe7ee" : "rgba(255,255,255,.12)", borderRadius: 999, overflow: "hidden" }}><div style={{ height: "100%", width: `${plan.power}%`, borderRadius: 999, background: plan.id === "gold" ? "linear-gradient(90deg,#a87719,#ffe49a)" : plan.id === "premium" ? "linear-gradient(90deg,#23a8ff,#9fe2ff)" : "linear-gradient(90deg,#7e91a3,#a9b8c5)" }} /></div></div>
                   <div className="membership-feature-list" style={{ display: "grid", alignContent: "start", gap: 10, marginTop: 18 }}>{plan.items.map((item) => <div key={item} style={{ display: "flex", gap: 9, alignItems: "flex-start", color: plan.muted, fontSize: 13, lineHeight: 1.35 }}><span style={{ width: 20, height: 20, borderRadius: 999, display: "grid", placeItems: "center", flex: "0 0 auto", background: plan.id === "standard" ? "#eaf0f5" : "rgba(255,255,255,.10)", color: plan.accent, fontWeight: 950 }}>✓</span><span>{item}</span></div>)}</div>
-                  <button className="membership-cta" type="button" onClick={() => plan.id === "standard" ? void cancelActiveIyzicoSubscription() : void changeActiveIyzicoPlan(plan.id)} disabled={subscriptionSaving || Boolean(subscriptionAction) || selected} style={{ width: "100%", marginTop: 21, padding: "13px 15px", border: 0, borderRadius: 14, cursor: selected ? "default" : "pointer", fontWeight: 950, color: plan.id === "standard" ? "#153a65" : plan.id === "gold" ? "#1b1609" : "#06406c", background: selected ? plan.id === "gold" ? "linear-gradient(90deg,#d8a83e,#ffe39a)" : plan.id === "premium" ? "linear-gradient(90deg,#e7f7ff,#fff)" : "#e8eef3" : plan.id === "gold" ? "linear-gradient(90deg,#c99a35,#f6d780)" : plan.id === "premium" ? "#fff" : "#eef3f7", boxShadow: plan.id === "gold" ? "0 10px 25px rgba(235,190,83,.22)" : plan.id === "premium" ? "0 10px 25px rgba(0,0,0,.18)" : "none", opacity: selected ? .82 : 1 }}>{selected ? "✓ Aktif Plan" : subscriptionAction ? "İşleniyor…" : plan.id === "standard" ? (subscriptionIntelligence.paymentConnected ? "Aboneliği İptal Et" : "Standart'a Geçiş Talebi") : (subscriptionIntelligence.paymentConnected && subscriptionProfile?.status === "active" ? `${plan.name} Planına Geç` : `iyzico ile ${plan.name} Ödemesine Geç`)}</button>
+                  <button className="membership-cta" type="button" onClick={() => plan.id === "standard" ? void saveSubscriptionSelection(plan.id) : startIyzicoCheckout(plan.id)} disabled={subscriptionSaving || selected} style={{ width: "100%", marginTop: 21, padding: "13px 15px", border: 0, borderRadius: 14, cursor: selected ? "default" : "pointer", fontWeight: 950, color: plan.id === "standard" ? "#153a65" : plan.id === "gold" ? "#1b1609" : "#06406c", background: selected ? plan.id === "gold" ? "linear-gradient(90deg,#d8a83e,#ffe39a)" : plan.id === "premium" ? "linear-gradient(90deg,#e7f7ff,#fff)" : "#e8eef3" : plan.id === "gold" ? "linear-gradient(90deg,#c99a35,#f6d780)" : plan.id === "premium" ? "#fff" : "#eef3f7", boxShadow: plan.id === "gold" ? "0 10px 25px rgba(235,190,83,.22)" : plan.id === "premium" ? "0 10px 25px rgba(0,0,0,.18)" : "none", opacity: selected ? .82 : 1 }}>{selected ? "✓ Aktif Plan" : plan.id === "standard" ? "Standart'a Geçiş Talebi" : `iyzico ile ${plan.name} Ödemesine Geç`}</button>
                   <div style={{ marginTop: 11, textAlign: "center", fontSize: 10.5, color: plan.muted }}>{plan.id === "standard" ? "Standart geçişi kontrollü plan talebi olarak işlenir." : "Kart bilgileri Yaşam AI sunucularında tutulmaz; ödeme iyzico Checkout Form üzerinden yürütülür."}</div>
                 </div>
               </article>;
@@ -8894,17 +8827,6 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
           </article>
 
 
-          <SubscriptionProductionCenter
-            userId={user?.id ?? null}
-            plan={(subscriptionProfile?.plan || membershipPlan) as "standard" | "premium" | "gold"}
-            billingCycle={(subscriptionProfile?.billing_cycle || billingCycle) as "monthly" | "yearly"}
-            status={subscriptionProfile?.status ?? null}
-            currentPeriodEnd={subscriptionProfile?.current_period_end ?? null}
-            paymentConnected={subscriptionIntelligence.paymentConnected}
-            pendingPlan={subscriptionPlanRequest?.requested_plan ?? null}
-            pendingBillingCycle={subscriptionPlanRequest?.requested_billing_cycle ?? null}
-            onRefresh={() => void loadSubscriptionCenter()}
-          />
           <PlatformControlDock
             userId={user?.id ?? null}
             plan={(subscriptionProfile?.plan || membershipPlan) as "standard" | "premium" | "gold"}

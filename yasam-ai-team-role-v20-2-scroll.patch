@@ -1,0 +1,26 @@
+diff --git a/app/analiz/page.tsx b/app/analiz/page.tsx
+index 1db783f..842f9c1 100644
+--- a/app/analiz/page.tsx
++++ b/app/analiz/page.tsx
+@@ -8772,7 +8772,7 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
+ 
+             <article style={{ position: "relative", overflow: "hidden", padding: 20, borderRadius: 20, color: "#fff", background: "linear-gradient(145deg,#0e0d09,#2a210e)", border: "1px solid rgba(241,201,107,.55)", boxShadow: "0 18px 40px rgba(65,48,10,.18)" }}>
+               <div style={{ color: "#f1c96b", fontSize: 11, fontWeight: 950, letterSpacing: 1.5 }}>GOLD ELITE CLUB</div><h3 style={{ fontSize: 25, margin: "8px 0" }}>Kurumsal ayrıcalığın yeni standardı.</h3><p style={{ color: "#d9c99d", lineHeight: 1.6, fontSize: 13 }}>VIP destek, ekip rolleri, kurumsal CRM, gelişmiş veri erişimi ve yeni özelliklere öncelikli erişim.</p>
+-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 16 }}>{["VIP destek","Ekip yönetimi","Beta erişimi","Kurumsal rozet"].map(x => <div key={x} style={{ padding: 11, borderRadius: 13, background: "rgba(255,255,255,.06)", border: "1px solid rgba(241,201,107,.18)", color: "#f6e6b6", fontSize: 12, fontWeight: 850 }}>♛ {x}</div>)}</div>
++              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 16 }}>{["VIP destek","Ekip yönetimi","Beta erişimi","Kurumsal rozet"].map(x => x === "Ekip yönetimi" ? <button key={x} type="button" onClick={() => document.getElementById("team-role-center")?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ padding: 11, borderRadius: 13, background: "rgba(255,255,255,.06)", border: "1px solid rgba(241,201,107,.28)", color: "#f6e6b6", fontSize: 12, fontWeight: 850, textAlign: "left", cursor: "pointer" }}>♛ {x} →</button> : <div key={x} style={{ padding: 11, borderRadius: 13, background: "rgba(255,255,255,.06)", border: "1px solid rgba(241,201,107,.18)", color: "#f6e6b6", fontSize: 12, fontWeight: 850 }}>♛ {x}</div>)}</div>
+             </article>
+           </div>
+ 
+diff --git a/app/components/membership/TeamRoleCenter.tsx b/app/components/membership/TeamRoleCenter.tsx
+index dd8131b..045c05b 100644
+--- a/app/components/membership/TeamRoleCenter.tsx
++++ b/app/components/membership/TeamRoleCenter.tsx
+@@ -179,7 +179,7 @@ export default function TeamRoleCenter({ userId, userEmail, plan }: { userId: st
+   const input = { width: "100%", padding: "11px 12px", borderRadius: 11, border: "1px solid #cdddea", background: "#fff", color: "#153a65", fontSize: 13, outline: "none" } as const;
+   const button = { padding: "11px 13px", borderRadius: 11, border: 0, fontSize: 12.5, fontWeight: 900, cursor: "pointer" } as const;
+ 
+-  return <article style={{ marginTop: 16, padding: 20, borderRadius: 24, border: gold ? "1px solid #e5cd8e" : "1px solid #dbe7f3", background: gold ? "linear-gradient(145deg,#fffdf8,#fff8df)" : "linear-gradient(145deg,#f8fbfe,#fff)", boxShadow: "0 16px 38px rgba(31,64,97,.08)" }}>
++  return <article id="team-role-center" style={{ scrollMarginTop: 22, marginTop: 16, padding: 20, borderRadius: 24, border: gold ? "1px solid #e5cd8e" : "1px solid #dbe7f3", background: gold ? "linear-gradient(145deg,#fffdf8,#fff8df)" : "linear-gradient(145deg,#f8fbfe,#fff)", boxShadow: "0 16px 38px rgba(31,64,97,.08)" }}>
+     <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+       <div>
+         <div style={{ color: gold ? "#9a7318" : "#0b6f9c", fontSize: 10.5, fontWeight: 950, letterSpacing: 1.45 }}>GOLD ELITE · EKİP & ROL MERKEZİ</div>

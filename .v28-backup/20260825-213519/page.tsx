@@ -10,7 +10,6 @@ import { buildReportTrustProfile } from "../../lib/report/trust-profile";
 import type { DecisionMetrics, RegionalMarketContext } from "../../lib/decision-engine";
 import TurkiyeDataCenter from "../components/data-center/TurkiyeDataCenter";
 import TeamRoleCenter from "../components/membership/TeamRoleCenter";
-import SubscriptionProductionCenter from "../components/membership/SubscriptionProductionCenter";
 import OrganizationCenter from "../components/enterprise/OrganizationCenter";
 import LegalComplianceCenter from "../components/enterprise/LegalComplianceCenter";
 import SecureTransactionCenter from "../components/enterprise/SecureTransactionCenter";
@@ -8894,17 +8893,6 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
           </article>
 
 
-          <SubscriptionProductionCenter
-            userId={user?.id ?? null}
-            plan={(subscriptionProfile?.plan || membershipPlan) as "standard" | "premium" | "gold"}
-            billingCycle={(subscriptionProfile?.billing_cycle || billingCycle) as "monthly" | "yearly"}
-            status={subscriptionProfile?.status ?? null}
-            currentPeriodEnd={subscriptionProfile?.current_period_end ?? null}
-            paymentConnected={subscriptionIntelligence.paymentConnected}
-            pendingPlan={subscriptionPlanRequest?.requested_plan ?? null}
-            pendingBillingCycle={subscriptionPlanRequest?.requested_billing_cycle ?? null}
-            onRefresh={() => void loadSubscriptionCenter()}
-          />
           <PlatformControlDock
             userId={user?.id ?? null}
             plan={(subscriptionProfile?.plan || membershipPlan) as "standard" | "premium" | "gold"}
