@@ -6,6 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabase";
 import { buildDecisionPromptContext, calculateDecisionMetrics } from "../../lib/decision-engine";
 import { buildV29AnalysisContext } from "../../lib/v29-analysis-engine";
+import { buildV30MarketIntelligence } from "../../lib/v30-market-intelligence";
 import { calculateOfferStrategy } from "../../lib/report/offer-engine";
 import { buildReportTrustProfile } from "../../lib/report/trust-profile";
 import type { DecisionMetrics, RegionalMarketContext } from "../../lib/decision-engine";
@@ -3481,6 +3482,7 @@ function StrategicExpansionCenter({
   user: User | null;
 }) {
   const [section, setSection] = useState<"command" | "roadmap" | "ai" | "market" | "listings" | "admin" | "membership" | "pdf" | "enterprise" | "crm" | "project">("command");
+  const v30Market = useMemo(() => buildV30MarketIntelligence(regionalData), [regionalData]);
   const [aiRecordId, setAiRecordId] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -8117,6 +8119,51 @@ Rapor tarihi: ${safeDate(selectedPdfRecord.created_at)}`;
             </div>
           </article>
 
+          <article style={{ padding: 18, borderRadius: 22, marginBottom: 16, border: "1px solid #cfe2f3", background: "linear-gradient(145deg,#f4faff,#ffffff)", boxShadow: "0 16px 36px rgba(31,75,116,.08)" }}>
+            <div style={sectionHeader}>
+              <div>
+                <div style={eyebrow}>V30 · MARKET INTELLIGENCE</div>
+                <h3 style={{ margin: "6px 0 0", color: "#153a65", fontSize: 23 }}>Kayıtlı veriden Türkiye piyasa nabzı</h3>
+              </div>
+              <span style={secureBadge}>Veri kalitesi: {v30Market.qualityLabel}</span>
+            </div>
+            <p style={{ margin: "8px 0 14px", color: "#607890", fontSize: 12, lineHeight: 1.65 }}>
+              Bu katman yalnızca Supabase&apos;te kayıtlı bölgesel verileri toplulaştırır. Sinyal skoru bir fiyat tahmini veya yatırım tavsiyesi değildir; veri güveni, likidite, kayıtlı yıllık değişim ve mevcut kira/satış m² oranını karşılaştırma amacıyla kullanır.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 9 }}>
+              <MiniMeta label="Kapsanan il" value={`${v30Market.cityCount}`} />
+              <MiniMeta label="Piyasa eğilimi" value={v30Market.trendLabel} />
+              <MiniMeta label="Ort. veri güveni" value={v30Market.recordCount ? `%${v30Market.averageConfidence}` : "—"} />
+              <MiniMeta label="Ort. likidite" value={v30Market.recordCount ? `${v30Market.averageLiquidity}/100` : "—"} />
+              <MiniMeta label="Toplam örneklem" value={v30Market.totalSampleSize ? v30Market.totalSampleSize.toLocaleString("tr-TR") : "—"} />
+              <MiniMeta label="Kayıt sayısı" value={`${v30Market.recordCount}`} />
+            </div>
+            {v30Market.topSignals.length ? (
+              <div style={{ marginTop: 14 }}>
+                <strong style={{ color: "#153a65", fontSize: 12 }}>Kayıtlı veriye göre öne çıkan 5 şehir sinyali</strong>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 9, marginTop: 9 }}>
+                  {v30Market.topSignals.map((signal, index) => (
+                    <div key={signal.city} style={{ padding: 13, borderRadius: 14, border: "1px solid #dce7f1", background: "#fff" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                        <strong style={{ color: "#153a65" }}>{index + 1}. {signal.city}</strong>
+                        <span style={{ color: "#0876c9", fontSize: 10, fontWeight: 950 }}>Sinyal {signal.signalScore}/100</span>
+                      </div>
+                      <div style={{ marginTop: 7, color: "#607890", fontSize: 10, lineHeight: 1.55 }}>
+                        Güven %{signal.dataConfidence} · Likidite {signal.liquidityScore}/100 · Yıllık değişim %{signal.annualChange}
+                        {signal.grossYield != null ? ` · Brüt kira getirisi %${signal.grossYield}` : ""}
+                      </div>
+                      <div style={{ marginTop: 5, color: "#8a9bad", fontSize: 9 }}>{signal.recordCount} kayıt · satış m² {signal.averageM2 ? formatCurrency(String(signal.averageM2)) : "—"}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : <div style={{ ...emptyState, marginTop: 12 }}>V30 piyasa sinyalleri için kaynaklı market_data kayıtları bekleniyor.</div>}
+            {v30Market.warnings.length ? (
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 13, background: "#fff8e8", border: "1px solid #f0d89d", color: "#72562d", fontSize: 10, lineHeight: 1.55 }}>
+                <strong>Veri kalite uyarıları:</strong> {v30Market.warnings.join(" · ")}
+              </div>
+            ) : null}
+          </article>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 10, marginBottom: 16 }}>
             {[
               ["Marmara", "Yüksek işlem hacmi", "İstanbul · Bursa · Kocaeli", "#153a65"],
