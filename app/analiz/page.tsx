@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabase";
 import { buildDecisionPromptContext, calculateDecisionMetrics } from "../../lib/decision-engine";
+import { buildV29AnalysisContext } from "../../lib/v29-analysis-engine";
 import { calculateOfferStrategy } from "../../lib/report/offer-engine";
 import { buildReportTrustProfile } from "../../lib/report/trust-profile";
 import type { DecisionMetrics, RegionalMarketContext } from "../../lib/decision-engine";
@@ -600,7 +601,7 @@ export default function AnalysisPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          prompt: `Sen Yaşam AI Bütünleşik Gayrimenkul Karar Ekosistemi'sin.
+          prompt: `Sen Yaşam AI V29 Hibrit Gayrimenkul Karar Motoru'sun. Deterministik hesaplama katmanı ile AI yorum katmanını birlikte kullanırsın.
 
 TAŞINMAZ
 İl: ${form.city}
@@ -617,6 +618,8 @@ Tapu durumu: ${form.titleStatus || "Belirtilmedi"}
 Ek bilgiler: ${form.notes || "Yok"}
 
 ${buildDecisionPromptContext(localMetrics)}
+
+${buildV29AnalysisContext(form, localMetrics)}
 
 RAPOR ZORUNLU BAŞLIKLARI
 1. Yönetici Özeti
@@ -2766,7 +2769,7 @@ KRİTİK UYARI: kararı değiştirebilecek en önemli eksik veri veya risk; yoks
               ) : null}
 
               <button disabled={loading} style={submitButton}>
-                {loading ? "AI analizi devam ediyor..." : "Gerçek AI Analizini Başlat"}
+                {loading ? "V29 analiz motoru çalışıyor..." : "Yaşam AI V29 Analizini Başlat"}
               </button>
             </form>
           </section>
